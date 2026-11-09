@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-describe('UI Interaction & Regression Test Suite (Playwright Pattern)', () => {
+describe('Embedded app regression checks', () => {
   const htmlContent = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
 
   it('should contain the complete Macropad 3x3 direct matrix DOM structure', () => {
@@ -18,14 +18,17 @@ describe('UI Interaction & Regression Test Suite (Playwright Pattern)', () => {
     expect(htmlContent).toContain('r3c3');
   });
 
-  it('should contain Rotary Encoder Dial controls with CW, CCW, and Press actions', () => {
+  it('should contain one Grid Macro 1 encoder and no second-knob layout', () => {
+    expect(htmlContent).toContain('Grid Macro 1');
     expect(htmlContent).toContain('dial-tl');
     expect(htmlContent).toContain('encoderActions');
     expect(htmlContent).toContain('volume +');
     expect(htmlContent).toContain('volume -');
+    expect(htmlContent).not.toContain('knob-tr');
+    expect(htmlContent).not.toContain('Creator Micro 2');
   });
 
-  it('should include 13 validated Creator and Power-User Presets in the library', () => {
+  it('should include the required Creator and Power-User presets in the embedded app', () => {
     // Verify preset identifiers
     const requiredPresets = [
       'obs',

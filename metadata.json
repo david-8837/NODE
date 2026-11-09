@@ -1,6 +1,6 @@
 {
-  "name": "Creator Micro 2 Configurator",
-  "description": "Hardware keymap, layer, profile, and macro configuration studio for the Creator Micro 2 macropad.",
+  "name": "Grid Macro 1 Configurator",
+  "description": "Hardware keymap, layer, profile, and macro configuration studio for the Grid Macro 1 macropad (9 keys and one rotary encoder).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
