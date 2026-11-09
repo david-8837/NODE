@@ -50,7 +50,23 @@ jobs:
           echo "QMK_HOME=$RUNNER_TEMP/qmk_firmware" >> "$GITHUB_ENV"
 
       - name: Compile the stock-VIA keymap
-        run: qmk compile -kb grid_macro_1 -km via
+        shell: bash
+        run: |
+          set +e
+          qmk compile -kb grid_macro_1 -km via 2>&1 | tee "$RUNNER_TEMP/qmk-build.log"
+          build_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$build_status" -ne 0 ]; then
+            {
+              echo '## QMK firmware build failed'
+              echo '```text'
+              tail -n 60 "$RUNNER_TEMP/qmk-build.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            failure_message=$(tail -n 25 "$RUNNER_TEMP/qmk-build.log" | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/::/%3A%3A/g' -e 's/;/%3B/g')
+            echo "::error file=.github/workflows/qmk-build.yml,line=1::$failure_message"
+            exit "$build_status"
+          fi
         working-directory: ${{ runner.temp }}/qmk_firmware
 
       - name: Verify and upload the UF2 artifact
