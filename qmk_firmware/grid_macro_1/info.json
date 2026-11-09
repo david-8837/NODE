@@ -1,0 +1,62 @@
+{
+    "keyboard_name": "Grid Macro 1",
+    "manufacturer": "NØDE",
+    "url": "https://node-studio.local",
+    "maintainer": "NØDE",
+    "usb": {
+        "vid": "0xFEED",
+        "pid": "0x6001",
+        "device_version": "1.0.0"
+    },
+    "features": {
+        "bootmagic": true,
+        "command": false,
+        "console": false,
+        "extrakey": true,
+        "mousekey": true,
+        "nkro": true,
+        "rgblight": true,
+        "encoder": true,
+        "raw": true,
+        "via": true
+    },
+    "matrix_pins": {
+        "direct": [
+            ["GP0", "GP1", "GP2"],
+            ["GP3", "GP4", "GP5"],
+            ["GP6", "GP7", "GP8"],
+            ["GP11", null, null]
+        ]
+    },
+    "encoder": {
+        "rotary": [
+            {"pin_a": "GP9", "pin_b": "GP10", "resolution": 4}
+        ]
+    },
+    "rgblight": {
+        "pin": "GP16",
+        "led_count": 1,
+        "driver": "ws2812",
+        "animations": {
+            "all": true
+        }
+    },
+    "processor": "RP2040",
+    "bootloader": "rp2040",
+    "layouts": {
+        "LAYOUT_grid_macro_1": {
+            "layout": [
+                {"matrix": [3, 0], "x": 2, "y": 0, "w": 1, "h": 1, "label": "DIAL_SW"},
+                {"matrix": [0, 0], "x": 0, "y": 1, "w": 1, "h": 1, "label": "R1C1"},
+                {"matrix": [0, 1], "x": 1, "y": 1, "w": 1, "h": 1, "label": "R1C2"},
+                {"matrix": [0, 2], "x": 2, "y": 1, "w": 1, "h": 1, "label": "R1C3"},
+                {"matrix": [1, 0], "x": 0, "y": 2, "w": 1, "h": 1, "label": "R2C1"},
+                {"matrix": [1, 1], "x": 1, "y": 2, "w": 1, "h": 1, "label": "R2C2"},
+                {"matrix": [1, 2], "x": 2, "y": 2, "w": 1, "h": 1, "label": "R2C3"},
+                {"matrix": [2, 0], "x": 0, "y": 3, "w": 1, "h": 1, "label": "R3C1"},
+                {"matrix": [2, 1], "x": 1, "y": 3, "w": 1, "h": 1, "label": "R3C2"},
+                {"matrix": [2, 2], "x": 2, "y": 3, "w": 1, "h": 1, "label": "R3C3"}
+            ]
+        }
+    }
+}

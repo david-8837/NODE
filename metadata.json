@@ -1,0 +1,6 @@
+{
+  "name": "Creator Micro 2 Configurator",
+  "description": "Hardware keymap, layer, profile, and macro configuration studio for the Creator Micro 2 macropad.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

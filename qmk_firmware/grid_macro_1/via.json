@@ -1,0 +1,26 @@
+{
+  "name": "Grid Macro 1",
+  "vendorId": "0xFEED",
+  "productId": "0x6001",
+  "customKeycodes": [],
+  "matrix": {
+    "rows": 4,
+    "cols": 3
+  },
+  "layouts": {
+    "keymap": [
+      [
+        {"x": 2, "y": 0, "label": "Enc SW"},
+        {"x": 0, "y": 1, "label": "Key 1"},
+        {"x": 1, "y": 1, "label": "Key 2"},
+        {"x": 2, "y": 1, "label": "Key 3"},
+        {"x": 0, "y": 2, "label": "Key 4"},
+        {"x": 1, "y": 2, "label": "Key 5"},
+        {"x": 2, "y": 2, "label": "Key 6"},
+        {"x": 0, "y": 3, "label": "Key 7"},
+        {"x": 1, "y": 3, "label": "Key 8"},
+        {"x": 2, "y": 3, "label": "Key 9"}
+      ]
+    ]
+  }
+}
