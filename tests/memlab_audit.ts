@@ -1,26 +1,22 @@
 /**
- * memlab_audit.ts - Memory Leak Investigation Engine (MemLab Pattern)
- * Simulates high-frequency user workflows (profile imports, layer changes, dial rotations)
- * and measures memory retention, garbage collection stability, and event listener lifecycle.
+ * Synthetic Node heap-delta smoke check. This is intentionally not presented as
+ * Meta MemLab: it exercises allocation and listener cleanup in Node, not a browser.
  */
 
 import { SerialManager } from '../src/serialManager';
 import { validateProfile } from '../src/profileValidator';
 
-export async function runMemlabAudit() {
-  console.log('--- Running MemLab-Style Memory Leak Audit ---');
+export function runNodeHeapSmokeAudit() {
+  console.log('--- Running synthetic Node heap-delta smoke check (not MemLab) ---');
 
-  if (global.gc) {
-    global.gc();
-  }
+  if (global.gc) global.gc();
 
-  const initialMemory = process.memoryUsage();
-  console.log(`Initial Heap Used: ${(initialMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
+  const initialHeapUsed = process.memoryUsage().heapUsed;
+  console.log(`Initial Heap Used: ${(initialHeapUsed / 1024 / 1024).toFixed(2)} MB`);
 
-  // Phase 1: 5,000 Rapid Profile Creations & Sanitizations
-  const profiles = [];
+  // Exercise repeated profile sanitization without retaining the results.
   for (let i = 0; i < 5000; i++) {
-    const prof = validateProfile({
+    const result = validateProfile({
       id: `p-${i}`,
       name: `Profile ${i}`,
       layers: [
@@ -31,43 +27,33 @@ export async function runMemlabAudit() {
         },
       ],
     });
-    if (i % 2 === 0) {
-      profiles.push(prof);
-    }
+    if (!result.valid) throw new Error(`Profile ${i} failed validation`);
   }
 
-  // Phase 2: Event Listener Lifecycle (Attach & Detach 1,000 times)
+  // Check listener cleanup after repeated attach/detach cycles.
   const serial = new SerialManager();
-  const listeners: any[] = [];
-
   for (let i = 0; i < 1000; i++) {
-    const fn = (state: string) => {};
-    listeners.push(fn);
-    serial.on('stateChange', fn);
+    const listener = () => {};
+    serial.on('stateChange', listener);
+    serial.off('stateChange', listener);
   }
 
-  // Clean up all attached listeners
-  for (const fn of listeners) {
-    serial.off('stateChange', fn);
-  }
+  if (global.gc) global.gc();
 
-  if (global.gc) {
-    global.gc();
-  }
+  const finalHeapUsed = process.memoryUsage().heapUsed;
+  const heapDeltaMB = (finalHeapUsed - initialHeapUsed) / 1024 / 1024;
+  console.log(`Final Heap Used:   ${(finalHeapUsed / 1024 / 1024).toFixed(2)} MB`);
+  console.log(`Heap Delta:        ${heapDeltaMB.toFixed(2)} MB`);
+  console.log(global.gc
+    ? 'Forced GC was available; heap delta remains a coarse smoke metric.'
+    : 'Forced GC unavailable; heap delta is a noisy smoke metric, not leak evidence.');
 
-  const finalMemory = process.memoryUsage();
-  console.log(`Final Heap Used:   ${(finalMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
-
-  const heapDiffMB = (finalMemory.heapUsed - initialMemory.heapUsed) / 1024 / 1024;
-  console.log(`Heap Delta:        ${heapDiffMB.toFixed(2)} MB`);
-
-  // Under 15MB delta for 5,000 heavy cycles confirms zero runaway retention
-  const isHealthy = heapDiffMB < 15;
-  console.log(`Memory Leak Status: ${isHealthy ? 'PASSED (Zero Runaway Leaks)' : 'WARNING (High Retention)'}`);
-  return { isHealthy, heapDiffMB };
+  const withinBudget = heapDeltaMB < 15;
+  console.log(`Heap smoke status: ${withinBudget ? 'PASSED (under 15 MB)' : 'FAILED (over 15 MB)'}`);
+  if (!withinBudget) process.exitCode = 1;
+  return { withinBudget, heapDeltaMB };
 }
 
 if (import.meta.url.endsWith(process.argv[1]) || process.argv[1]?.includes('memlab_audit')) {
-  runMemlabAudit();
+  runNodeHeapSmokeAudit();
 }
-

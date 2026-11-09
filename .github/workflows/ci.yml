@@ -22,7 +22,10 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
+
+      - name: Dependency Security Audit
+        run: npm audit --audit-level=low
 
       - name: Strict Typecheck (TypeScript)
         run: npm run lint
@@ -30,13 +33,19 @@ jobs:
       - name: Production Web Build
         run: npm run build
 
+      - name: Enforce JavaScript Bundle Budget
+        run: npm run check:bundle
+
       - name: Run Vitest Unit & Integration Suites
         run: npm test
 
-      - name: Run Cppcheck-Style Firmware Static Analysis
+      - name: Install Cppcheck
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y cppcheck
+
+      - name: Run Cppcheck Firmware Static Analysis
         run: npm run audit:cpp
 
-      - name: Run MemLab-Style Memory Lifecycle Audit
+      - name: Run Synthetic Node Heap-Delta Smoke Check
         run: npm run audit:mem
 
       - name: Run High-Throughput Stress Suite

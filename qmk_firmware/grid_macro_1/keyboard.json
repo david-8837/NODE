@@ -20,6 +20,11 @@
         "raw": true,
         "via": true
     },
+    "host": {
+        "default": {
+            "nkro": true
+        }
+    },
     "matrix_pins": {
         "direct": [
             ["GP0", "GP1", "GP2"],

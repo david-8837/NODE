@@ -1,0 +1,82 @@
+name: QMK firmware build
+
+on:
+  push:
+    paths:
+      - 'qmk_firmware/grid_macro_1/**'
+      - '.github/workflows/qmk-build.yml'
+  pull_request:
+    paths:
+      - 'qmk_firmware/grid_macro_1/**'
+      - '.github/workflows/qmk-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-via-firmware:
+    name: Build Grid Macro 1 VIA firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          path: configurator
+
+      - name: Install ARM and build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            binutils-arm-none-eabi \
+            build-essential \
+            gcc-arm-none-eabi \
+            git \
+            libnewlib-arm-none-eabi \
+            python3-venv
+
+      - name: Install QMK CLI
+        run: |
+          python3 -m venv "$RUNNER_TEMP/qmk-venv"
+          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install --disable-pip-version-check qmk
+          echo "$RUNNER_TEMP/qmk-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Check out QMK firmware and install the keyboard definition
+        run: |
+          git clone --depth 1 --branch master --recurse-submodules \
+            https://github.com/qmk/qmk_firmware.git "$RUNNER_TEMP/qmk_firmware"
+          cp -a "$GITHUB_WORKSPACE/configurator/qmk_firmware/grid_macro_1" \
+            "$RUNNER_TEMP/qmk_firmware/keyboards/"
+          echo "QMK_HOME=$RUNNER_TEMP/qmk_firmware" >> "$GITHUB_ENV"
+
+      - name: Compile the stock-VIA keymap
+        shell: bash
+        run: |
+          set +e
+          qmk compile -kb grid_macro_1 -km via 2>&1 | tee "$RUNNER_TEMP/qmk-build.log"
+          build_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$build_status" -ne 0 ]; then
+            {
+              echo '## QMK firmware build failed'
+              echo '```text'
+              tail -n 60 "$RUNNER_TEMP/qmk-build.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            failure_message=$(tail -n 25 "$RUNNER_TEMP/qmk-build.log" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/::/%3A%3A/g' -e 's/;/%3B/g')
+            echo "::error file=.github/workflows/qmk-build.yml,line=1::$failure_message"
+            exit "$build_status"
+          fi
+        working-directory: ${{ runner.temp }}/qmk_firmware
+
+      - name: Verify and upload the UF2 artifact
+        run: test -s .build/grid_macro_1_via.uf2
+        working-directory: ${{ runner.temp }}/qmk_firmware
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grid-macro-1-via-firmware
+          path: ${{ runner.temp }}/qmk_firmware/.build/grid_macro_1_via.uf2
+          if-no-files-found: error
+          retention-days: 7

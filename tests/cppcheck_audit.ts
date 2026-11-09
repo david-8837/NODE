@@ -1,87 +1,54 @@
 /**
- * cppcheck_audit.ts - Static Analysis Engine for C/C++ Firmware (Cppcheck Pattern)
- * Analyzes C/C++ firmware files for memory safety, bounds checking, buffer overflows,
- * and unsafe patterns across arduino_firmware.ino and qmk_firmware.
+ * Runs the real Cppcheck analyzer against the firmware sources used in this repo.
+ * CI installs Cppcheck explicitly. Developer machines without the optional binary
+ * get an honest skip rather than a regex-based substitute or a false pass claim.
  */
 
-import fs from 'fs';
-import path from 'path';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 
-export interface AuditFinding {
-  file: string;
-  line: number;
-  rule: string;
-  severity: 'ERROR' | 'WARNING' | 'STYLE';
-  message: string;
+const rootPath = process.cwd();
+const cppcheck = process.env.CPPCHECK_BIN || 'cppcheck';
+const firmwareFiles = [
+  'firmware/arduino_firmware.ino',
+  'qmk_firmware/grid_macro_1/config.h',
+  'qmk_firmware/grid_macro_1/grid_macro_1.h',
+  'qmk_firmware/grid_macro_1/keymaps/default/keymap.c',
+  'qmk_firmware/grid_macro_1/keymaps/via/keymap.c',
+].map((file) => path.join(rootPath, file));
+
+const version = spawnSync(cppcheck, ['--version'], {
+  cwd: rootPath,
+  encoding: 'utf8',
+});
+
+if ((version.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
+  console.warn('SKIP: Cppcheck is not installed; no firmware static analysis was run.');
+  console.warn('Install Cppcheck or set CPPCHECK_BIN to its executable to enable this check.');
+} else if (version.error) {
+  throw version.error;
+} else if (version.status !== 0) {
+  process.stderr.write(version.stderr || version.stdout);
+  process.exitCode = version.status ?? 1;
+} else {
+  console.log(`Running ${version.stdout.trim()} on Arduino and QMK firmware sources`);
+  const result = spawnSync(
+    cppcheck,
+    [
+      '--enable=warning,style,performance,portability',
+      '--error-exitcode=1',
+      '--inline-suppr',
+      '--suppress=missingInclude',
+      '--suppress=missingIncludeSystem',
+      '--language=c++',
+      '--std=c++11',
+      ...firmwareFiles,
+    ],
+    { cwd: rootPath, encoding: 'utf8' }
+  );
+
+  if (result.error) throw result.error;
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.status !== 0) process.exitCode = result.status ?? 1;
 }
-
-export function runCppcheckAudit(rootPath: string): AuditFinding[] {
-  const findings: AuditFinding[] = [];
-  const targetFiles = [
-    path.join(rootPath, 'firmware', 'arduino_firmware.ino'),
-    path.join(rootPath, 'qmk_firmware', 'grid_macro_1', 'keymaps', 'default', 'keymap.c'),
-    path.join(rootPath, 'qmk_firmware', 'grid_macro_1', 'config.h'),
-  ];
-
-  for (const filePath of targetFiles) {
-    if (!fs.existsSync(filePath)) continue;
-
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n');
-
-    lines.forEach((line, idx) => {
-      const lineNum = idx + 1;
-
-      // Rule 1: Dangerous string functions without bounds (strcpy, sprintf)
-      if (/\b(strcpy|strcat|sprintf|gets)\s*\(/.test(line)) {
-        findings.push({
-          file: path.relative(rootPath, filePath),
-          line: lineNum,
-          rule: 'unsafe-string-function',
-          severity: 'ERROR',
-          message: 'Avoid unbounded string functions; use strncpy, snprintf, or safe buffers.',
-        });
-      }
-
-      // Rule 2: Dynamic heap allocations without free / RAII check in embedded loops
-      if (/\b(malloc|calloc|realloc)\s*\(/.test(line)) {
-        findings.push({
-          file: path.relative(rootPath, filePath),
-          line: lineNum,
-          rule: 'heap-allocation-embedded',
-          severity: 'WARNING',
-          message: 'Dynamic heap allocation in embedded firmware risks fragmentation and OOM.',
-        });
-      }
-
-      // Rule 3: Buffer access without bounds checking
-      if (/buffer\[(\d+)\]/.test(line) && !line.includes('bufsize') && idx < 10) {
-        // Warning if buffer index is accessed early without size validation
-      }
-
-      // Rule 4: Goto statements (spaghetti control flow)
-      if (/\bgoto\s+[a-zA-Z0-9_]+;/.test(line)) {
-        findings.push({
-          file: path.relative(rootPath, filePath),
-          line: lineNum,
-          rule: 'prohibited-goto',
-          severity: 'STYLE',
-          message: 'Avoid goto statements in embedded firmware state machines.',
-        });
-      }
-    });
-  }
-
-  return findings;
-}
-
-if (import.meta.url.endsWith(process.argv[1]) || process.argv[1]?.includes('cppcheck_audit')) {
-  console.log('--- Running Cppcheck-Style Static Analysis on Firmware ---');
-  const findings = runCppcheckAudit(process.cwd());
-  if (findings.length === 0) {
-    console.log('✓ Cppcheck Static Analysis: 0 critical defects, all memory and bounds patterns safe!');
-  } else {
-    findings.forEach((f) => console.log(`[${f.severity}] ${f.file}:${f.line} - ${f.message} (${f.rule})`));
-  }
-}
-
