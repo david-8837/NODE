@@ -1,0 +1,43 @@
+name: Macro Pad Quality & Test Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-verify:
+    name: Build, Lint, and Automated Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Strict Typecheck (TypeScript)
+        run: npm run lint
+
+      - name: Production Web Build
+        run: npm run build
+
+      - name: Run Vitest Unit & Integration Suites
+        run: npm test
+
+      - name: Run Cppcheck-Style Firmware Static Analysis
+        run: npm run audit:cpp
+
+      - name: Run MemLab-Style Memory Lifecycle Audit
+        run: npm run audit:mem
+
+      - name: Run High-Throughput Stress Suite
+        run: npm run test:stress

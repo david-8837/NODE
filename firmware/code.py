@@ -206,11 +206,11 @@ def execute_binding(binding_str):
 
     b = binding_str.strip().lower()
 
-    # Check for Consumer Control Media Action
-    for media_name, media_code in MEDIA_MAP.items():
-        if b == media_name or f"({media_name})" in b or media_name in b:
-            cc.send(media_code)
-            return
+    # Check for Consumer Control Media Action (exact token match)
+    clean_b = b.strip("()")
+    if clean_b in MEDIA_MAP:
+        cc.send(MEDIA_MAP[clean_b])
+        return
 
     # Extract shortcut tokens inside parentheses or direct string
     if "(" in b and ")" in b:
