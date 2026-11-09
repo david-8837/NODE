@@ -106,20 +106,20 @@ The original audit improvements preserved the shipped UI snapshot and serial com
 
 ## 4. AFTER scorecard and comparison
 
-Scoring rubric is unchanged from the BEFORE table: nine equally weighted categories, 0–100, overall is the arithmetic mean. These scores are qualitative, bounded by evidence; simulated transport and host analysis do not receive hardware-validation credit. **Timing note:** this scorecard and the validation snapshot below were recorded before hosted QMK run 42660825626; scores were not retroactively recalculated. The latest firmware build evidence and remaining device-test gap are in Section 6.
+Scoring rubric is unchanged from the BEFORE table: nine equally weighted categories, 0–100, overall is the arithmetic mean. These scores are qualitative and bounded by evidence; simulated transport and host analysis do not receive hardware-validation credit. **Current rating (2026-11-09): 60/100.** After the hosted QMK/VIA compile and UF2 artifact upload succeeded, Firmware stability increased from 35 to 43; other category scores remain unchanged. This earns compile evidence, not physical-device validation. The app-test measurements below predate the final hosted build; current firmware evidence is in Section 6.
 
 | Category | Before | After | Change | After evidence / remaining limit |
 |---|---:|---:|---:|---|
 | UI reliability | 70 | 76 | +6 | Status chip is now an accessible Connect/Disconnect control and save feedback distinguishes local profiles from keymap sync; JSDOM tests verify connect-on-click, metadata-only no-op sync, and profile resync after reconnect. Import remains a placeholder and Settings still has a static connection label. |
 | Application logic | 58 | 66 | +8 | Invalid active-layer values rejected and valid integer range clamped. The embedded app still does not use this standalone validator. |
 | USB Serial reliability | 42 | 70 | +28 | Overlapping-command ambiguity and manual disconnect lifecycle fixed; one in-flight operation is enforced because responses have no request IDs. 10 serial tests pass, including actual SerialPort/Binding Mock stream exercise. No physical device. |
-| Firmware stability | 35 | 35 | 0 | Quoted QMK USB string macros and removed the Vial-only build flag; the adapter still uses stock VIA. Cppcheck and a narrow host syntax check passed, but no Arduino/QMK build, CircuitPython runtime, or hardware test ran. |
+| Firmware stability | 35 | 43 | +8 | The stock-VIA QMK target compiles in hosted Actions and a non-empty UF2 artifact was uploaded; Cppcheck and a narrow host syntax check also passed. No Arduino build, CircuitPython runtime, firmware flash, or physical-device test has run. |
 | Memory management | 45 | 45 | 0 | Node smoke now discards profile results and passed; it is still not a browser lifecycle measurement or MemLab run. |
 | Performance | 44 | 44 | 0 | No app optimization or device latency work was performed. Bundle size remains essentially unchanged and the >500 kB raw chunk warning persists. |
 | Code quality | 52 | 65 | +13 | Real Cppcheck wired into CI; misleading test/tool labels corrected; request cleanup, deterministic stress input, and a typed stock-VIA bridge improved. The shipped inline bundle/source App split remains. |
 | Security | 58 | 58 | 0 | Existing native-action origin checks remain. Electron sender validation/navigation restrictions and broad process-launch capability still need a packaged desktop threat-model review. |
 | Test coverage | 55 | 69 | +14 | Vitest includes fake-HID protocol/keycode/encoder cases, unavailable-layer rejection, failed-report cleanup, silent-reconnect errors, connect-button behavior, metadata-only sync suppression, and profile resync after reconnect, in addition to profile, dispatch, serial lifecycle, and Binding Mock coverage. Still no Playwright browser, native firmware tests, or hardware. |
-| **Overall quality** | **51** | **59** | **+8** | Mean after = 528 / 9 = 58.67, rounded to 59. Hardware/firmware integration remains the principal evidence gap. |
+| **Overall quality** | **51** | **60** | **+9** | Mean after = 536 / 9 = 59.56, rounded to 60. Hardware/firmware integration remains the principal evidence gap. |
 
 ### AFTER validation results
 
@@ -136,7 +136,7 @@ Scoring rubric is unchanged from the BEFORE table: nine equally weighted categor
 - Inspected the production entry: Vite emits one bundled module, and the QMK/VIA bridge registration occurs before the shipped renderer reads `window.macropad`.
 - Embedded-app JSDOM snapshots/navigation and the new connect/reconnect sync test pass. A separate React-app baseline fixture prevents the shipped inline UI snapshot change from masking the intentionally separate `src/App.tsx` layout.
 - Binding Mock is a software fake serial binding. It validates the SerialPort stream integration, **not a hardware connection**.
-- The earlier app/bridge validation snapshot had no physical USB test, firmware flash, real-browser WebHID permission/device test, CircuitPython execution on-device, Electron packaged-app test, Playwright browser run, MemLab run, AFL++ campaign, or Unity/Ceedling run. Since that snapshot, the hosted QMK/VIA build and non-empty UF2 artifact check passed in run 42660825626 (Section 6). Physical USB/device testing and the other listed tool/runtime tests remain unperformed.
+- The earlier app/bridge validation snapshot had no physical USB test, firmware flash, real-browser WebHID permission/device test, CircuitPython execution on-device, Electron packaged-app test, Playwright browser run, MemLab run, AFL++ campaign, or Unity/Ceedling run. Since then, hosted QMK/VIA compilation and non-empty UF2 artifact verification have passed repeatedly; the latest run is 42662058460 (Section 6). Physical USB/device testing and the other listed tool/runtime tests remain unperformed.
 
 ## 5. Confirmed findings: resolved vs remaining
 
@@ -171,8 +171,8 @@ The user selected **QMK/VIA HID** and delegated the bridge strategy. The least-r
 
 ### Hosted build result
 
-- [GitHub Actions run 42660825626](https://github.com/david-8837/newww/actions/runs/42660825626) succeeded for branch `arena/0e57631b-newww`, source commit `2dab75256d7ac3585060162322e819e481e5aa67` (short SHA `2dab752`). QMK discovery, `qmk compile -kb grid_macro_1 -km via`, output verification, and artifact upload all completed successfully.
-- The workflow checked that `.build/grid_macro_1_via.uf2` exists and is non-empty, then uploaded the **`grid-macro-1-via-firmware`** artifact with a seven-day retention period. Download it from the run page's Artifacts section and extract `grid_macro_1_via.uf2`. The binary is intentionally not committed to the repository.
+- The initial firmware-source build, [run 42660825626](https://github.com/david-8837/newww/actions/runs/42660825626), succeeded at commit `2dab752`. The latest successful build is [run 42662058460](https://github.com/david-8837/newww/actions/runs/42662058460), branch `arena/0e57631b-newww`, commit `3da359cf339236ac6017349b06278d3f2e0c3559` (the firmware sources are unchanged from the initial build). QMK discovery, `qmk compile -kb grid_macro_1 -km via`, non-empty output verification, and artifact upload all passed.
+- The latest run uploaded artifact **`grid-macro-1-via-firmware`** (ID `13694582307`), containing `.build/grid_macro_1_via.uf2`; the workflow retains it for seven days. Download it from the run page's Artifacts section and extract `grid_macro_1_via.uf2`. The binary is intentionally not committed to the repository.
 - The sandbox could not retrieve a local artifact copy because the Actions artifact download endpoint was inaccessible here. The successful job verifies compilation and a non-empty UF2 was available for upload; it does **not** verify flashing, boot, USB identity, VIA communication, or the browser bridge on a physical board. The QMK branch is not pinned, so this hosted result is not a fully reproducible toolchain/QMK revision lock.
 
 **Implemented least-risk path:** keep standard VIA unchanged; sync only supported keycodes/encoder maps with WebHID and keep full profiles/custom items in browser storage. The UI has an explicit user-gesture Connect/Disconnect control and reports local saving separately from device keymap sync. Unsupported mappings and layer-count differences produce sync warnings. The selected firmware stays on standard VIA; no custom profile-storage protocol was added.
@@ -181,7 +181,7 @@ The user selected **QMK/VIA HID** and delegated the bridge strategy. The least-r
 
 ## 7. Remaining recommendations
 
-1. Download the `grid-macro-1-via-firmware` artifact from [Actions run 42660825626](https://github.com/david-8837/newww/actions/runs/42660825626) while it is within its seven-day retention window. The hosted compile passed; pin a QMK revision/toolchain for a reproducible release build.
+1. Download the `grid-macro-1-via-firmware` artifact from [latest successful Actions run 42662058460](https://github.com/david-8837/newww/actions/runs/42662058460) while it is within its seven-day retention window. The hosted compile passed; pin a QMK revision/toolchain for a reproducible release build.
 2. Flash only after confirming the intended RP2040-Zero target, then test physical boot, USB/VIA discovery, and the bridge in Chrome/Edge: permission prompt/cancel, reconnect/disconnect, protocol/version mismatch, all key and encoder positions, blank clearing, unchanged-key no-op behavior, and supported/unsupported mappings. Confirm no concurrent VIA client corrupts writes and measure sync latency/flash effects.
 3. Add the real hidden file-picker/import workflow behind the existing Import control and test a valid profile, malformed file, cancel, and oversized input without changing the page layout.
 4. Reconcile Settings connection status with the actual bridge; do not display a connected device until the bridge confirms it.
