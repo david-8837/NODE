@@ -6,6 +6,9 @@
 
 #include <Arduino.h>
 #include <Adafruit_TinyUSB.h>
+#include <EEPROM.h>
+
+#define EEPROM_MAGIC 0x47524944 // 'GRID'
 
 // Direct Matrix Pin definitions for RP2040-Zero
 const uint8_t KEY_PINS[9] = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
@@ -79,6 +82,14 @@ void setup() {
   last_debounce_time[9] = 0;
 
   enc_state = (digitalRead(ENC_A) << 1) | digitalRead(ENC_B);
+
+  // Load Non-Volatile Dynamic Keymaps from Flash/EEPROM
+  EEPROM.begin(512);
+  uint32_t magic = 0;
+  EEPROM.get(0, magic);
+  if (magic == EEPROM_MAGIC) {
+    EEPROM.get(4, keymaps);
+  }
 }
 
 // Memory-Safe Raw HID Callback: Bounds checked, safe parsing, layer switching
@@ -126,6 +137,9 @@ void raw_hid_receive_cb(uint8_t report_id, hid_report_type_t report_type, uint8_
       }
     }
   } else if (cmd == 0x04) { // CMD_SAVE_FLASH
+    EEPROM.put(0, (uint32_t)EEPROM_MAGIC);
+    EEPROM.put(4, keymaps);
+    EEPROM.commit();
     uint8_t ack[64];
     memset(ack, 0, sizeof(ack));
     ack[0] = 0x04;

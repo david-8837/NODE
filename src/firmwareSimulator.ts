@@ -32,6 +32,8 @@ export class FirmwareSimulator {
 
   public encState = 0;
   public encCounter = 0;
+  public flashCommitted = false;
+  public persistentFlashMemory: number[][] = [];
 
   public firedKeycodes: number[] = [];
   public rawHidReports: Uint8Array[] = [];
@@ -46,6 +48,7 @@ export class FirmwareSimulator {
     this.lastDebounceTime.fill(0);
     this.encState = 0;
     this.encCounter = 0;
+    this.flashCommitted = false;
     this.firedKeycodes = [];
     this.rawHidReports = [];
 
@@ -176,6 +179,8 @@ export class FirmwareSimulator {
       }
     } else if (cmd === 0x04) {
       // CMD_SAVE_FLASH
+      this.flashCommitted = true;
+      this.persistentFlashMemory = JSON.parse(JSON.stringify(this.keymaps));
       const ack = new Uint8Array(64);
       ack[0] = 0x04;
       ack[1] = 0x01;

@@ -114,6 +114,20 @@ describe('Firmware Unit Tests (Unity / Ceedling Pattern)', () => {
       expect(rsp![5]).toBe(0x02); // Minor v2
     });
 
+    it('should persist keymaps to non-volatile flash memory on CMD_SAVE_FLASH (0x04)', () => {
+      // 1. Remap key
+      sim.receiveRawHidPacket(new Uint8Array([0x03, 0, 0, 0x99, 0x88]));
+      expect(sim.keymaps[0][0]).toBe(0x8899);
+
+      // 2. Commit to flash
+      const saveAck = sim.receiveRawHidPacket(new Uint8Array([0x04]));
+      expect(saveAck).toBeDefined();
+      expect(saveAck![0]).toBe(0x04);
+      expect(saveAck![1]).toBe(0x01); // OK
+      expect(sim.flashCommitted).toBe(true);
+      expect(sim.persistentFlashMemory[0][0]).toBe(0x8899);
+    });
+
     it('should dynamically remap keys via CMD_SET_KEY (0x03)', () => {
       // Remap Layer 0, Key 1 (r1c2) to 0x1234
       const setKey = new Uint8Array([0x03, 0, 1, 0x34, 0x12]);

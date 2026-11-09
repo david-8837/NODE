@@ -262,7 +262,10 @@ def handle_serial_input():
         return
 
     try:
-        raw_line = port.readline().decode("utf-8").strip()
+        raw_bytes = port.readline()
+        if not raw_bytes:
+            return
+        raw_line = raw_bytes.decode("utf-8", errors="replace").strip()
         if not raw_line:
             return
         msg = json.loads(raw_line)
