@@ -17,7 +17,8 @@
 
 #define TAPPING_TERM 200
 
-/* One onboard WS2812 indicator. */
+/* One onboard WS2812 indicator on GP16. */
+#define WS2812_DI_PIN GP16
 #define RGBLIGHT_LIMIT_VAL 220
 #define RGBLIGHT_VAL_STEP 10
 #define RGBLIGHT_EFFECT_BREATHING
