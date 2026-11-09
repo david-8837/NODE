@@ -84,3 +84,4 @@ if (import.meta.url.endsWith(process.argv[1]) || process.argv[1]?.includes('cppc
     findings.forEach((f) => console.log(`[${f.severity}] ${f.file}:${f.line} - ${f.message} (${f.rule})`));
   }
 }
+

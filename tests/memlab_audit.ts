@@ -70,3 +70,4 @@ export async function runMemlabAudit() {
 if (import.meta.url.endsWith(process.argv[1]) || process.argv[1]?.includes('memlab_audit')) {
   runMemlabAudit();
 }
+

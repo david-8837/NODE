@@ -121,3 +121,4 @@ describe('USB Serial Communication: Connection & Protocol Lifecycle', () => {
     expect(serial.getState()).toBe('DISCONNECTED');
   });
 });
+

@@ -89,3 +89,4 @@ describe('Application Logic: Key Mapping & Virtual-Key Parsing', () => {
     expect(parseShortcutToVK('???unknown???')).toEqual([]);
   });
 });
+
