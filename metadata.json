@@ -1,6 +1,6 @@
 {
-  "name": "Grid Macro 1 Configurator",
-  "description": "Hardware keymap, layer, profile, and macro configuration studio for the Grid Macro 1 macropad (9 keys and one rotary encoder).",
+  "name": "NØDE Grid Macro 1 Configurator",
+  "description": "Hardware keymap, layer, profile, and macro configuration studio for the NØDE Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

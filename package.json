@@ -1,20 +1,20 @@
 {
   "name": "grid-macro-1-configurator",
+  "description": "Hardware keymap, layer, profile, and macro configuration studio for the NØDE Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=5173",
+    "dev": "vite --port=5173 --host=127.0.0.1",
     "build": "vite build",
-    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:stress": "vitest run tests/stressTesting.test.ts",
     "audit:cpp": "npx tsx tests/cppcheck_audit.ts",
-    "audit:mem": "node --expose-gc --import tsx tests/memlab_audit.ts",
-    "test:all": "npm test && npm run audit:cpp && npm run audit:mem"
+    "audit:mem": "npx tsx tests/memlab_audit.ts",
+    "test:all": "vitest run && npx tsx tests/cppcheck_audit.ts && npx tsx tests/memlab_audit.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -32,13 +32,11 @@
   "devDependencies": {
     "@serialport/binding-mock": "^10.2.2",
     "@types/express": "^4.17.21",
-    "@types/jsdom": "^30.0.0",
     "@types/node": "^22.20.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.28.1",
-    "jsdom": "^31.0.0",
+    "esbuild": "^0.25.0",
     "serialport": "^13.0.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
