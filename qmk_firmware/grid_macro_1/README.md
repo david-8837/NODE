@@ -2,7 +2,7 @@
 
 This directory is a **keyboard-definition fragment**, not a complete QMK checkout. It describes a 3×3 direct-pin key matrix, one encoder with a push switch, four dynamic-keymap layers, and an RP2040-Zero USB device (`VID 0xFEED`, `PID 0x6001`). The VIA keymap uses stock QMK/VIA commands; no Vial-only command or custom profile-storage protocol is enabled.
 
-## Latest hosted build
+## Hosted build verification
 
 The VIA firmware compiled successfully in [GitHub Actions run 42660825626](https://github.com/david-8837/newww/actions/runs/42660825626), for source commit `2dab75256d7ac3585060162322e819e481e5aa67`. The workflow cloned QMK `master`, ran `qmk compile -kb grid_macro_1 -km via`, verified that `.build/grid_macro_1_via.uf2` was non-empty, and uploaded the artifact **`grid-macro-1-via-firmware`** with a seven-day retention period.
 
