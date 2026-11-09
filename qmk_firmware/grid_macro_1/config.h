@@ -7,8 +7,8 @@
 #define VENDOR_ID       0xFEED
 #define PRODUCT_ID      0x6001
 #define DEVICE_VER      0x0001
-#define MANUFACTURER    NØDE
-#define PRODUCT         Grid Macro 1
+#define MANUFACTURER    "NØDE"
+#define PRODUCT         "Grid Macro 1"
 
 /* Matrix dimensions: 3 rows for keys + 1 row for Encoder Press Switch */
 #define MATRIX_ROWS 4

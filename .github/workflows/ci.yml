@@ -39,10 +39,13 @@ jobs:
       - name: Run Vitest Unit & Integration Suites
         run: npm test
 
-      - name: Run Cppcheck-Style Firmware Static Analysis
+      - name: Install Cppcheck
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y cppcheck
+
+      - name: Run Cppcheck Firmware Static Analysis
         run: npm run audit:cpp
 
-      - name: Run MemLab-Style Memory Lifecycle Audit
+      - name: Run Synthetic Node Heap-Delta Smoke Check
         run: npm run audit:mem
 
       - name: Run High-Throughput Stress Suite

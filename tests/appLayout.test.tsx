@@ -7,9 +7,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { GRID_MACRO_KEY_SLOTS } from '../src/deviceLayout';
 
-const shippedUiBaseline = JSON.parse(
+const reactAppBaseline = JSON.parse(
   fs.readFileSync(
-    path.join(process.cwd(), 'tests/fixtures/shipped-ui-baseline.json'),
+    path.join(process.cwd(), 'tests/fixtures/react-app-layout-baseline.json'),
     'utf8'
   )
 ) as { tree: unknown };
@@ -76,7 +76,7 @@ describe('Grid Macro 1 rendered hardware', () => {
 
     expect(container.firstElementChild).not.toBeNull();
     expect(snapshotElement(container.firstElementChild!)).toEqual(
-      shippedUiBaseline.tree
+      reactAppBaseline.tree
     );
   });
 });

@@ -45,11 +45,20 @@ export function validateProfile(input: any): { valid: boolean; profile?: Profile
     return { valid: false, error: 'Profile must contain at least one layer in "layers" array' };
   }
 
+  const activeLayerIndex = input.activeLayerIndex ?? 0;
+  if (
+    typeof activeLayerIndex !== 'number' ||
+    !Number.isFinite(activeLayerIndex) ||
+    !Number.isInteger(activeLayerIndex)
+  ) {
+    return { valid: false, error: 'activeLayerIndex must be a finite integer' };
+  }
+
   const sanitizedLayers: LayerConfig[] = [];
 
   for (let lIdx = 0; lIdx < input.layers.length; lIdx++) {
     const rawLayer = input.layers[lIdx];
-    if (!rawLayer || typeof rawLayer !== 'object') {
+    if (!rawLayer || typeof rawLayer !== 'object' || Array.isArray(rawLayer)) {
       return { valid: false, error: `Layer ${lIdx} is invalid or not an object` };
     }
 
@@ -94,7 +103,7 @@ export function validateProfile(input: any): { valid: boolean; profile?: Profile
   const sanitizedProfile: ProfileData = {
     id: String(input.id || `profile-${Date.now()}`),
     name: input.name.trim(),
-    activeLayerIndex: Math.max(0, Math.min(Number(input.activeLayerIndex || 0), sanitizedLayers.length - 1)),
+    activeLayerIndex: Math.max(0, Math.min(activeLayerIndex, sanitizedLayers.length - 1)),
     layers: sanitizedLayers,
     color: input.color ? String(input.color) : '#0051ff',
     icon: input.icon ? String(input.icon) : 'Layers',

@@ -1,43 +1,35 @@
-# Grid Macro 1 - QMK Native C Firmware (RP2040-Zero)
+# Grid Macro 1 — QMK/VIA keyboard definition
 
-Production-ready Native C QMK firmware for **Grid Macro 1** (9 Direct-Pin Keys + 1 EC11 Rotary Encoder with Push Switch + Onboard WS2812 RGB LED) on the **Waveshare RP2040-Zero**.
+This directory is a **keyboard-definition fragment**, not a complete QMK checkout. It describes a 3×3 direct-pin key matrix, one encoder with a push switch, four dynamic-keymap layers, and an RP2040-Zero USB device (`VID 0xFEED`, `PID 0x6001`). The VIA keymap uses stock QMK/VIA commands; no Vial-only command or custom profile-storage protocol is enabled.
 
----
+The definition has not been compiled in this repository: a QMK firmware checkout, QMK CLI, and the RP2040 toolchain are required. Validate it with the QMK version used for your firmware before flashing hardware.
 
-## 🚀 How to Compile to `.uf2`
+## Build with QMK CLI
 
-### Option 1: Using QMK CLI (Recommended)
-1. Install QMK CLI:
-   ```bash
-   python3 -m pip install --user qmk
-   qmk setup
+1. Install and initialize QMK using the [official QMK setup instructions](https://docs.qmk.fm/newbs_getting_started).
+2. Copy this keyboard fragment into the full checkout's `keyboards` directory:
+
+   ```sh
+   cp -a /path/to/newww/qmk_firmware/grid_macro_1 ~/qmk_firmware/keyboards/
    ```
-2. Copy the `grid_macro_1` folder into your `qmk_firmware/keyboards/` directory:
-   ```bash
-   cp -r qmk_firmware/grid_macro_1 ~/qmk_firmware/keyboards/
-   ```
-3. Compile the `.uf2` binary:
-   ```bash
-   # Compile default keymap
-   qmk compile -kb grid_macro_1 -km default
 
-   # Or compile with VIA / VIAL live EEPROM configuration enabled
+3. Build from the QMK checkout:
+
+   ```sh
+   cd ~/qmk_firmware
    qmk compile -kb grid_macro_1 -km via
    ```
-4. The compiled binary will be generated at:
-   `qmk_firmware/.build/grid_macro_1_default.uf2` or `grid_macro_1_via.uf2`
 
----
+   Use `-km default` to build the static default keymap instead. The VIA keymap enables dynamic keymaps and `ENCODER_MAP_ENABLE`.
 
-### Option 2: Using Docker (Zero Setup)
-```bash
-docker run --rm -v $('pwd'):/qmk_firmware -w /qmk_firmware qmkfm/qmk_cli qmk compile -kb grid_macro_1 -km via
-```
+4. Check QMK's build output for the generated RP2040 `.uf2`, then flash it using the RP2040-Zero BOOT/`RPI-RP2` workflow. Do not flash a build until the target and output file have been verified.
 
----
+## Browser configurator bridge
 
-## ⚡ Flashing the `.uf2` to RP2040-Zero
-1. Hold down the **BOOT** button on your RP2040-Zero and plug it into your computer via USB-C.
-2. A drive named **`RPI-RP2`** will appear on your desktop / file manager.
-3. Drag and drop the compiled **`grid_macro_1_via.uf2`** file onto the `RPI-RP2` drive.
-4. The RP2040-Zero will immediately reboot as a high-performance native USB HID macropad with 1000 Hz polling rate!
+The shipped embedded configurator imports `src/qmkViaBridge.ts` and uses WebHID. Connect using the status button in a Chromium-based browser (Chrome or Edge) on HTTPS or `localhost`; the browser asks for device permission from that click. The adapter filters for the VID/PID above and the QMK Raw HID collection (usage page `0xFF60`, usage `0x61`), verifies VIA protocol `0x000D`, then uses standard VIA keycode and encoder-map commands.
+
+- The device stores only its dynamic keymap. Full configurator profiles, names, custom items, and unsupported actions stay in `localStorage` for the current browser origin/profile; they are not saved to the device and do not follow the keyboard to another browser.
+- Basic HID keys, supported modifier chords, media keycodes, `TO(layer)` / `MO(layer)` targets that exist in the firmware, and encoder directions can sync. Layer switches to unavailable firmware layers, multi-step/smart actions, and unsupported key sequences are skipped and reported as sync limitations.
+- The UI supports up to eight profile layers; this board declares four. Only configured layers supported by the firmware are written. Device layers outside the active profile are left unchanged, and unsupported actions are not used to erase an existing hardware mapping. An explicit blank mapping clears its key to `KC_NO`.
+
+The WebHID adapter and fake-HID tests are source-level verification only. No full QMK build, firmware flash, real browser/device permission test, or physical USB test has been performed in this environment.

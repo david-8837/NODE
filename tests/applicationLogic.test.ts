@@ -53,6 +53,38 @@ describe('Application Logic: Profile Validation & Sanitization', () => {
     expect(result.profile?.layers[0].r1c1.label).toBe('');
     expect(result.profile?.layers[0].r2c2.label).toBe('12345');
   });
+
+  it.each(['not-a-number', Number.NaN, Number.POSITIVE_INFINITY, 0.5, true])(
+    'should reject a non-finite, non-integer, or non-numeric active layer index (%s)',
+    (activeLayerIndex) => {
+      const result = validateProfile({
+        name: 'Invalid active layer',
+        activeLayerIndex,
+        layers: [{}],
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('activeLayerIndex');
+    }
+  );
+
+  it('should clamp an integer active layer index into the available layer range', () => {
+    const result = validateProfile({
+      name: 'Clamped active layer',
+      activeLayerIndex: 9,
+      layers: [{}, {}],
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.profile?.activeLayerIndex).toBe(1);
+  });
+
+  it('should reject an array where a layer object is required', () => {
+    const result = validateProfile({ name: 'Array layer', layers: [[]] });
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Layer 0 is invalid');
+  });
 });
 
 describe('Application Logic: Key Mapping & Virtual-Key Parsing', () => {

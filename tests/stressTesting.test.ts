@@ -85,9 +85,14 @@ describe('Stress & Reliability Test Suite', () => {
     }
   });
 
-  it('should withstand protocol fuzzing with 1,000 malformed, fragmented, and boundary-exceeding payloads (AFL++ Simulation)', () => {
+  it('should tolerate malformed and randomized serial/Raw HID inputs without throwing', () => {
     const serial = new SerialManager();
     const sim = new FirmwareSimulator();
+    let seed = 0x47524944;
+    const nextRandom = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed;
+    };
 
     const fuzzStrings = [
       '',
@@ -111,10 +116,10 @@ describe('Stress & Reliability Test Suite', () => {
 
       // Fuzz Raw HID packet parser
       for (let i = 0; i < 1000; i++) {
-        const randomLength = Math.floor(Math.random() * 80);
+        const randomLength = nextRandom() % 80;
         const randBuffer = new Uint8Array(randomLength);
         for (let j = 0; j < randomLength; j++) {
-          randBuffer[j] = Math.floor(Math.random() * 256);
+          randBuffer[j] = nextRandom() & 0xff;
         }
         sim.receiveRawHidPacket(randBuffer);
       }

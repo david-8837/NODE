@@ -1,5 +1,5 @@
 {
-  "source": "the previously shipped embedded UI, initial Keymap screen",
+  "source": "Previously shipped embedded UI, with the QMK/VIA connect control",
   "tree": {
     "tag": "div",
     "attributes": {
@@ -170,10 +170,12 @@
             ]
           },
           {
-            "tag": "div",
+            "tag": "button",
             "attributes": {
-              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 transition-colors bg-[#4a4a4a]",
-              "title": "Open the desktop app to connect a device"
+              "aria-label": "Connect Grid Macro 1 via QMK/VIA",
+              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-wait bg-[#4a4a4a]",
+              "title": "WebHID unavailable; use Chrome or Edge over HTTPS or localhost",
+              "type": "button"
             },
             "text": "",
             "children": [
@@ -209,7 +211,7 @@
                 "attributes": {
                   "class": "text-[12px] font-normal tracking-[0.01em] whitespace-nowrap"
                 },
-                "text": "Not connected",
+                "text": "Unavailable",
                 "children": []
               },
               {

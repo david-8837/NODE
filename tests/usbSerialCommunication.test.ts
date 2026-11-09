@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach } from 'vitest';
+import { SerialPortMock } from 'serialport';
 import { SerialManager } from '../src/serialManager';
 import { EventEmitter } from 'events';
 
@@ -23,6 +24,13 @@ class MockSerialPort extends EventEmitter {
   }
 }
 
+class SilentCloseMockPort extends MockSerialPort {
+  public override close(cb?: (err?: any) => void) {
+    this.isOpen = false;
+    cb?.();
+  }
+}
+
 describe('USB Serial Communication: Connection & Protocol Lifecycle', () => {
   let mockPort: MockSerialPort;
   let serial: SerialManager;
@@ -34,6 +42,10 @@ describe('USB Serial Communication: Connection & Protocol Lifecycle', () => {
       reconnectIntervalMs: 100,
       maxReconnectAttempts: 3,
     });
+  });
+
+  afterEach(() => {
+    SerialPortMock.binding.reset();
   });
 
   it('should initialize in DISCONNECTED state', () => {
@@ -111,6 +123,56 @@ describe('USB Serial Communication: Connection & Protocol Lifecycle', () => {
     await serial.connect(mockPort);
 
     await expect(serial.sendCommand('PING')).rejects.toThrow(/Timeout waiting for response/);
+  });
+
+  it('should reject overlapping commands without replacing the original request', async () => {
+    await serial.connect(mockPort);
+    const firstRequest = serial.sendCommand('PING');
+
+    await expect(serial.sendCommand('PING')).rejects.toThrow('serial responses have no request ID');
+    await expect(serial.sendCommand('GET_CONFIG')).rejects.toThrow('serial responses have no request ID');
+    mockPort.simulateIncoming(
+      JSON.stringify({ status: 'OK', device: 'Grid Macro 1' }) + '\n'
+    );
+
+    await expect(firstRequest).resolves.toMatchObject({ status: 'OK' });
+  });
+
+  it('should reject pending requests immediately when disconnect does not emit a close event', async () => {
+    const silentPort = new SilentCloseMockPort();
+    await serial.connect(silentPort);
+    const pendingRequest = serial.sendCommand('GET_CONFIG');
+
+    await serial.disconnect();
+
+    await expect(pendingRequest).rejects.toThrow('Connection closed by client');
+    expect(serial.getState()).toBe('DISCONNECTED');
+  });
+
+  it('should exercise the node-serialport stream through Binding Mock', async () => {
+    SerialPortMock.binding.createPort('/dev/grid-macro-test', { record: true });
+    const nodePort = new SerialPortMock({
+      path: '/dev/grid-macro-test',
+      baudRate: 115200,
+      autoOpen: false,
+    });
+    await new Promise<void>((resolve, reject) => {
+      nodePort.open((error) => (error ? reject(error) : resolve()));
+    });
+    await serial.connect(nodePort);
+
+    const responsePromise = serial.sendCommand('PING');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((nodePort.port as any)?.recording.toString('utf-8')).toBe('{"cmd":"PING"}\n');
+
+    (nodePort.port as any)?.emitData(
+      Buffer.from(JSON.stringify({ status: 'OK', device: 'Grid Macro 1' }) + '\n')
+    );
+    await expect(responsePromise).resolves.toMatchObject({
+      status: 'OK',
+      device: 'Grid Macro 1',
+    });
+    await serial.disconnect();
   });
 
   it('should transition to DISCONNECTED on unexpected port closure', async () => {

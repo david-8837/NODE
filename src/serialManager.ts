@@ -205,53 +205,69 @@ export class SerialManager {
     if (this.state !== 'CONNECTED') {
       throw new Error(`Cannot send command "${cmdName}": Serial port is ${this.state}`);
     }
+    // The current wire protocol has no request IDs; concurrent replies can be ambiguous.
+    if (this.pendingRequests.size > 0) {
+      const pendingCommand = this.pendingRequests.keys().next().value as string;
+      throw new Error(
+        `Cannot send "${cmdName}" while "${pendingCommand}" is pending; serial responses have no request ID`
+      );
+    }
 
     const msg = JSON.stringify({ cmd: cmdName, ...payload }) + '\n';
 
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const request = { resolve, reject, timer: undefined as any };
+      const failRequest = (error: any) => {
+        if (this.pendingRequests.get(cmdName) !== request) return;
+        clearTimeout(request.timer);
         this.pendingRequests.delete(cmdName);
-        reject(new Error(`Timeout waiting for response to "${cmdName}" after ${this.options.timeoutMs}ms`));
-      }, this.options.timeoutMs);
+        reject(error);
+      };
 
-      this.pendingRequests.set(cmdName, { resolve, reject, timer });
+      request.timer = setTimeout(() => {
+        failRequest(new Error(`Timeout waiting for response to "${cmdName}" after ${this.options.timeoutMs}ms`));
+      }, this.options.timeoutMs);
+      this.pendingRequests.set(cmdName, request);
 
       try {
         if (typeof this.port.write === 'function') {
           this.port.write(msg, (err: any) => {
-            if (err) {
-              clearTimeout(timer);
-              this.pendingRequests.delete(cmdName);
-              reject(err);
-            }
+            if (err) failRequest(err);
           });
         } else if (this.port.writable) {
-          const encoder = new TextEncoder();
           const writer = this.port.writable.getWriter();
-          writer.write(encoder.encode(msg)).then(() => writer.releaseLock()).catch(reject);
+          writer.write(new TextEncoder().encode(msg)).then(
+            () => writer.releaseLock(),
+            (error: any) => {
+              try {
+                writer.releaseLock();
+              } catch {}
+              failRequest(error);
+            }
+          );
         } else {
           throw new Error('Serial port writable stream unavailable');
         }
-      } catch (e) {
-        clearTimeout(timer);
-        this.pendingRequests.delete(cmdName);
-        reject(e);
+      } catch (error) {
+        failRequest(error);
       }
     });
+  }
+
+  private rejectPendingRequests(error: Error) {
+    for (const request of this.pendingRequests.values()) {
+      clearTimeout(request.timer);
+      request.reject(error);
+    }
+    this.pendingRequests.clear();
   }
 
   public handleDisconnect(reason: string) {
     if (this.state === 'DISCONNECTED') return;
     this.setState('DISCONNECTED');
     this.port = null;
-
-    // Fail all pending requests
-    for (const [key, req] of this.pendingRequests.entries()) {
-      clearTimeout(req.timer);
-      req.reject(new Error(`Connection lost: ${reason}`));
-    }
-    this.pendingRequests.clear();
-
+    this.buffer = '';
+    this.rejectPendingRequests(new Error(`Connection lost: ${reason}`));
     this.scheduleReconnect();
   }
 
@@ -277,20 +293,24 @@ export class SerialManager {
     }
     this.reconnectAttempts = this.options.maxReconnectAttempts; // suppress auto-reconnect
 
-    if (this.port) {
+    // Reject outstanding operations before closing: Web Serial and some stream
+    // implementations do not emit a close event that SerialManager can observe.
+    this.rejectPendingRequests(new Error('Connection closed by client'));
+    this.buffer = '';
+    const port = this.port;
+    this.port = null;
+    this.setState('DISCONNECTED');
+
+    if (port && typeof port.close === 'function') {
       try {
-        if (typeof this.port.close === 'function') {
-          await new Promise<void>((res) => {
-            if (typeof this.port.close === 'function') {
-              this.port.close(() => res());
-            } else {
-              res();
-            }
+        if (port.close.length === 0) {
+          await port.close(); // Web Serial returns a promise
+        } else {
+          await new Promise<void>((resolve) => {
+            port.close(() => resolve()); // node-serialport uses a callback
           });
         }
       } catch {}
-      this.port = null;
     }
-    this.setState('DISCONNECTED');
   }
 }

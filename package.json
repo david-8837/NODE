@@ -13,8 +13,8 @@
     "test": "vitest run",
     "test:stress": "vitest run tests/stressTesting.test.ts",
     "audit:cpp": "npx tsx tests/cppcheck_audit.ts",
-    "audit:mem": "npx tsx tests/memlab_audit.ts",
-    "test:all": "vitest run && npx tsx tests/cppcheck_audit.ts && npx tsx tests/memlab_audit.ts"
+    "audit:mem": "node --expose-gc --import tsx tests/memlab_audit.ts",
+    "test:all": "npm test && npm run audit:cpp && npm run audit:mem"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

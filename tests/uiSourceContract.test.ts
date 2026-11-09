@@ -55,6 +55,13 @@ describe('Embedded app regression checks', () => {
     expect(htmlContent).toContain('Simulation');
   });
 
+  it('installs the stock VIA WebHID adapter and exposes an explicit connect control', () => {
+    expect(htmlContent).toContain('src="/src/qmkViaBridge.ts"');
+    expect(htmlContent).toContain('Connect Grid Macro 1 via QMK/VIA');
+    expect(htmlContent).toContain('Profile saved locally; keymap synced to device');
+    expect(htmlContent).toContain('sync warning');
+  });
+
   it('should load the full 8,703 vector icon library via static public script', () => {
     expect(htmlContent).toContain('src="/icons-data.js"');
     const iconDataPath = path.join(process.cwd(), 'public', 'icons-data.js');

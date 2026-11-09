@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { FirmwareSimulator, TOTAL_KEYS, NUM_LAYERS, LAYER_COLORS } from '../src/firmwareSimulator';
 
-describe('Firmware Unit Tests (Unity / Ceedling Pattern)', () => {
+describe('Host-side firmware simulator tests', () => {
   let sim: FirmwareSimulator;
 
   beforeEach(() => {
