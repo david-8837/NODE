@@ -11,21 +11,15 @@ import {
 
 type KeySlotId =
   | 'dial-tl'
+  | 'r1c1'
   | 'r1c2'
   | 'r1c3'
-  | 'knob-tr'
   | 'r2c1'
   | 'r2c2'
   | 'r2c3'
-  | 'r2c4'
   | 'r3c1'
   | 'r3c2'
-  | 'r3c3'
-  | 'r3c4'
-  | 'btn-bl'
-  | 'r4c2'
-  | 'r4c3'
-  | 'r4c4';
+  | 'r3c3';
 
 type MappingTabId = 'Basic' | 'Action' | 'Multi-A' | 'Smart-A';
 type EncoderSubActionId = 'cw' | 'press' | 'ccw';
@@ -500,30 +494,15 @@ const INITIAL_LAYER_1: LayerKeymap = {
       ccw: { label: 'vo...', binding: 'volume -' },
     },
   },
-  r1c2: { label: 'esc', actionType: 'Basic input', binding: 'esc' },
-  r1c3: { label: 'tab', actionType: 'Basic input', binding: 'tab' },
-  'knob-tr': {
-    label: 'Vol',
-    actionType: 'Shortcut',
-    binding: 'Volume / Play',
-    encoderActions: {
-      cw: { label: 'vo...', binding: 'volume +' },
-      press: { label: 'pl...', binding: 'play' },
-      ccw: { label: 'vo...', binding: 'volume -' },
-    },
-  },
+  r1c1: { label: 'esc', actionType: 'Basic input', binding: 'esc' },
+  r1c2: { label: 'tab', actionType: 'Basic input', binding: 'tab' },
+  r1c3: { label: 'bksp', actionType: 'Basic input', binding: 'backspace' },
   r2c1: { label: 'Q', actionType: 'Basic input', binding: 'Q' },
   r2c2: { label: 'W', actionType: 'Basic input', binding: 'W' },
   r2c3: { label: 'E', actionType: 'Basic input', binding: 'E' },
-  r2c4: { label: 'R', actionType: 'Basic input', binding: 'R' },
   r3c1: { label: 'A', actionType: 'Basic input', binding: 'A' },
   r3c2: { label: 'S', actionType: 'Basic input', binding: 'S' },
   r3c3: { label: 'D', actionType: 'Basic input', binding: 'D' },
-  r3c4: { label: 'F', actionType: 'Basic input', binding: 'F' },
-  'btn-bl': { label: 'Lyr', actionType: 'Layer Cycle', binding: 'Layer 2' },
-  r4c2: { label: 'Z', actionType: 'Basic input', binding: 'Z' },
-  r4c3: { label: 'X', actionType: 'Basic input', binding: 'X' },
-  r4c4: { label: 'C', actionType: 'Basic input', binding: 'C' },
 };
 
 const PRESET_LIBRARY: PresetItem[] = [
@@ -540,8 +519,7 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: '⌘Spc', actionType: 'Shortcut', binding: 'Companion Bar' },
       r2c2: { label: 'Voice', actionType: 'Multi-step action', binding: 'Toggle Voice Mode' },
       r2c3: { label: 'Copy', actionType: 'Shortcut', binding: 'Cmd+Shift+C' },
-      r2c4: { label: 'Regen', actionType: 'Shortcut', binding: 'Cmd+Shift+R' },
-    },
+      },
   },
   {
     id: 'framer',
@@ -554,12 +532,10 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: 'F', actionType: 'Basic input', binding: 'Frame (F)' },
       r2c2: { label: 'S', actionType: 'Basic input', binding: 'Stack (S)' },
       r2c3: { label: 'G', actionType: 'Basic input', binding: 'Grid (G)' },
-      r2c4: { label: 'T', actionType: 'Basic input', binding: 'Text (T)' },
       r3c1: { label: 'I', actionType: 'Basic input', binding: 'Insert (I)' },
       r3c2: { label: '⌘P', actionType: 'Shortcut', binding: 'Preview (Cmd+P)' },
       r3c3: { label: '⌘K', actionType: 'Shortcut', binding: 'Quick Actions' },
-      r3c4: { label: 'Pub', actionType: 'Multi-step action', binding: 'Publish Site' },
-    },
+      },
   },
   {
     id: 'figma',
@@ -572,12 +548,10 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: 'F', actionType: 'Basic input', binding: 'Frame Tool (F)' },
       r2c2: { label: 'R', actionType: 'Basic input', binding: 'Rectangle (R)' },
       r2c3: { label: 'P', actionType: 'Basic input', binding: 'Pen Tool (P)' },
-      r2c4: { label: 'T', actionType: 'Basic input', binding: 'Text Tool (T)' },
       r3c1: { label: '⌘G', actionType: 'Shortcut', binding: 'Group Selection' },
       r3c2: { label: '⇧A', actionType: 'Shortcut', binding: 'Auto Layout' },
       r3c3: { label: '⌥⌘K', actionType: 'Shortcut', binding: 'Create Component' },
-      r3c4: { label: '⌘/', actionType: 'Multi-step action', binding: 'Quick Actions' },
-    },
+      },
   },
   {
     id: 'illustrator',
@@ -590,12 +564,10 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: 'V', actionType: 'Basic input', binding: 'Selection (V)' },
       r2c2: { label: 'A', actionType: 'Basic input', binding: 'Direct Select (A)' },
       r2c3: { label: 'P', actionType: 'Basic input', binding: 'Pen Tool (P)' },
-      r2c4: { label: 'M', actionType: 'Basic input', binding: 'Rectangle (M)' },
       r3c1: { label: '⇧M', actionType: 'Shortcut', binding: 'Shape Builder' },
       r3c2: { label: 'I', actionType: 'Basic input', binding: 'Eyedropper (I)' },
       r3c3: { label: '⌘G', actionType: 'Shortcut', binding: 'Group' },
-      r3c4: { label: '⌘Y', actionType: 'Shortcut', binding: 'Outline View' },
-    },
+      },
   },
   {
     id: 'photoshop',
@@ -608,12 +580,10 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: 'B', actionType: 'Basic input', binding: 'Brush Tool (B)' },
       r2c2: { label: 'E', actionType: 'Basic input', binding: 'Eraser (E)' },
       r2c3: { label: 'L', actionType: 'Basic input', binding: 'Lasso Tool (L)' },
-      r2c4: { label: 'W', actionType: 'Basic input', binding: 'Object Select (W)' },
       r3c1: { label: '[', actionType: 'Basic input', binding: 'Brush Smaller' },
       r3c2: { label: ']', actionType: 'Basic input', binding: 'Brush Larger' },
       r3c3: { label: '⌘T', actionType: 'Shortcut', binding: 'Free Transform' },
-      r3c4: { label: '⌘J', actionType: 'Shortcut', binding: 'Duplicate Layer' },
-    },
+      },
   },
   {
     id: 'premiere',
@@ -626,12 +596,10 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: 'V', actionType: 'Basic input', binding: 'Selection (V)' },
       r2c2: { label: 'C', actionType: 'Basic input', binding: 'Razor Tool (C)' },
       r2c3: { label: 'I', actionType: 'Basic input', binding: 'Mark In (I)' },
-      r2c4: { label: 'O', actionType: 'Basic input', binding: 'Mark Out (O)' },
       r3c1: { label: 'J', actionType: 'Basic input', binding: 'Shuttle Left' },
       r3c2: { label: 'K', actionType: 'Basic input', binding: 'Stop / Pause' },
       r3c3: { label: 'L', actionType: 'Basic input', binding: 'Shuttle Right' },
-      r3c4: { label: '⌘M', actionType: 'Shortcut', binding: 'Export Media' },
-    },
+      },
   },
   {
     id: 'blender',
@@ -644,12 +612,10 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: 'G', actionType: 'Basic input', binding: 'Grab / Move (G)' },
       r2c2: { label: 'R', actionType: 'Basic input', binding: 'Rotate (R)' },
       r2c3: { label: 'S', actionType: 'Basic input', binding: 'Scale (S)' },
-      r2c4: { label: 'E', actionType: 'Basic input', binding: 'Extrude (E)' },
       r3c1: { label: 'I', actionType: 'Basic input', binding: 'Inset Faces (I)' },
       r3c2: { label: '⌃B', actionType: 'Shortcut', binding: 'Bevel (Ctrl+B)' },
       r3c3: { label: '⌃R', actionType: 'Shortcut', binding: 'Loop Cut (Ctrl+R)' },
-      r3c4: { label: 'F12', actionType: 'Shortcut', binding: 'Render Image' },
-    },
+      },
   },
   {
     id: 'davinci',
@@ -662,12 +628,10 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: 'A', actionType: 'Basic input', binding: 'Selection Mode (A)' },
       r2c2: { label: 'B', actionType: 'Basic input', binding: 'Blade Mode (B)' },
       r2c3: { label: 'T', actionType: 'Basic input', binding: 'Trim Edit Mode (T)' },
-      r2c4: { label: '⌘B', actionType: 'Shortcut', binding: 'Split Clip' },
       r3c1: { label: '⌥S', actionType: 'Shortcut', binding: 'Add Serial Node' },
       r3c2: { label: '⌥P', actionType: 'Shortcut', binding: 'Add Parallel Node' },
       r3c3: { label: '⌘D', actionType: 'Shortcut', binding: 'Disable Node' },
-      r3c4: { label: '⌃F', actionType: 'Shortcut', binding: 'Full Screen Viewer' },
-    },
+      },
   },
   {
     id: 'affinity',
@@ -680,12 +644,10 @@ const PRESET_LIBRARY: PresetItem[] = [
       r2c1: { label: 'V', actionType: 'Basic input', binding: 'Move Tool (V)' },
       r2c2: { label: 'A', actionType: 'Basic input', binding: 'Node Tool (A)' },
       r2c3: { label: 'P', actionType: 'Basic input', binding: 'Pen Tool (P)' },
-      r2c4: { label: 'N', actionType: 'Basic input', binding: 'Pencil Tool (N)' },
       r3c1: { label: 'M', actionType: 'Basic input', binding: 'Shape Tool (M)' },
       r3c2: { label: 'T', actionType: 'Basic input', binding: 'Artistic Text (T)' },
       r3c3: { label: 'G', actionType: 'Basic input', binding: 'Fill Tool (G)' },
-      r3c4: { label: '⌘E', actionType: 'Shortcut', binding: 'Merge Down' },
-    },
+      },
   },
 ];
 
@@ -1090,7 +1052,7 @@ export default function App() {
     const displayBinding =
       item.listLabel || item.main.replace(/\n/g, ' ') || 'blank';
 
-    if (targetSlot === 'dial-tl' || targetSlot === 'knob-tr') {
+    if (targetSlot === 'dial-tl') {
       const subTarget = subOverride || selectedEncoderSub;
       if (!subTarget) return;
       const existingActions = getEncoderActions(
@@ -1110,21 +1072,13 @@ export default function App() {
       });
       showToast(
         `Assigned "${displayBinding}" to ${
-          targetSlot === 'dial-tl' ? 'Dial' : 'Knob'
+          'Dial'
         } (${subTarget.toUpperCase()})`
       );
       return;
     }
 
-    if (targetSlot === 'btn-bl') {
-      handleUpdateKeyAssignment(targetSlot, {
-        label: item.isClearIcon ? '' : item.macropadLabel,
-        binding: item.isClearIcon ? 'blank' : displayBinding,
-        actionType: actionTypeMap[effectiveTab],
-        iconId: item.isClearIcon ? undefined : item.iconId,
-      });
-      return;
-    }
+    
 
     handleUpdateKeyAssignment(targetSlot, {
       label: item.isClearIcon ? '' : item.macropadLabel,
@@ -1152,11 +1106,11 @@ export default function App() {
         if (subA && subB) {
           const actionsA = getEncoderActions(
             copy[slotA],
-            slotA as 'dial-tl' | 'knob-tr'
+            slotA as 'dial-tl'
           );
           const actionsB = getEncoderActions(
             copy[slotB],
-            slotB as 'dial-tl' | 'knob-tr'
+            slotB as 'dial-tl'
           );
           const entryA = { ...actionsA[subA] };
           const entryB = { ...actionsB[subB] };
@@ -1176,7 +1130,7 @@ export default function App() {
         if (subA && !subB) {
           const actionsA = getEncoderActions(
             copy[slotA],
-            slotA as 'dial-tl' | 'knob-tr'
+            slotA as 'dial-tl'
           );
           const entryA = { ...actionsA[subA] };
           const itemB = { ...copy[slotB] };
@@ -1208,7 +1162,7 @@ export default function App() {
           const itemA = { ...copy[slotA] };
           const actionsB = getEncoderActions(
             copy[slotB],
-            slotB as 'dial-tl' | 'knob-tr'
+            slotB as 'dial-tl'
           );
           // Moving rectangular key onto encoder popup sub-button sets the encoder sub-button and leaves the source rectangular key empty
           copy[slotA] = {
@@ -1253,17 +1207,9 @@ export default function App() {
     const H = rect.height;
     if (W === 0 || H === 0) return { x: rawOffsetX, y: rawOffsetY };
 
-    const leftEncoderSlot: 'dial-tl' | 'knob-tr' = !swapTopRowEncoders
-      ? 'dial-tl'
-      : 'knob-tr';
-    const rightEncoderSlot: 'dial-tl' | 'knob-tr' = !swapTopRowEncoders
-      ? 'knob-tr'
-      : 'dial-tl';
-    const isLeftPopupOpen = selectedKey === leftEncoderSlot;
-    const isRightPopupOpen = selectedKey === rightEncoderSlot;
-
+    const isLeftPopupOpen = selectedKey === 'dial-tl';
     const halfPadLeft = isLeftPopupOpen ? 286 : 114;
-    const halfPadRight = isRightPopupOpen ? 286 : 114;
+    const halfPadRight = 114;
     const halfPadTop = 114;
     const halfPadBottom = 138; // includes "Edit layout" button underneath
 
@@ -1889,8 +1835,7 @@ export default function App() {
     if (e.button !== 0) return;
     // Do not allow dragging from circular button or encoder bodies directly
     if (
-      slotId === 'btn-bl' ||
-      ((slotId === 'dial-tl' || slotId === 'knob-tr') && !subAction)
+      ((slotId === 'dial-tl') && !subAction)
     ) {
       return;
     }
@@ -1909,7 +1854,7 @@ export default function App() {
     let displayLabel = assignment?.label || slotId.toUpperCase();
     let displayBinding = assignment?.binding || displayLabel;
 
-    if (subAction && (slotId === 'dial-tl' || slotId === 'knob-tr')) {
+    if (subAction && (slotId === 'dial-tl')) {
       const actions = getEncoderActions(assignment, slotId);
       const subEntry = actions[subAction];
       if (!subEntry || subEntry.label === '—' || subEntry.binding === 'blank') {
@@ -1942,7 +1887,7 @@ export default function App() {
 
   const handleSelectKey = (slotId: KeySlotId) => {
     if (suppressNextClickRef.current) return;
-    if (slotId === 'dial-tl' || slotId === 'knob-tr') {
+    if (slotId === 'dial-tl') {
       if (slotId === 'dial-tl') {
         setDialAngle((a) => (a + 30) % 360);
       } else {
@@ -1956,7 +1901,7 @@ export default function App() {
       }
       return;
     }
-    if (selectedDrawerTile && !selectedKey && slotId !== 'btn-bl') {
+    if (selectedDrawerTile && !selectedKey ) {
       assignItemToSlot(
         selectedDrawerTile.item,
         slotId,
@@ -1974,7 +1919,7 @@ export default function App() {
   };
 
   const handleSelectEncoderSubAction = (
-    slotId: 'dial-tl' | 'knob-tr',
+    slotId: 'dial-tl',
     subAction: EncoderSubActionId
   ) => {
     if (suppressNextClickRef.current) return;
@@ -2020,7 +1965,7 @@ export default function App() {
     );
     if (
       selectedKey &&
-      ((selectedKey !== 'dial-tl' && selectedKey !== 'knob-tr') ||
+      ((selectedKey !== 'dial-tl') ||
         selectedEncoderSub)
     ) {
       assignItemToSlot(
@@ -2430,7 +2375,7 @@ export default function App() {
               setMappingStackExpanded(false);
             }}
             className="flex items-center gap-[3px] text-white hover:opacity-90 transition-opacity focus:outline-none cursor-pointer"
-            title="Creator Micro 2 Studio"
+            title="Grid Macro 1 Studio"
           >
             <svg
               width="32"
@@ -2538,7 +2483,7 @@ export default function App() {
         <div className="h-full bg-[#0051ff] pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0">
           <ChevronDown className="w-[13px] h-[13px] stroke-[2] text-white/95 shrink-0" />
           <span className="text-[12px] font-normal tracking-[0.01em] whitespace-nowrap">
-            Creator Micro 2
+            Grid Macro 1
           </span>
           <div className="h-[15px] w-[1px] bg-white/35" />
           <div className="flex items-center gap-[8px]">
@@ -3613,9 +3558,7 @@ export default function App() {
                   selectedEncoderSub={selectedEncoderSub}
                   dragOverTarget={dragOverTarget}
                   draggedFromSlot={draggedTile?.fromSlotId || null}
-                  swapTopRowEncoders={swapTopRowEncoders}
                   dialAngle={dialAngle}
-                  knobAngle={knobAngle}
                   onSelectKey={handleSelectKey}
                   onSelectEncoderSub={handleSelectEncoderSubAction}
                   onStartKeyDrag={handleStartMacropadKeyDrag}
@@ -6205,7 +6148,7 @@ export default function App() {
                     <div className="py-[7px] flex items-center justify-between">
                       <span className="text-[#585858]">Device connected:</span>
                       <span className="text-[#444444] font-medium">
-                        Creator Micro 2
+                        Grid Macro 1
                       </span>
                     </div>
                     <div className="py-[7px] flex items-center justify-between">
@@ -6384,9 +6327,7 @@ export default function App() {
                 selectedKey={null}
                 selectedEncoderSub={null}
                 dragOverTarget={null}
-                swapTopRowEncoders={false}
                 dialAngle={45}
-                knobAngle={0}
                 onSelectKey={() => {}}
                 onSelectEncoderSub={() => {}}
               />
@@ -6440,7 +6381,7 @@ export default function App() {
                 </button>
               </div>
               <p className="text-xs text-[#666] mb-4">
-                Configure the modular encoder positions on your Creator Micro 2 top row.
+                Configure the modular encoder positions on your Grid Macro 1 top row.
               </p>
 
               <div className="space-y-2.5 mb-5">
@@ -6942,288 +6883,10 @@ interface MacropadDeviceProps {
   selectedEncoderSub: EncoderSubActionId | null;
   dragOverTarget: { slotId: KeySlotId; subAction?: EncoderSubActionId } | null;
   draggedFromSlot?: KeySlotId | null;
-  swapTopRowEncoders: boolean;
   dialAngle: number;
-  knobAngle: number;
   onSelectKey: (slotId: KeySlotId) => void;
-  onSelectEncoderSub: (
-    slotId: 'dial-tl' | 'knob-tr',
-    sub: EncoderSubActionId
-  ) => void;
-  onStartKeyDrag?: (
-    e: React.PointerEvent,
-    slotId: KeySlotId,
-    sub?: EncoderSubActionId
-  ) => void;
-}
-
-function MacropadDevice({
-  layer,
-  selectedKey,
-  selectedEncoderSub,
-  dragOverTarget,
-  draggedFromSlot = null,
-  swapTopRowEncoders,
-  dialAngle,
-  knobAngle,
-  onSelectKey,
-  onSelectEncoderSub,
-  onStartKeyDrag = () => {},
-}: MacropadDeviceProps) {
-  const leftEncoderSlot: 'dial-tl' | 'knob-tr' = !swapTopRowEncoders
-    ? 'dial-tl'
-    : 'knob-tr';
-  const rightEncoderSlot: 'dial-tl' | 'knob-tr' = !swapTopRowEncoders
-    ? 'knob-tr'
-    : 'dial-tl';
-
-  const isLeftEncoderOpen = selectedKey === leftEncoderSlot;
-  const isRightEncoderOpen = selectedKey === rightEncoderSlot;
-
-  return (
-    <div className="relative flex items-center justify-center">
-      {/* LEFT ENCODER 3-BUTTON POPUP CAPSULE */}
-      <AnimatePresence>
-        {isLeftEncoderOpen && (
-          <EncoderPopupCapsule
-            key={`encoder-popup-${leftEncoderSlot}`}
-            slotId={leftEncoderSlot}
-            side="left"
-            actions={getEncoderActions(layer[leftEncoderSlot], leftEncoderSlot)}
-            selectedSub={selectedEncoderSub}
-            dragOverSub={
-              dragOverTarget?.slotId === leftEncoderSlot
-                ? dragOverTarget.subAction || null
-                : null
-            }
-            onSelectSub={(sub) => onSelectEncoderSub(leftEncoderSlot, sub)}
-            onStartSubDrag={(e, sub) => onStartKeyDrag(e, leftEncoderSlot, sub)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* RIGHT ENCODER 3-BUTTON POPUP CAPSULE */}
-      <AnimatePresence>
-        {isRightEncoderOpen && (
-          <EncoderPopupCapsule
-            key={`encoder-popup-${rightEncoderSlot}`}
-            slotId={rightEncoderSlot}
-            side="right"
-            actions={getEncoderActions(layer[rightEncoderSlot], rightEncoderSlot)}
-            selectedSub={selectedEncoderSub}
-            dragOverSub={
-              dragOverTarget?.slotId === rightEncoderSlot
-                ? dragOverTarget.subAction || null
-                : null
-            }
-            onSelectSub={(sub) => onSelectEncoderSub(rightEncoderSlot, sub)}
-            onStartSubDrag={(e, sub) => onStartKeyDrag(e, rightEncoderSlot, sub)}
-          />
-        )}
-      </AnimatePresence>
-
-      <div className="w-[214px] h-[221px] bg-[#050505] rounded-[27px] p-[14px] flex items-center justify-center shadow-[0_6px_18px_rgba(0,0,0,0.06)]">
-        <div className="w-full h-full bg-[#151515] rounded-[17px] p-[5px] grid grid-cols-4 grid-rows-4 gap-[2px] place-items-center">
-          {/* ROW 1 */}
-          {!swapTopRowEncoders ? (
-            <FlatDialControl
-              selected={selectedKey === 'dial-tl'}
-              angle={dialAngle}
-              title={`Dial: ${layer['dial-tl'].binding}`}
-              onClick={() => onSelectKey('dial-tl')}
-            />
-          ) : (
-            <KnobControl
-              selected={selectedKey === 'knob-tr'}
-              angle={knobAngle}
-              onClick={() => onSelectKey('knob-tr')}
-              title={`Knob: ${layer['knob-tr'].binding}`}
-            />
-          )}
-
-          <KeycapButton
-            slotId="r1c2"
-            label={layer.r1c2.label}
-            binding={layer.r1c2.binding}
-            iconId={layer.r1c2.iconId}
-            selected={selectedKey === 'r1c2'}
-            dragOver={dragOverTarget?.slotId === 'r1c2'}
-            isDraggingSource={draggedFromSlot === 'r1c2'}
-            isLowercase
-            onClick={() => onSelectKey('r1c2')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r1c2')}
-          />
-
-          <KeycapButton
-            slotId="r1c3"
-            label={layer.r1c3.label}
-            binding={layer.r1c3.binding}
-            iconId={layer.r1c3.iconId}
-            selected={selectedKey === 'r1c3'}
-            dragOver={dragOverTarget?.slotId === 'r1c3'}
-            isDraggingSource={draggedFromSlot === 'r1c3'}
-            isLowercase
-            onClick={() => onSelectKey('r1c3')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r1c3')}
-          />
-
-          {!swapTopRowEncoders ? (
-            <KnobControl
-              selected={selectedKey === 'knob-tr'}
-              angle={knobAngle}
-              onClick={() => onSelectKey('knob-tr')}
-              title={`Knob: ${layer['knob-tr'].binding}`}
-            />
-          ) : (
-            <FlatDialControl
-              selected={selectedKey === 'dial-tl'}
-              angle={dialAngle}
-              title={`Dial: ${layer['dial-tl'].binding}`}
-              onClick={() => onSelectKey('dial-tl')}
-            />
-          )}
-
-          {/* ROW 2 */}
-          <KeycapButton
-            slotId="r2c1"
-            label={layer.r2c1.label}
-            binding={layer.r2c1.binding}
-            iconId={layer.r2c1.iconId}
-            selected={selectedKey === 'r2c1'}
-            dragOver={dragOverTarget?.slotId === 'r2c1'}
-            isDraggingSource={draggedFromSlot === 'r2c1'}
-            onClick={() => onSelectKey('r2c1')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r2c1')}
-          />
-          <KeycapButton
-            slotId="r2c2"
-            label={layer.r2c2.label}
-            binding={layer.r2c2.binding}
-            iconId={layer.r2c2.iconId}
-            selected={selectedKey === 'r2c2'}
-            dragOver={dragOverTarget?.slotId === 'r2c2'}
-            isDraggingSource={draggedFromSlot === 'r2c2'}
-            onClick={() => onSelectKey('r2c2')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r2c2')}
-          />
-          <KeycapButton
-            slotId="r2c3"
-            label={layer.r2c3.label}
-            binding={layer.r2c3.binding}
-            iconId={layer.r2c3.iconId}
-            selected={selectedKey === 'r2c3'}
-            dragOver={dragOverTarget?.slotId === 'r2c3'}
-            isDraggingSource={draggedFromSlot === 'r2c3'}
-            onClick={() => onSelectKey('r2c3')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r2c3')}
-          />
-          <KeycapButton
-            slotId="r2c4"
-            label={layer.r2c4.label}
-            binding={layer.r2c4.binding}
-            iconId={layer.r2c4.iconId}
-            selected={selectedKey === 'r2c4'}
-            dragOver={dragOverTarget?.slotId === 'r2c4'}
-            isDraggingSource={draggedFromSlot === 'r2c4'}
-            onClick={() => onSelectKey('r2c4')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r2c4')}
-          />
-
-          {/* ROW 3 */}
-          <KeycapButton
-            slotId="r3c1"
-            label={layer.r3c1.label}
-            binding={layer.r3c1.binding}
-            iconId={layer.r3c1.iconId}
-            selected={selectedKey === 'r3c1'}
-            dragOver={dragOverTarget?.slotId === 'r3c1'}
-            isDraggingSource={draggedFromSlot === 'r3c1'}
-            onClick={() => onSelectKey('r3c1')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r3c1')}
-          />
-          <KeycapButton
-            slotId="r3c2"
-            label={layer.r3c2.label}
-            binding={layer.r3c2.binding}
-            iconId={layer.r3c2.iconId}
-            selected={selectedKey === 'r3c2'}
-            dragOver={dragOverTarget?.slotId === 'r3c2'}
-            isDraggingSource={draggedFromSlot === 'r3c2'}
-            onClick={() => onSelectKey('r3c2')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r3c2')}
-          />
-          <KeycapButton
-            slotId="r3c3"
-            label={layer.r3c3.label}
-            binding={layer.r3c3.binding}
-            iconId={layer.r3c3.iconId}
-            selected={selectedKey === 'r3c3'}
-            dragOver={dragOverTarget?.slotId === 'r3c3'}
-            isDraggingSource={draggedFromSlot === 'r3c3'}
-            onClick={() => onSelectKey('r3c3')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r3c3')}
-          />
-          <KeycapButton
-            slotId="r3c4"
-            label={layer.r3c4.label}
-            binding={layer.r3c4.binding}
-            iconId={layer.r3c4.iconId}
-            selected={selectedKey === 'r3c4'}
-            dragOver={dragOverTarget?.slotId === 'r3c4'}
-            isDraggingSource={draggedFromSlot === 'r3c4'}
-            onClick={() => onSelectKey('r3c4')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r3c4')}
-          />
-
-          {/* ROW 4: Circular bottom-left button (NOT a drag/drop target) + 3 rectangular keys */}
-          <div className="w-[42px] h-[42px] flex items-center justify-center group relative">
-            <button
-              onClick={() => onSelectKey('btn-bl')}
-              title={`Layer Key: ${layer['btn-bl'].binding}`}
-              className={`w-[20px] h-[20px] rounded-full border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none ${
-                selectedKey === 'btn-bl'
-                  ? 'bg-[#0051ff] border-[#0051ff] shadow-[0_0_14px_rgba(0,81,255,0.85)]'
-                  : 'bg-[#303030] border-[#3a3a3a] group-hover:border-[#0051ff] hover:border-[#0051ff]'
-              }`}
-            />
-          </div>
-          <KeycapButton
-            slotId="r4c2"
-            label={layer.r4c2.label}
-            binding={layer.r4c2.binding}
-            iconId={layer.r4c2.iconId}
-            selected={selectedKey === 'r4c2'}
-            dragOver={dragOverTarget?.slotId === 'r4c2'}
-            isDraggingSource={draggedFromSlot === 'r4c2'}
-            onClick={() => onSelectKey('r4c2')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r4c2')}
-          />
-          <KeycapButton
-            slotId="r4c3"
-            label={layer.r4c3.label}
-            binding={layer.r4c3.binding}
-            iconId={layer.r4c3.iconId}
-            selected={selectedKey === 'r4c3'}
-            dragOver={dragOverTarget?.slotId === 'r4c3'}
-            isDraggingSource={draggedFromSlot === 'r4c3'}
-            onClick={() => onSelectKey('r4c3')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r4c3')}
-          />
-          <KeycapButton
-            slotId="r4c4"
-            label={layer.r4c4.label}
-            binding={layer.r4c4.binding}
-            iconId={layer.r4c4.iconId}
-            selected={selectedKey === 'r4c4'}
-            dragOver={dragOverTarget?.slotId === 'r4c4'}
-            isDraggingSource={draggedFromSlot === 'r4c4'}
-            onClick={() => onSelectKey('r4c4')}
-            onPointerDown={(e) => onStartKeyDrag(e, 'r4c4')}
-          />
-        </div>
-      </div>
-    </div>
-  );
+  onSelectEncoderSub: (slotId: 'dial-tl', sub: EncoderSubActionId) => void;
+  onStartKeyDrag?: (e: React.PointerEvent, slotId: KeySlotId, sub?: EncoderSubActionId) => void;
 }
 
 function EncoderPopupCapsule({
@@ -7235,7 +6898,7 @@ function EncoderPopupCapsule({
   onSelectSub,
   onStartSubDrag,
 }: {
-  slotId: 'dial-tl' | 'knob-tr';
+  slotId: 'dial-tl';
   side: 'left' | 'right';
   actions: Record<EncoderSubActionId, EncoderSubBinding>;
   selectedSub: EncoderSubActionId | null;
@@ -7401,6 +7064,79 @@ function EncoderPopupCapsule({
         );
       })}
     </motion.div>
+  );
+}
+
+
+function MacropadDevice({
+  layer,
+  selectedKey,
+  selectedEncoderSub,
+  dragOverTarget,
+  draggedFromSlot = null,
+  dialAngle,
+  onSelectKey,
+  onSelectEncoderSub,
+  onStartKeyDrag = () => {},
+}: MacropadDeviceProps) {
+  const isEncoderOpen = selectedKey === 'dial-tl';
+
+  return (
+    <div className="relative flex items-center justify-center">
+      {/* ENCODER 3-BUTTON POPUP CAPSULE */}
+      <AnimatePresence>
+        {isEncoderOpen && (
+          <EncoderPopupCapsule
+            key="encoder-popup-dial-tl"
+            slotId="dial-tl"
+            side="left"
+            actions={getEncoderActions(layer['dial-tl'], 'dial-tl')}
+            selectedSub={selectedEncoderSub}
+            dragOverSub={
+              dragOverTarget?.slotId === 'dial-tl'
+                ? dragOverTarget.subAction || null
+                : null
+            }
+            onSelectSub={(sub: EncoderSubActionId) => onSelectEncoderSub('dial-tl', sub)}
+            onStartSubDrag={(e: React.PointerEvent, sub: EncoderSubActionId) => onStartKeyDrag(e, 'dial-tl', sub)}
+          />
+        )}
+      </AnimatePresence>
+
+      <div className="w-[194px] h-[228px] bg-[#0c0c0c] rounded-[24px] p-[12px] flex flex-col justify-between items-center shadow-[0_8px_24px_rgba(0,0,0,0.18)] border border-[#222]">
+        {/* TOP ROW: STATUS LED & ROTARY ENCODER */}
+        <div className="w-full flex items-center justify-between px-1.5 pt-0.5 pb-2">
+          <div className="w-[20px] h-[20px] flex items-center justify-center">
+            <span className="w-[6px] h-[6px] rounded-full bg-[#10b981] shadow-[0_0_8px_rgba(16,185,129,0.9)]" />
+          </div>
+          <span className="text-[9px] font-semibold tracking-wider text-[#666] uppercase">Grid Macro 1</span>
+          <FlatDialControl
+            selected={selectedKey === 'dial-tl'}
+            angle={dialAngle}
+            title={`Dial: ${layer['dial-tl']?.binding || 'Volume / Play'}`}
+            onClick={() => onSelectKey('dial-tl')}
+          />
+        </div>
+
+        {/* 3x3 SWITCH MATRIX */}
+        <div className="grid grid-cols-3 grid-rows-3 gap-[4px] place-items-center">
+          {(['r1c1', 'r1c2', 'r1c3', 'r2c1', 'r2c2', 'r2c3', 'r3c1', 'r3c2', 'r3c3'] as const).map((slotId) => (
+            <KeycapButton
+              key={slotId}
+              slotId={slotId}
+              label={layer[slotId]?.label || ''}
+              binding={layer[slotId]?.binding || ''}
+              iconId={layer[slotId]?.iconId}
+              selected={selectedKey === slotId}
+              dragOver={dragOverTarget?.slotId === slotId}
+              isDraggingSource={draggedFromSlot === slotId}
+              onClick={() => onSelectKey(slotId)}
+              onPointerDown={(e) => onStartKeyDrag(e, slotId)}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 

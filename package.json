@@ -1,5 +1,6 @@
 {
-  "name": "creator-micro-2-configurator",
+  "name": "grid-macro-1-configurator",
+  "description": "Hardware keymap, layer, profile, and macro configuration studio for the NØDE Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
   "private": true,
   "version": "1.0.0",
   "type": "module",
