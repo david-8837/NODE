@@ -56,13 +56,13 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     /* Layer 3: Function / RGB / Device Controls
      * ---------------------------------------------------------
      * [Encoder Press: Toggle RGB]
-     * | RGB_TOG   | RGB_MOD    | RGB_HUI    |  [Encoder Turn: Brightness +/-]
+     * | UG_TOGG   | UG_NEXT    | UG_HUEU    |  [Encoder Turn: Brightness +/-]
      * | TO(_BASE) | TO(_MEDIA) | TO(_NUMPAD)|
      * | QK_BOOT   | EE_CLR     | _______    |
      */
     [_FN] = LAYOUT_grid_macro_1(
-        RGB_TOG,
-        RGB_MOD,    RGB_HUI,    RGB_SAI,
+        UG_TOGG,
+        UG_NEXT,    UG_HUEU,    UG_SATU,
         TO(_BASE),  TO(_MEDIA), TO(_NUMPAD),
         QK_BOOT,    EE_CLR,     _______
     )
@@ -74,7 +74,7 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
     [_BASE]   = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU) },
     [_MEDIA]  = { ENCODER_CCW_CW(KC_MPRV, KC_MNXT) },
     [_NUMPAD] = { ENCODER_CCW_CW(C(KC_Z), C(KC_Y)) },
-    [_FN]     = { ENCODER_CCW_CW(RGB_VAD, RGB_VAI) },
+    [_FN]     = { ENCODER_CCW_CW(UG_VALD, UG_VALU) },
 };
 #else
 bool encoder_update_user(uint8_t index, bool clockwise) {

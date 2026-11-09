@@ -22,8 +22,8 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         KC_P1,      KC_P2,      KC_P3
     ),
     [3] = LAYOUT_grid_macro_1(
-        RGB_TOG,
-        RGB_MOD,    RGB_HUI,    RGB_SAI,
+        UG_TOGG,
+        UG_NEXT,    UG_HUEU,    UG_SATU,
         TO(0),      TO(1),      TO(2),
         QK_BOOT,    EE_CLR,     _______
     )
@@ -34,7 +34,7 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
     [0] = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU) },
     [1] = { ENCODER_CCW_CW(KC_MPRV, KC_MNXT) },
     [2] = { ENCODER_CCW_CW(C(KC_Z), C(KC_Y)) },
-    [3] = { ENCODER_CCW_CW(RGB_VAD, RGB_VAI) },
+    [3] = { ENCODER_CCW_CW(UG_VALD, UG_VALU) },
 };
 #endif
 
