@@ -63,7 +63,7 @@ jobs:
               tail -n 60 "$RUNNER_TEMP/qmk-build.log"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            failure_message=$(tail -n 25 "$RUNNER_TEMP/qmk-build.log" | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/::/%3A%3A/g' -e 's/;/%3B/g')
+            failure_message=$(tail -n 25 "$RUNNER_TEMP/qmk-build.log" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/::/%3A%3A/g' -e 's/;/%3B/g')
             echo "::error file=.github/workflows/qmk-build.yml,line=1::$failure_message"
             exit "$build_status"
           fi
