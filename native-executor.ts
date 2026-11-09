@@ -1,4 +1,4 @@
-import { spawn, exec } from 'child_process';
+import { spawn, execFile } from 'child_process';
 import path from 'path';
 
 // Virtual-Key codes for Windows
@@ -122,7 +122,7 @@ function Press-Keys([byte[]]$codes) {
 }
 
 export function parseShortcutToVK(rawStr: string): number[] {
-  if (!rawStr) return [];
+  if (!rawStr || typeof rawStr !== 'string') return [];
   const clean = rawStr.toLowerCase().replace(/[\(\)]/g, ' ').replace(/mod\+/g, 'ctrl+').trim();
 
   // Media special phrases
@@ -147,48 +147,82 @@ export function parseShortcutToVK(rawStr: string): number[] {
 }
 
 export function injectKeystrokes(vkCodes: number[]) {
-  if (!vkCodes || vkCodes.length === 0) return;
+  if (!vkCodes || !Array.isArray(vkCodes) || vkCodes.length === 0) return;
+  // Strictly filter only valid numeric byte values [0..255]
+  const validCodes = vkCodes.filter(c => typeof c === 'number' && Number.isInteger(c) && c >= 0 && c <= 255);
+  if (validCodes.length === 0) return;
+
   if (!psWorker || !psWorker.stdin || psWorker.stdin.destroyed) {
     initPowerShellWorker();
   }
   if (psWorker && psWorker.stdin) {
-    psWorker.stdin.write(`Press-Keys @(${vkCodes.join(',')})\n`);
+    psWorker.stdin.write(`Press-Keys @(${validCodes.join(',')})\n`);
   }
 }
+
+// Known safe Windows desktop app binaries
+const SAFE_WIN_APPS: Record<string, string> = {
+  calc: 'calc.exe',
+  calculator: 'calc.exe',
+  notepad: 'notepad.exe',
+  explorer: 'explorer.exe',
+  cmd: 'cmd.exe',
+  powershell: 'powershell.exe',
+  taskmgr: 'taskmgr.exe',
+  spotify: 'spotify.exe',
+  code: 'code.cmd'
+};
 
 export function executeNativeAction(payload: any): Promise<{ success: boolean; message?: string; error?: string }> {
   return new Promise((resolve) => {
     try {
-      const type = payload.type || payload.actionType || 'Shortcut';
-      const value = payload.value || payload.binding || payload.keys || '';
+      if (!payload || typeof payload !== 'object') {
+        return resolve({ success: false, error: 'Invalid payload: must be an object' });
+      }
+
+      const type = String(payload.type || payload.actionType || 'Shortcut');
+      const value = String(payload.value || payload.binding || payload.keys || '').trim();
+
+      if (!value) {
+        return resolve({ success: false, error: 'Empty action value' });
+      }
 
       if (type === 'Web') {
-        let url = value.trim();
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-          url = 'https://' + url;
+        let urlStr = value;
+        if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
+          urlStr = 'https://' + urlStr;
         }
-        exec(`start "" "${url}"`, { windowsHide: true }, (err) => {
-          if (err) resolve({ success: false, error: err.message });
-          else resolve({ success: true, message: `Opened URL: ${url}` });
-        });
+
+        try {
+          const parsed = new URL(urlStr);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return resolve({ success: false, error: 'Blocked: only http and https URLs allowed' });
+          }
+
+          // Safe execution via execFile with separated arguments (zero shell interpolation)
+          execFile('rundll32.exe', ['url.dll,FileProtocolHandler', parsed.href], { windowsHide: true }, (err) => {
+            if (err) resolve({ success: false, error: err.message });
+            else resolve({ success: true, message: `Opened URL: ${parsed.href}` });
+          });
+        } catch {
+          return resolve({ success: false, error: 'Invalid URL format' });
+        }
         return;
       }
 
       if (type === 'App') {
-        const app = value.trim();
-        const safeApps: Record<string, string> = {
-          calc: 'calc.exe',
-          calculator: 'calc.exe',
-          notepad: 'notepad.exe',
-          explorer: 'explorer.exe',
-          cmd: 'cmd.exe',
-          powershell: 'powershell.exe',
-          taskmgr: 'taskmgr.exe',
-          spotify: 'spotify.exe',
-          code: 'code.cmd'
-        };
-        const bin = safeApps[app.toLowerCase().replace(/\.exe$/, '')] || app;
-        exec(`cmd /c start "" ${bin}`, { windowsHide: true }, (err) => {
+        // Enforce safe app allowlist or valid alphanumeric executable name
+        const cleanKey = value.toLowerCase().replace(/\.exe$/, '');
+        const bin = SAFE_WIN_APPS[cleanKey];
+
+        if (!bin) {
+          return resolve({
+            success: false,
+            error: `App "${value}" is not in the authorized application list`
+          });
+        }
+
+        execFile('cmd.exe', ['/c', 'start', '', bin], { windowsHide: true }, (err) => {
           if (err) resolve({ success: false, error: err.message });
           else resolve({ success: true, message: `Launched App: ${bin}` });
         });
@@ -196,10 +230,27 @@ export function executeNativeAction(payload: any): Promise<{ success: boolean; m
       }
 
       if (type === 'Cmd') {
-        const cmd = value.trim();
-        exec(cmd, { windowsHide: true }, (err, stdout) => {
+        // Strictly prevent shell injection metacharacters
+        const containsForbiddenChars = /[;&|`$><"'\n\r]/.test(value);
+        if (containsForbiddenChars) {
+          return resolve({
+            success: false,
+            error: 'Security Warning: Command contains forbidden shell metacharacters'
+          });
+        }
+
+        const parts = value.split(/\s+/).filter(Boolean);
+        if (parts.length === 0) {
+          return resolve({ success: false, error: 'Empty command' });
+        }
+
+        const bin = parts[0];
+        const args = parts.slice(1);
+
+        // Execute directly via execFile without cmd.exe shell wrapper
+        execFile(bin, args, { windowsHide: true, timeout: 5000 }, (err, stdout) => {
           if (err) resolve({ success: false, error: err.message });
-          else resolve({ success: true, message: stdout || 'Command executed' });
+          else resolve({ success: true, message: stdout.trim() || 'Command executed' });
         });
         return;
       }
