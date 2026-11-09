@@ -4,9 +4,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig, Plugin } from 'vite';
 import { executeNativeAction } from './native-executor.ts';
+import { isTrustedLocalNativeOrigin } from './src/nativeActionSecurity.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const previewAllowedHosts = process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS ?? '';
+const isArenaPreview =
+  process.env.ARENA_PREVIEW === 'true' ||
+  previewAllowedHosts.split(',').some((host) => host.trim().endsWith('.e2b.app'));
 
 function nativeExecutionPlugin(): Plugin {
   return {
@@ -19,44 +24,57 @@ function nativeExecutionPlugin(): Plugin {
           return res.end(JSON.stringify({ success: false, error: 'Method Not Allowed' }));
         }
 
-        // Security check: Validate Origin and Referer against Cross-Site Request Forgery (CSRF)
-        const origin = (req.headers['origin'] || req.headers['referer'] || '') as string;
-        if (origin) {
-          const isLocalOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(origin);
-          if (!isLocalOrigin) {
-            res.statusCode = 403;
-            res.setHeader('Content-Type', 'application/json');
-            return res.end(JSON.stringify({ success: false, error: 'Forbidden: Cross-Origin Request Blocked' }));
-          }
+        // The native bridge is only for a same-origin local desktop session.
+        // A hosted preview must never execute commands on its sandbox host.
+        const originHeader = req.headers['origin'] || req.headers['referer'];
+        if (
+          !isTrustedLocalNativeOrigin(
+            originHeader,
+            req.headers.host,
+            isArenaPreview
+          )
+        ) {
+          res.statusCode = 403;
+          res.setHeader('Content-Type', 'application/json');
+          return res.end(JSON.stringify({ success: false, error: 'Native actions are unavailable from this origin' }));
         }
 
-        let body = '';
+        const chunks: Buffer[] = [];
         let bytesCount = 0;
-        const MAX_BYTES = 32 * 1024; // 32 KB payload limit (DoS mitigation)
+        let payloadTooLarge = false;
+        const MAX_BYTES = 32 * 1024;
 
-        req.on('data', (chunk: Buffer) => {
-          bytesCount += chunk.length;
+        req.on('data', (chunk: Buffer | string) => {
+          if (payloadTooLarge) return;
+          const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          bytesCount += bufferChunk.length;
           if (bytesCount > MAX_BYTES) {
-            req.destroy();
+            payloadTooLarge = true;
+            chunks.length = 0;
             res.statusCode = 413;
             res.setHeader('Content-Type', 'application/json');
-            return res.end(JSON.stringify({ success: false, error: 'Payload Too Large' }));
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.end(JSON.stringify({ success: false, error: 'Payload Too Large' }));
+            return;
           }
-          body += chunk;
+          chunks.push(bufferChunk);
         });
 
         req.on('end', async () => {
-          if (res.writableEnded) return;
+          if (res.writableEnded || payloadTooLarge) return;
           try {
+            const body = Buffer.concat(chunks).toString('utf8');
             const payload = JSON.parse(body || '{}');
             const result = await executeNativeAction(payload);
             res.setHeader('Content-Type', 'application/json');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
             res.statusCode = 200;
             res.end(JSON.stringify(result));
-          } catch (err: any) {
+          } catch {
             res.statusCode = 400;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: false, error: 'Malformed JSON payload: ' + err.message }));
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.end(JSON.stringify({ success: false, error: 'Malformed JSON payload' }));
           }
         });
       });
@@ -73,8 +91,10 @@ export default defineConfig(() => {
       },
     },
     server: {
-      host: '127.0.0.1', // Security: bind to local loopback to avoid exposing API to LAN
+      host: isArenaPreview ? '0.0.0.0' : '127.0.0.1',
+      allowedHosts: isArenaPreview ? ['.e2b.app'] : undefined,
       port: 5173,
+      strictPort: true,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
