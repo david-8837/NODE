@@ -19,6 +19,7 @@ const windowsWorkflow = readFileSync(
 describe('Public download website', () => {
   it('has a responsive landing page with clear installer and portable-package entry points', () => {
     expect(siteHtml).toContain('NØDE Grid Macro 1 Studio');
+    expect(siteHtml).toContain('[:: QNTM-IRS / 04 ::]');
     expect(siteHtml).toContain('id="download-installer"');
     expect(siteHtml).toContain('id="download-zip"');
     expect(siteHtml).toContain('id="features"');
