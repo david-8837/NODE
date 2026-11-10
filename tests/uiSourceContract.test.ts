@@ -186,6 +186,13 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(electronMain).toContain('minHeight: Math.min(600, height)');
   });
 
+  it('matches packaged Windows renderer URLs using case-insensitive file paths', () => {
+    expect(electronMain).toContain("if (url.protocol !== 'file:') return false");
+    expect(electronMain).toContain("process.platform === 'win32'");
+    expect(electronMain).toContain('requestedPath.toLowerCase() === expectedPath.toLowerCase()');
+    expect(electronMain).toContain('frame?.isMainFrame');
+  });
+
   it('smoke-tests the installed Windows UI, persists native/profile state, and verifies uninstall data retention', () => {
     expect(electronMain).toContain("hasSwitch('visual-smoke-test')");
     expect(electronMain).toContain("once('did-finish-load', startVisualSmokeCapture)");

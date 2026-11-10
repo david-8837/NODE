@@ -42,8 +42,14 @@ function isTrustedAppUrl(rawUrl) {
     const url = new URL(rawUrl);
     const entry = new URL(getAppEntryUrl());
     if (app.isPackaged) {
-      return url.protocol === 'file:' &&
-        path.resolve(fileURLToPath(url)) === path.resolve(fileURLToPath(entry));
+      if (url.protocol !== 'file:') return false;
+      const requestedPath = path.resolve(fileURLToPath(url));
+      const expectedPath = path.resolve(fileURLToPath(entry));
+      // Windows file paths are case-insensitive; Chromium and Node may preserve
+      // different drive/path casing for the same packaged app entry.
+      return process.platform === 'win32'
+        ? requestedPath.toLowerCase() === expectedPath.toLowerCase()
+        : requestedPath === expectedPath;
     }
     return url.origin === entry.origin && url.pathname === entry.pathname;
   } catch {
