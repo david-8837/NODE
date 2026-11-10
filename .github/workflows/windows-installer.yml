@@ -132,8 +132,10 @@ jobs:
               Write-Host "Installed-app persistence phase passed: $phase"
             }
 
+            $appDataRoots = @($env:APPDATA, $env:LOCALAPPDATA) |
+              Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
             $workflowStage = 'locating-native-settings'
-            $settingsFile = Get-ChildItem -Path $env:APPDATA -Filter 'settings.v1.json' -File -Recurse |
+            $settingsFile = Get-ChildItem -Path $appDataRoots -Filter 'settings.v1.json' -File -Recurse |
               Select-Object -First 1
             if (-not $settingsFile) { throw 'Native Settings file was not created in the isolated app-data directory' }
 
@@ -144,7 +146,7 @@ jobs:
             }
 
             $workflowStage = 'locating-chromium-storage'
-            $localStorageDir = Get-ChildItem -Path $env:APPDATA -Directory -Recurse -Filter 'Local Storage' |
+            $localStorageDir = Get-ChildItem -Path $appDataRoots -Directory -Recurse -Filter 'Local Storage' |
               Select-Object -First 1
             if (-not $localStorageDir) { throw 'Chromium local profile storage was not created by the installed app' }
 

@@ -359,7 +359,15 @@ async function runPersistenceSmokeTest() {
         return { settingSaved: true, profileSaved: true };
       })()`);
       await new Promise((resolve) => setTimeout(resolve, 750));
-      writePersistenceSmokeDiagnostics({ stage: 'write-complete', ...result });
+      writePersistenceSmokeDiagnostics({
+        stage: 'write-complete',
+        ...result,
+        appDataEnvironment: process.env.APPDATA || null,
+        localAppDataEnvironment: process.env.LOCALAPPDATA || null,
+        appDataPath: app.getPath('appData'),
+        userDataPath: app.getPath('userData'),
+        settingsFilePath: getAppSettingsPath(),
+      });
     } else if (phase === 'verify') {
       const result = await mainWindow.webContents.executeJavaScript(`(async () => {
         const expectedName = ${JSON.stringify(profileName)};
