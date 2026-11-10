@@ -14,17 +14,23 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pin QMK to a reviewed immutable commit rather than its moving default branch.
+  QMK_FIRMWARE_REF: d194c077ed964195ec16d255c7a4b89a794cf03b
+  QMK_CLI_VERSION: '1.2.0'
+
 jobs:
-  build-via-firmware:
-    name: Build Grid Macro 1 VIA firmware
-    runs-on: ubuntu-latest
+  build-firmware:
+    name: Build Grid Macro 1 stock-VIA and default keymaps
+    runs-on: ubuntu-22.04
     steps:
       - name: Check out this repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: configurator
+          persist-credentials: false
 
-      - name: Install ARM and build prerequisites
+      - name: Install ARM and QMK build prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
@@ -35,48 +41,105 @@ jobs:
             libnewlib-arm-none-eabi \
             python3-venv
 
-      - name: Install QMK CLI
+      - name: Install pinned QMK CLI
         run: |
           python3 -m venv "$RUNNER_TEMP/qmk-venv"
-          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install --disable-pip-version-check qmk
+          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install --disable-pip-version-check "qmk==$QMK_CLI_VERSION"
           echo "$RUNNER_TEMP/qmk-venv/bin" >> "$GITHUB_PATH"
 
-      - name: Check out QMK firmware and install the keyboard definition
-        run: |
-          git clone --depth 1 --branch master --recurse-submodules \
-            https://github.com/qmk/qmk_firmware.git "$RUNNER_TEMP/qmk_firmware"
-          cp -a "$GITHUB_WORKSPACE/configurator/qmk_firmware/grid_macro_1" \
-            "$RUNNER_TEMP/qmk_firmware/keyboards/"
-          echo "QMK_HOME=$RUNNER_TEMP/qmk_firmware" >> "$GITHUB_ENV"
-
-      - name: Compile the stock-VIA keymap
+      - name: Check out pinned QMK firmware and install the keyboard definition
         shell: bash
         run: |
-          set +e
-          qmk compile -kb grid_macro_1 -km via 2>&1 | tee "$RUNNER_TEMP/qmk-build.log"
-          build_status=${PIPESTATUS[0]}
-          set -e
-          if [ "$build_status" -ne 0 ]; then
-            {
-              echo '## QMK firmware build failed'
-              echo '```text'
-              tail -n 60 "$RUNNER_TEMP/qmk-build.log"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            failure_message=$(tail -n 25 "$RUNNER_TEMP/qmk-build.log" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/::/%3A%3A/g' -e 's/;/%3B/g')
-            echo "::error file=.github/workflows/qmk-build.yml,line=1::$failure_message"
-            exit "$build_status"
-          fi
+          set -euo pipefail
+          qmk_root="$RUNNER_TEMP/qmk_firmware"
+          git init "$qmk_root"
+          git -C "$qmk_root" remote add origin https://github.com/qmk/qmk_firmware.git
+          git -C "$qmk_root" fetch --depth=1 origin "$QMK_FIRMWARE_REF"
+          git -C "$qmk_root" checkout --detach FETCH_HEAD
+          git -C "$qmk_root" submodule update --init --depth=1 --recursive
+          cp -a "$GITHUB_WORKSPACE/configurator/qmk_firmware/grid_macro_1" "$qmk_root/keyboards/"
+          echo "QMK_HOME=$qmk_root" >> "$GITHUB_ENV"
+          printf 'QMK commit: %s\n' "$(git -C "$qmk_root" rev-parse HEAD)"
+          printf 'QMK CLI: %s\n' "$(qmk --version)"
+          printf 'ARM compiler: %s\n' "$(arm-none-eabi-gcc --version | head -n 1)"
+
+      - name: Compile and verify VIA and default UF2 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for keymap in via default; do
+            log="$RUNNER_TEMP/qmk-${keymap}.log"
+            set +e
+            qmk compile -kb grid_macro_1 -km "$keymap" 2>&1 | tee "$log"
+            build_status=${PIPESTATUS[0]}
+            set -e
+            if [ "$build_status" -ne 0 ]; then
+              {
+                echo "## QMK $keymap build failed"
+                echo '```text'
+                tail -n 60 "$log"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              failure_message=$(tail -n 25 "$log" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/::/%3A%3A/g' -e 's/;/%3B/g')
+              echo "::error file=.github/workflows/qmk-build.yml,line=1::$failure_message"
+              exit "$build_status"
+            fi
+            uf2=".build/grid_macro_1_${keymap}.uf2"
+            if [ ! -s "$uf2" ]; then
+              echo "Expected a non-empty $uf2 from the $keymap build" >&2
+              exit 1
+            fi
+            printf 'Verified %s (%s bytes)\n' "$uf2" "$(stat -c '%s' "$uf2")"
+          done
         working-directory: ${{ runner.temp }}/qmk_firmware
 
-      - name: Verify and upload the UF2 artifact
-        run: test -s .build/grid_macro_1_via.uf2
+      - name: Stage the VIA firmware with checksum and build provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/grid-macro-1-via-artifact"
+          mkdir -p "$artifact_dir"
+          cp .build/grid_macro_1_via.uf2 "$artifact_dir/grid_macro_1_via.uf2"
+          (
+            cd "$artifact_dir"
+            sha256sum grid_macro_1_via.uf2 > SHA256SUMS.txt
+          )
+          qmk_commit="$(git rev-parse HEAD)"
+          cli_version="$(qmk --version)"
+          compiler_version="$(arm-none-eabi-gcc --version | head -n 1)"
+          runner_os="$(. /etc/os-release && printf '%s' "$PRETTY_NAME")"
+          apt_versions="$(dpkg-query -W -f='${binary:Package}=${Version}\n' binutils-arm-none-eabi build-essential gcc-arm-none-eabi git libnewlib-arm-none-eabi python3-venv | paste -sd ', ' -)"
+          python_versions="$("$RUNNER_TEMP/qmk-venv/bin/python" -m pip freeze | paste -sd ', ' -)"
+          {
+            printf 'Firmware: Grid Macro 1, VIA keymap\n'
+            printf 'Repository commit: %s\n' "$GITHUB_SHA"
+            printf 'Workflow run: %s (attempt %s)\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'Runner image: ubuntu-22.04 (%s)\n' "$runner_os"
+            printf 'Build prerequisite package versions: %s\n' "$apt_versions"
+            printf 'Pinned-CLI Python package set: %s\n' "$python_versions"
+            printf 'QMK firmware commit: %s\n' "$qmk_commit"
+            printf 'QMK CLI: %s\n' "$cli_version"
+            printf 'ARM compiler: %s\n' "$compiler_version"
+            printf 'Build keymaps verified: via, default\n'
+            printf 'Artifact SHA-256: %s\n' "$(cut -d ' ' -f 1 "$artifact_dir/SHA256SUMS.txt")"
+          } > "$artifact_dir/BUILD-INFO.txt"
+          {
+            echo '## Grid Macro 1 firmware build'
+            echo ''
+            echo "- Repository commit: $GITHUB_SHA"
+            echo "- Runner image: ubuntu-22.04 ($runner_os)"
+            echo "- QMK firmware commit: $qmk_commit"
+            echo "- QMK CLI: $cli_version"
+            echo "- ARM compiler: $compiler_version"
+            echo '- Keymaps compiled and non-empty UF2 files verified: `via`, `default`'
+            echo '- VIA artifact SHA-256 is recorded in `SHA256SUMS.txt`'
+          } >> "$GITHUB_STEP_SUMMARY"
         working-directory: ${{ runner.temp }}/qmk_firmware
 
-      - name: Upload firmware artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload the VIA UF2 and provenance files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: grid-macro-1-via-firmware
-          path: ${{ runner.temp }}/qmk_firmware/.build/grid_macro_1_via.uf2
+          path: ${{ runner.temp }}/grid-macro-1-via-artifact/
           if-no-files-found: error
           retention-days: 7

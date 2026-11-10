@@ -1,0 +1,259 @@
+name: Windows Desktop Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-installer.yml'
+      - 'electron/**'
+      - 'src/**'
+      - 'native-executor.ts'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'public/favicon.ico'
+      - 'windows-installer/**'
+      - 'tests/**'
+      - 'vite.config.ts'
+
+permissions:
+  contents: write
+
+jobs:
+  package-windows:
+    name: Build Windows x64 installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build installer and ZIP
+        run: npm run build:win
+
+      - name: Install packaged app and capture responsive UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem -Path 'dist_electron' -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'electron-builder did not produce a Windows installer' }
+
+          $installDir = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke'
+          $appDataRoot = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke-appdata'
+          $localAppDataRoot = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke-localappdata'
+          New-Item -ItemType Directory -Force -Path $appDataRoot, $localAppDataRoot | Out-Null
+          $env:APPDATA = $appDataRoot
+          $env:LOCALAPPDATA = $localAppDataRoot
+          "APPDATA=$appDataRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LOCALAPPDATA=$localAppDataRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $installArgs = @('/S', "/D=$installDir")
+          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList $installArgs -Wait -PassThru
+          if ($installProcess.ExitCode -ne 0) { throw "Silent installer exited with code $($installProcess.ExitCode)" }
+
+          $app = Get-ChildItem -Path $installDir -Filter '*.exe' | Where-Object { $_.Name -notlike 'Uninstall*' } | Select-Object -First 1
+          if (-not $app) { throw "Installed application executable was not found in $installDir" }
+
+          # The installer may offer to start the app on finish; close that copy so
+          # the smoke-test launch receives its own screenshot path and exit code.
+          Start-Sleep -Seconds 1
+          $appProcessName = [System.IO.Path]::GetFileNameWithoutExtension($app.Name)
+          Get-Process -Name $appProcessName -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+
+          $screenshot = Join-Path $env:RUNNER_TEMP 'packaged-ui-visual-smoke.png'
+          $diagnostics = Join-Path $env:RUNNER_TEMP 'packaged-ui-visual-smoke-diagnostics.json'
+          $env:NODE_GRID_VISUAL_SMOKE_SCREENSHOT = $screenshot
+          $env:NODE_GRID_VISUAL_SMOKE_DIAGNOSTICS = $diagnostics
+          $appProcess = Start-Process -FilePath $app.FullName -ArgumentList '--visual-smoke-test' -PassThru
+          if (-not $appProcess.WaitForExit(90000)) {
+            Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
+            throw 'Packaged app did not finish its visual smoke test within 90 seconds'
+          }
+          $appProcess.Refresh()
+          if ($appProcess.ExitCode -ne 0) { throw "Packaged app visual smoke test exited with code $($appProcess.ExitCode)" }
+          if (-not (Test-Path $screenshot)) { throw 'Packaged app did not write its screenshot' }
+
+          $png = [System.IO.File]::ReadAllBytes($screenshot)
+          if ($png.Length -lt 4096 -or [System.BitConverter]::ToString($png[0..7]) -ne '89-50-4E-47-0D-0A-1A-0A') {
+            throw "Screenshot is missing, too small, or not a PNG ($($png.Length) bytes)"
+          }
+          $width = [System.Net.IPAddress]::NetworkToHostOrder([System.BitConverter]::ToInt32($png, 16))
+          $height = [System.Net.IPAddress]::NetworkToHostOrder([System.BitConverter]::ToInt32($png, 20))
+          if ($width -lt 640 -or $height -lt 520) { throw "Screenshot dimensions are unexpectedly small: ${width}x${height}" }
+          Write-Host "Packaged Windows UI screenshot validated: ${width}x${height}, $($png.Length) bytes"
+          Copy-Item $screenshot 'dist_electron/packaged-ui-visual-smoke.png' -Force
+
+      - name: Verify installed-app Settings/profile persistence and uninstall behavior
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installDir = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke'
+          $diagnostics = Join-Path $env:RUNNER_TEMP 'installed-app-persistence-smoke.json'
+          $workflowStage = 'locating-installed-app'
+          try {
+            $app = Get-ChildItem -Path $installDir -Filter '*.exe' -File |
+              Where-Object { $_.Name -notlike 'Uninstall*' } | Select-Object -First 1
+            if (-not $app) { throw "Installed application executable was not found in $installDir" }
+
+            $env:NODE_GRID_PERSISTENCE_SMOKE = '1'
+            $env:NODE_GRID_PERSISTENCE_SMOKE_DIAGNOSTICS = $diagnostics
+            foreach ($phase in @('write', 'verify')) {
+              $workflowStage = "persistence-phase-$phase"
+              $env:NODE_GRID_PERSISTENCE_PHASE = $phase
+              $smokeProcess = Start-Process -FilePath $app.FullName `
+                -ArgumentList @('--persistence-smoke-test') -PassThru
+              if (-not $smokeProcess.WaitForExit(90000)) {
+                Stop-Process -Id $smokeProcess.Id -Force -ErrorAction SilentlyContinue
+                throw "Installed-app persistence smoke phase '$phase' timed out"
+              }
+              $smokeProcess.Refresh()
+              if ($smokeProcess.ExitCode -ne 0) {
+                throw "Installed-app persistence smoke phase '$phase' exited with code $($smokeProcess.ExitCode)"
+              }
+              Write-Host "Installed-app persistence phase passed: $phase"
+            }
+
+            $workflowStage = 'reading-app-storage-locations'
+            $smokeDetails = Get-Content -Path $diagnostics -Raw | ConvertFrom-Json
+            $appDataRoots = @($env:APPDATA, $env:LOCALAPPDATA) |
+              Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+            $userDataPath = [System.IO.Path]::GetFullPath([string]$smokeDetails.userDataPath)
+            $workflowStage = 'validating-isolated-user-data-path'
+            $dataRootMatch = $appDataRoots | Where-Object {
+              $normalizedRoot = [System.IO.Path]::GetFullPath($_).TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
+              $userDataPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $userDataPath.StartsWith(
+                  $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar,
+                  [System.StringComparison]::OrdinalIgnoreCase
+                )
+            } | Select-Object -First 1
+            if (-not $dataRootMatch) {
+              throw "Installed app data path is outside the isolated APPDATA/LOCALAPPDATA roots: $userDataPath"
+            }
+
+            $workflowStage = 'locating-native-settings'
+            $settingsFilePath = [string]$smokeDetails.settingsFilePath
+            if (-not $settingsFilePath -or -not (Test-Path -LiteralPath $settingsFilePath -PathType Leaf)) {
+              throw "Native Settings file was not created at the installed app path: $settingsFilePath"
+            }
+            $settingsFile = Get-Item -LiteralPath $settingsFilePath
+
+            $workflowStage = 'validating-native-settings'
+            $settings = Get-Content -LiteralPath $settingsFile.FullName -Raw | ConvertFrom-Json
+            if ($settings.allowTerminalSmartActions -ne $true) {
+              throw 'Native terminal-action Settings did not persist across the packaged-app restart'
+            }
+
+            $workflowStage = 'locating-chromium-storage'
+            $localStoragePath = Join-Path $userDataPath 'Local Storage'
+            if (-not (Test-Path -LiteralPath $localStoragePath -PathType Container)) {
+              throw "Chromium local profile storage was not created at the installed app path: $localStoragePath"
+            }
+            $localStorageDir = Get-Item -LiteralPath $localStoragePath
+
+            $workflowStage = 'locating-uninstaller'
+            $uninstaller = Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe' -File | Select-Object -First 1
+            if (-not $uninstaller) { throw "NSIS uninstaller was not found in $installDir" }
+
+            $workflowStage = 'running-uninstaller'
+            $uninstallProcess = Start-Process -FilePath $uninstaller.FullName -ArgumentList @('/S') -Wait -PassThru
+            if ($uninstallProcess.ExitCode -ne 0) {
+              throw "Silent uninstaller exited with code $($uninstallProcess.ExitCode)"
+            }
+
+            $workflowStage = 'checking-app-removal'
+            if (Test-Path $app.FullName) { throw 'The app executable remains after uninstall' }
+
+            $workflowStage = 'checking-settings-retention'
+            if (-not (Test-Path $settingsFile.FullName)) {
+              throw 'Uninstall unexpectedly deleted native Settings despite deleteAppDataOnUninstall=false'
+            }
+
+            $workflowStage = 'checking-profile-retention'
+            if (-not (Test-Path $localStorageDir.FullName)) {
+              throw 'Uninstall unexpectedly deleted local profile storage despite deleteAppDataOnUninstall=false'
+            }
+
+            $workflowStage = 'copying-smoke-diagnostics'
+            Copy-Item $diagnostics 'dist_electron/installed-app-persistence-smoke.json' -Force
+            $workflowStage = 'complete'
+            Write-Host 'Installed-app native Settings and structured profiles survived restart; uninstall preserved user data.'
+          } catch {
+            $failureMessage = $_.Exception.Message
+            $smokeDetails = $null
+            if (Test-Path $diagnostics) {
+              try { $smokeDetails = Get-Content -Path $diagnostics -Raw | ConvertFrom-Json } catch {}
+            }
+            $failureDetails = [ordered]@{
+              stage = 'persistence-workflow-failed'
+              workflowStage = $workflowStage
+              error = $failureMessage
+              smokeDiagnostics = $smokeDetails
+            }
+            $failureDetails | ConvertTo-Json -Depth 8 | Set-Content -Path $diagnostics -Encoding utf8
+            throw
+          }
+
+      - name: Report Windows app smoke failure details
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($name in @('packaged-ui-visual-smoke-diagnostics.json', 'installed-app-persistence-smoke.json')) {
+            $diagnostics = Join-Path $env:RUNNER_TEMP $name
+            if (Test-Path $diagnostics) {
+              $message = (Get-Content -Path $diagnostics -Raw).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Output "::error title=$name::$message"
+            }
+          }
+
+      - name: Publish tagged Windows release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          $installer = Get-ChildItem -Path 'dist_electron' -Filter '*.exe' -File | Select-Object -First 1
+          $portableZip = Get-ChildItem -Path 'dist_electron' -Filter '*.zip' -File | Select-Object -First 1
+          if (-not $installer -or -not $portableZip) { throw 'Expected installer and ZIP assets before publishing' }
+          $assets = @($installer.FullName, $portableZip.FullName)
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @assets --clobber
+          } else {
+            gh release create $tag @assets --verify-tag --title "NØDE Grid Macro 1 Studio $tag" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Could not publish Windows release $tag" }
+
+      - name: Upload Windows packages and visual check
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-grid-macro-1-windows-x64
+          path: |
+            dist_electron/*.exe
+            dist_electron/*.zip
+            dist_electron/packaged-ui-visual-smoke.png
+            dist_electron/installed-app-persistence-smoke.json
+          if-no-files-found: error
+          retention-days: 14

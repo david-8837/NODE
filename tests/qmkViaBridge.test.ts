@@ -164,6 +164,35 @@ describe('QMK/VIA WebHID bridge', () => {
     expect(hid.device.opened).toBe(false);
   });
 
+  it('reads a keymap-only snapshot with stock VIA GET commands and no writes', async () => {
+    const hid = new FakeHidApi();
+    hid.device.seedKeycode(0, 0, 0, 0x1204);
+    hid.device.seedKeycode(0, 3, 0, 0x0028);
+    hid.device.seedEncoder(0, false, 0x00aa);
+    hid.device.seedEncoder(0, true, 0x00a9);
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+
+    const result = await bridge.request({ cmd: 'get_config' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      layerCount: 4,
+      snapshot: {
+        protocolVersion: VIA_PROTOCOL_VERSION,
+        layerCount: 4,
+        capturedLayerCount: 4,
+      },
+    });
+    expect(result.snapshot?.layers[0]).toMatchObject({
+      keys: { r1c1: 0x1204 },
+      enc: { ccw: 0x00aa, cw: 0x00a9, press: 0x0028 },
+    });
+    expect(hid.device.reports.filter((report) => report[0] === 0x04)).toHaveLength(4 * 10);
+    expect(hid.device.reports.filter((report) => report[0] === 0x14)).toHaveLength(4 * 2);
+    expect(hid.device.reports.some((report) => report[0] === 0x05 || report[0] === 0x15)).toBe(false);
+  });
+
   it('reports a failed silent reconnect instead of remaining stuck in connecting', async () => {
     const hid = new FakeHidApi();
     hid.deviceAvailableForSilentScan = true;
@@ -175,6 +204,58 @@ describe('QMK/VIA WebHID bridge', () => {
     expect(status.state).toBe('disconnected');
     expect(status.error).toContain('Unsupported VIA protocol');
     expect(hid.device.opened).toBe(false);
+  });
+
+  it('restores a validated VIA snapshot through standard keycode and encoder SET commands', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    const snapshot = {
+      protocolVersion: VIA_PROTOCOL_VERSION,
+      layerCount: 4,
+      capturedLayerCount: 4,
+      layers: Array.from({ length: 4 }, () => ({
+        keys: Object.fromEntries([
+          ['r1c1', 0x0004], ['r1c2', 0x0005], ['r1c3', 0x0006],
+          ['r2c1', 0x0007], ['r2c2', 0x0008], ['r2c3', 0x0009],
+          ['r3c1', 0x000a], ['r3c2', 0x000b], ['r3c3', 0x000c],
+        ]),
+        enc: { ccw: 0x00aa, cw: 0x00a9, press: 0x0028 },
+      })),
+    };
+
+    const restored = await bridge.request({ cmd: 'restore_config', snapshot });
+
+    expect(restored).toMatchObject({ ok: true, layerCount: 4, changedMappings: 48 });
+    expect(hid.device.keycodes.get('0:0:0')).toBe(0x0004);
+    expect(hid.device.keycodes.get('0:3:0')).toBe(0x0028);
+    expect(hid.device.encoderKeycodes.get('0:0')).toBe(0x00aa);
+    expect(hid.device.encoderKeycodes.get('0:1')).toBe(0x00a9);
+    expect(hid.device.reports.filter((report) => report[0] === 0x05)).toHaveLength(4 * 10);
+    expect(hid.device.reports.filter((report) => report[0] === 0x15)).toHaveLength(4 * 2);
+
+    const reportsBeforeIdempotentRestore = hid.device.reports.length;
+    await expect(bridge.request({ cmd: 'restore_config', snapshot })).resolves.toMatchObject({
+      ok: true,
+      changedMappings: 0,
+    });
+    expect(hid.device.reports.slice(reportsBeforeIdempotentRestore).some(
+      (report) => report[0] === 0x05 || report[0] === 0x15
+    )).toBe(false);
+  });
+
+  it('rejects an invalid VIA restore snapshot before sending any writes', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+
+    const result = await bridge.request({
+      cmd: 'restore_config',
+      snapshot: { protocolVersion: VIA_PROTOCOL_VERSION, layerCount: 4 } as any,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: 'Invalid or incomplete device keymap backup' });
+    expect(hid.device.reports.some((report) => report[0] === 0x05 || report[0] === 0x15)).toBe(false);
   });
 
   it('writes the app keymap and encoder actions using stock VIA command IDs', async () => {

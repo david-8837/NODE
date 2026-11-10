@@ -1,0 +1,184 @@
+/** @vitest-environment jsdom */
+import { act, createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import App from '../src/App';
+
+let container: HTMLDivElement;
+let root: Root;
+
+async function click(button: HTMLButtonElement) {
+  await act(async () => button.click());
+}
+
+async function openPresets() {
+  const presetButton = [...container.querySelectorAll<HTMLButtonElement>('nav button')]
+    .find((button) => button.textContent?.trim() === 'Preset');
+  await act(async () => {
+    presetButton!.click();
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+  });
+}
+
+beforeEach(async () => {
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  window.localStorage.clear();
+  container = document.createElement('div');
+  container.id = 'root';
+  container.classList.add('is-ready');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root.render(createElement(App)));
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  delete (window as Window & { __MACRO_ICONS__?: unknown }).__MACRO_ICONS__;
+});
+
+describe('production React preset experience', () => {
+  it('renders all shipped preset cards and installs platform-aware bindings and custom actions', async () => {
+    await openPresets();
+    expect(container.querySelectorAll('[data-preset-icon]')).toHaveLength(27);
+
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="macOS Presets"]')!);
+    let chatgptIcon = container.querySelector<HTMLElement>('[data-preset-icon="chatgpt"]');
+    let chatgptCard = chatgptIcon?.parentElement?.parentElement?.parentElement;
+    const previewButton = [...(chatgptCard?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.trim() === 'Preview');
+    expect(previewButton).toBeDefined();
+    Object.defineProperty(window, '__MACRO_ICONS__', {
+      configurable: true,
+      value: { d: { search: 'M2 2L22 22' } },
+    });
+    await click(previewButton!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 300));
+    });
+    const previewPage = container.querySelector<HTMLElement>('[aria-label="ChatGPT preset preview"]');
+    expect(previewPage).not.toBeNull();
+    expect(previewPage?.textContent).toContain('Layer preset');
+    expect(previewPage?.textContent).toContain('Author: Node');
+    expect(previewPage?.textContent).toContain('New Chat');
+    expect(previewPage?.textContent).toContain('Starts a fresh conversation.');
+    expect(previewPage?.textContent).toContain('Scroll Down');
+    expect(previewPage?.className).toContain('inset-0');
+    expect(previewPage?.className).toContain('z-50');
+    expect([...previewPage!.querySelectorAll('span')]
+      .find((span) => span.textContent === '↻')?.className).toContain('text-[#0051ff]');
+    const previewKeys = [...(previewPage?.querySelectorAll<HTMLButtonElement>('[data-drop-slot^="r"]') ?? [])];
+    expect(previewKeys).toHaveLength(9);
+    expect(previewKeys.every((key) => key.style.backgroundColor === '')).toBe(true);
+    expect(previewKeys[0]?.className).toContain('hover:border-[#0051ff]');
+    const previewNumbers = [...(previewPage?.querySelectorAll<HTMLElement>('[data-preview-slot-number]') ?? [])];
+    expect(previewNumbers.map((number) => number.textContent)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9']);
+    expect(previewNumbers[0]?.className).toContain('text-[12px]');
+    expect(previewNumbers[0]?.className).toContain('text-white');
+    expect(previewNumbers[0]?.className).toContain('group-hover:drop-shadow-');
+    expect(previewNumbers[0]?.className).not.toContain('absolute');
+
+    await act(async () => {
+      previewKeys[0]!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+    const firstActionNumber = previewPage?.querySelector<HTMLElement>('[data-preview-action-number="1"]');
+    expect(firstActionNumber?.className).toContain('ring-1');
+    expect(firstActionNumber?.className).toContain('shadow-[0_0_9px_rgba(0,81,255,0.65)]');
+
+    await act(async () => {
+      previewKeys[0]!.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+    });
+    await act(async () => {
+      firstActionNumber!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+    expect(previewKeys[0]?.className).toContain('shadow-[0_0_12px_rgba(0,81,255,0.65)]');
+    expect(previewNumbers[0]?.className).toContain('drop-shadow-[0_0_6px_#0051ff]');
+
+    const clockwiseDial = previewPage?.querySelector<HTMLElement>('[data-preview-dial-control="cw"]');
+    const clockwiseDialCircle = previewPage?.querySelector<HTMLElement>('[data-preview-dial-circle="cw"]');
+    const clockwiseActionNumber = previewPage?.querySelector<HTMLElement>('[data-preview-dial-action-number="10"]');
+    await act(async () => {
+      clockwiseDial!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+    expect(clockwiseDialCircle?.className).toContain('ring-2');
+    expect(clockwiseActionNumber?.className).toContain('ring-1');
+
+    await act(async () => {
+      clockwiseDial!.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+      clockwiseActionNumber!.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+    expect(clockwiseDialCircle?.className).toContain('ring-2');
+    expect(clockwiseDialCircle?.className).toContain('shadow-[0_0_12px_rgba(0,81,255,0.65)]');
+
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="Back to presets"]')!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 300));
+    });
+    chatgptIcon = container.querySelector<HTMLElement>('[data-preset-icon="chatgpt"]');
+    chatgptCard = chatgptIcon?.parentElement?.parentElement?.parentElement;
+    const installButton = [...(chatgptCard?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.trim() === 'Install');
+    expect(installButton).toBeDefined();
+    await click(installButton!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+
+    const saved = JSON.parse(window.localStorage.getItem('cm2.state.v2') || 'null');
+    expect(saved.profiles[0].layers[1].r1c1.binding).toBe('New Chat (Cmd + Shift + O)');
+    expect(saved.customItems.Action).toHaveLength(8);
+    expect(saved.customItems['Smart-A']).toContainEqual(
+      expect.objectContaining({ id: 'preset-chatgpt-r3c1', main: 'Instructions' })
+    );
+    expect(container.textContent).toContain('Installed ChatGPT preset on Layer 2');
+
+    const firstKey = container.querySelector<HTMLButtonElement>('[data-drop-slot="r1c1"]');
+    expect(firstKey?.title).toBe('New Chat (Cmd + Shift + O)');
+    expect(firstKey?.style.backgroundColor).toBe('rgb(16, 163, 127)');
+    expect(firstKey?.querySelector('svg path')).not.toBeNull();
+
+    const catalogIconKey = container.querySelector<HTMLButtonElement>('[data-drop-slot="r1c2"]');
+    expect(catalogIconKey?.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 24 24');
+    expect(catalogIconKey?.querySelector('svg path')?.getAttribute('d')).toBe('M2 2L22 22');
+
+    const dial = container.querySelector<HTMLButtonElement>('button[title="Dial: ChatGPT Dial"]');
+    expect(dial?.querySelector('circle')?.getAttribute('fill')).toBe('url(#dialUpperLeft)');
+    expect(dial?.querySelector('circle')?.getAttribute('stroke')).toBe('#262626');
+
+    await click(container.querySelector<HTMLButtonElement>('button[title="Add Layer"]')!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+    const afterAdd = JSON.parse(window.localStorage.getItem('cm2.state.v2') || 'null');
+    expect(afterAdd.profiles[0].layers).toHaveLength(3);
+    expect(afterAdd.profiles[0].layers[1].r1c1.binding).toBe('New Chat (Cmd + Shift + O)');
+    expect(afterAdd.profiles[0].layers[2].r1c1).toMatchObject({ label: '', binding: 'blank' });
+
+    const blankKeySlots = ['r1c1', 'r1c2', 'r1c3', 'r2c1', 'r2c2', 'r2c3', 'r3c1', 'r3c2', 'r3c3'];
+    const visibleBlankKeys = blankKeySlots.map((slot) =>
+      container.querySelector<HTMLButtonElement>(`[data-drop-slot="${slot}"]`)
+    );
+    expect(visibleBlankKeys).toHaveLength(9);
+    expect(visibleBlankKeys.every((key) => key?.title === 'blank')).toBe(true);
+    expect(visibleBlankKeys.every((key) => key?.style.backgroundColor === '')).toBe(true);
+
+    await click(container.querySelector<HTMLButtonElement>('button[title="Open Key Mapping"]')!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+    const mappingDrawer = container.querySelector<HTMLElement>('aside');
+    const actionTab = [...(mappingDrawer?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.trim() === 'Action');
+    expect(actionTab).toBeDefined();
+    await click(actionTab!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 300));
+    });
+    const chatgptGroup = mappingDrawer?.querySelector<HTMLElement>('[data-preset-action-group="chatgpt"]');
+    expect(chatgptGroup?.textContent).toContain('ChatGPT');
+    const chatgptTile = chatgptGroup?.querySelector<HTMLButtonElement>('[data-preset-action-item]');
+    expect(chatgptTile).not.toBeNull();
+    const chatgptActionIcon = chatgptTile?.querySelector<HTMLElement>('[data-preset-action-icon="chatgpt"]');
+    expect(chatgptActionIcon?.style.color).toBe('rgb(16, 163, 127)');
+  });
+});

@@ -1,159 +1,449 @@
 // electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
-const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
-const { spawn, execFile } = require('child_process');
+const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = require('electron');
+const fs = require('fs');
 const path = require('path');
+const { fileURLToPath, pathToFileURL } = require('url');
+const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
+const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 
+const desktopActionExecutor = createDesktopActionExecutor({
+  openExternal: (url) => shell.openExternal(url),
+});
 let mainWindow = null;
-let psWorker = null;
+let visualSmokeCaptureStarted = false;
+let completingQuit = false;
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+// Unpackaged Electron is development. Never let a user-level NODE_ENV value make
+// an installed app load a local development server instead of its bundled UI.
+const isDev = !app.isPackaged;
+const DEFAULT_DEV_SERVER_URL = 'http://localhost:5173/';
 
-// Safe Virtual Keycode Map for Native Keystroke Injection
-const VK_MAP = {
-  win: 0x5b,
-  lwin: 0x5b,
-  rwin: 0x5c,
-  gui: 0x5b,
-  cmd: 0x5b,
-  meta: 0x5b,
-  ctrl: 0x11,
-  control: 0x11,
-  lctrl: 0x11,
-  rctrl: 0x11,
-  alt: 0x12,
-  lalt: 0x12,
-  ralt: 0x12,
-  opt: 0x12,
-  option: 0x12,
-  shift: 0x10,
-  lshift: 0x10,
-  rshift: 0x10,
-  enter: 0x0d,
-  return: 0x0d,
-  esc: 0x1b,
-  escape: 0x1b,
-  tab: 0x09,
-  space: 0x20,
-  backspace: 0x08,
-  delete: 0x2e,
-  del: 0x2e,
-  insert: 0x2d,
-  ins: 0x2d,
-  home: 0x24,
-  end: 0x23,
-  pageup: 0x21,
-  pagedown: 0x22,
-  up: 0x26,
-  down: 0x28,
-  left: 0x25,
-  right: 0x27,
-  f1: 0x70,
-  f2: 0x71,
-  f3: 0x72,
-  f4: 0x73,
-  f5: 0x74,
-  f6: 0x75,
-  f7: 0x76,
-  f8: 0x77,
-  f9: 0x78,
-  f10: 0x79,
-  f11: 0x7a,
-  f12: 0x7b,
-  prtscr: 0x2c,
-  printscreen: 0x2c,
-  volup: 0xaf,
-  'volume+': 0xaf,
-  volume: 0xaf,
-  voldown: 0xae,
-  'volume-': 0xae,
-  mute: 0xad,
-  play: 0xb3,
-  'play/pause': 0xb3,
-  next: 0xb0,
-  prev: 0xb1,
-};
-
-function parseShortcutToVK(rawStr) {
-  const clean = (rawStr || '').toLowerCase().replace(/[\(\)]/g, ' ').trim();
-  if (
-    clean.includes('volume +') ||
-    clean.includes('vol+') ||
-    clean.includes('volume up')
-  )
-    return [0xaf];
-  if (
-    clean.includes('volume -') ||
-    clean.includes('vol-') ||
-    clean.includes('volume down')
-  )
-    return [0xae];
-  if (clean.includes('mute')) return [0xad];
-  if (clean.includes('play') || clean.includes('pause')) return [0xb3];
-  if (clean.includes('next')) return [0xb0];
-  if (clean.includes('prev')) return [0xb1];
-
-  const parts = clean
-    .split(/[+\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const codes = [];
-  for (const part of parts) {
-    if (VK_MAP[part]) {
-      codes.push(VK_MAP[part]);
-    } else if (part.length === 1) {
-      codes.push(part.toUpperCase().charCodeAt(0));
-    }
-  }
-  return codes;
+function isPersistenceSmokeTest() {
+  return app.isPackaged &&
+    app.commandLine.hasSwitch('persistence-smoke-test') &&
+    process.env.NODE_GRID_PERSISTENCE_SMOKE === '1';
 }
 
-function initFastWindowsInjector() {
-  if (process.platform !== 'win32') return;
+// Electron resolves Windows userData through the OS Known Folder API rather
+// than APPDATA alone. Point only the packaged persistence smoke test at its
+// isolated runner directories before Chromium initializes its profile.
+if (isPersistenceSmokeTest() && process.env.APPDATA && path.isAbsolute(process.env.APPDATA)) {
+  const userDataDirectoryName = path.basename(app.getPath('userData'));
+  app.setPath('appData', process.env.APPDATA);
+  app.setPath('userData', path.join(process.env.APPDATA, userDataDirectoryName));
+}
+
+function getDevServerUrl() {
   try {
-    psWorker = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', '-'],
-      { stdio: ['pipe', 'ignore', 'ignore'] }
-    );
-
-    const initScript = `
-$w = Add-Type -MemberDefinition '[DllImport("user32.dll")]public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);' -Name FastWin32Keybd -PassThru
-function Press-Keys([byte[]]$codes) {
-  foreach ($c in $codes) { [FastWin32Keybd]::keybd_event($c, 0, 0, 0) }
-  [System.Threading.Thread]::Sleep(15)
-  for ($i = $codes.Length - 1; $i -ge 0; $i--) { [FastWin32Keybd]::keybd_event($codes[$i], 0, 2, 0) }
-}
-`;
-    psWorker.stdin.write(initScript + '\n');
-    psWorker.on('error', () => {
-      psWorker = null;
-    });
-    psWorker.on('exit', () => {
-      psWorker = null;
-    });
-  } catch (e) {
-    psWorker = null;
-  }
-}
-
-function injectWindowsKeystrokes(vkCodes) {
-  if (!vkCodes || vkCodes.length === 0) return;
-  if (psWorker && psWorker.stdin && !psWorker.stdin.destroyed) {
-    psWorker.stdin.write(`Press-Keys @(${vkCodes.join(',')})\n`);
-  } else {
-    initFastWindowsInjector();
-    if (psWorker && psWorker.stdin) {
-      psWorker.stdin.write(`Press-Keys @(${vkCodes.join(',')})\n`);
+    const candidate = new URL(process.env.VITE_DEV_SERVER_URL || DEFAULT_DEV_SERVER_URL);
+    if (
+      candidate.protocol === 'http:' &&
+      (candidate.hostname === 'localhost' || candidate.hostname === '127.0.0.1')
+    ) {
+      return candidate.href;
     }
+  } catch {}
+  return DEFAULT_DEV_SERVER_URL;
+}
+
+function getAppEntryUrl() {
+  return app.isPackaged
+    ? pathToFileURL(path.join(__dirname, '../dist/index.html')).href
+    : getDevServerUrl();
+}
+
+function isTrustedAppUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const entry = new URL(getAppEntryUrl());
+    if (app.isPackaged) {
+      if (url.protocol !== 'file:') return false;
+      const requestedPath = path.resolve(fileURLToPath(url));
+      const expectedPath = path.resolve(fileURLToPath(entry));
+      // Windows file paths are case-insensitive; Chromium and Node may preserve
+      // different drive/path casing for the same packaged app entry.
+      return process.platform === 'win32'
+        ? requestedPath.toLowerCase() === expectedPath.toLowerCase()
+        : requestedPath === expectedPath;
+    }
+    return url.origin === entry.origin && url.pathname === entry.pathname;
+  } catch {
+    return false;
   }
+}
+
+function isTrustedRenderer(event) {
+  const frame = event.senderFrame;
+  // WebFrameMain identifies the top frame with a null parent; `isMainFrame`
+  // is available in renderer process APIs, not on IPC's senderFrame object.
+  return Boolean(
+    mainWindow &&
+    event.sender === mainWindow.webContents &&
+    frame?.parent === null &&
+    isTrustedAppUrl(frame.url)
+  );
+}
+
+function getRendererTrustDiagnostics(event) {
+  const frame = event.senderFrame;
+  const senderUrl = event.sender?.getURL?.() || '';
+  return {
+    hasMainWindow: Boolean(mainWindow),
+    senderMatchesMainWindow: Boolean(mainWindow && event.sender === mainWindow.webContents),
+    hasSenderFrame: Boolean(frame),
+    senderFrameIsMain: frame ? frame.parent === null : null,
+    senderFrameUrl: frame?.url || null,
+    senderUrl: senderUrl || null,
+    expectedAppUrl: getAppEntryUrl(),
+    senderFrameUrlTrusted: frame ? isTrustedAppUrl(frame.url) : false,
+    senderUrlTrusted: senderUrl ? isTrustedAppUrl(senderUrl) : false,
+  };
+}
+
+const DEFAULT_APP_SETTINGS = Object.freeze({
+  allowAnalytics: false,
+  launchAtStartup: false,
+  allowTerminalSmartActions: false,
+  allowDeviceNotifications: false,
+});
+const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
+
+function getAppSettingsPath() {
+  return path.join(app.getPath('userData'), 'settings.v1.json');
+}
+
+function readStoredAppSettings() {
+  const settings = { ...DEFAULT_APP_SETTINGS };
+  try {
+    const stored = JSON.parse(fs.readFileSync(getAppSettingsPath(), 'utf8'));
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+      for (const key of ['allowAnalytics', 'allowTerminalSmartActions', 'allowDeviceNotifications']) {
+        if (typeof stored[key] === 'boolean') settings[key] = stored[key];
+      }
+    }
+  } catch {}
+  return settings;
+}
+
+function getSettingsCapabilities() {
+  return {
+    launchAtStartup: Boolean(
+      app.isPackaged &&
+      (process.platform === 'win32' || process.platform === 'darwin') &&
+      typeof app.setLoginItemSettings === 'function' &&
+      typeof app.getLoginItemSettings === 'function'
+    ),
+    firmwareFlash: typeof dialog.showOpenDialog === 'function',
+    externalLinks: typeof shell.openExternal === 'function',
+  };
+}
+
+function getNativeAppSettings() {
+  const capabilities = getSettingsCapabilities();
+  let launchAtStartup = false;
+  if (capabilities.launchAtStartup) {
+    try {
+      launchAtStartup = Boolean(app.getLoginItemSettings().openAtLogin);
+    } catch {}
+  }
+  return {
+    ok: true,
+    settings: { ...readStoredAppSettings(), launchAtStartup },
+    capabilities,
+  };
+}
+
+function writeStoredAppSettings(settings) {
+  const pathToSettings = getAppSettingsPath();
+  fs.mkdirSync(path.dirname(pathToSettings), { recursive: true });
+  fs.writeFileSync(pathToSettings, JSON.stringify(settings, null, 2), { mode: 0o600 });
+}
+
+function isAllowedExternalUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      url.hostname.toLowerCase() === 'github.com'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedHardwareOrigin(origin) {
+  if (typeof origin !== 'string') return false;
+  if (app.isPackaged) {
+    return origin === 'null' || origin === 'file://' || origin.startsWith('file:');
+  }
+  return origin === new URL(getDevServerUrl()).origin;
+}
+
+function getInitialWindowBounds() {
+  const workArea = screen.getPrimaryDisplay().workAreaSize;
+  const width = Math.min(1280, Math.max(640, workArea.width - 32));
+  const height = Math.min(840, Math.max(520, workArea.height - 32));
+  return {
+    width,
+    height,
+    minWidth: Math.min(900, width),
+    minHeight: Math.min(600, height),
+  };
+}
+
+function isVisualSmokeTest() {
+  return app.isPackaged && app.commandLine.hasSwitch('visual-smoke-test');
+}
+
+function writeVisualSmokeDiagnostics(details) {
+  if (!isVisualSmokeTest()) return;
+  const diagnosticsPath = process.env.NODE_GRID_VISUAL_SMOKE_DIAGNOSTICS;
+  if (!diagnosticsPath) return;
+  try {
+    fs.mkdirSync(path.dirname(diagnosticsPath), { recursive: true });
+    fs.writeFileSync(
+      diagnosticsPath,
+      JSON.stringify({ ...details, timestamp: new Date().toISOString() }, null, 2)
+    );
+  } catch (error) {
+    console.error('Could not write packaged UI smoke diagnostics:', error);
+  }
+}
+
+async function captureVisualSmokeScreenshot() {
+  const screenshotPath = process.env.NODE_GRID_VISUAL_SMOKE_SCREENSHOT;
+  let renderedUi = null;
+  try {
+    if (!screenshotPath) {
+      throw new Error('NODE_GRID_VISUAL_SMOKE_SCREENSHOT must name the PNG output path');
+    }
+
+    // Let the initial UI animation finish so the artifact shows the normal app,
+    // not its entry transition.
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      throw new Error('The packaged application window closed before capture');
+    }
+
+    renderedUi = await mainWindow.webContents.executeJavaScript(`(() => {
+      const root = document.querySelector('#root');
+      const keySlots = Array.from(root?.querySelectorAll('[data-drop-slot]') || [])
+        .map((element) => element.getAttribute('data-drop-slot'))
+        .filter((slot) => /^r[1-3]c[1-3]$/.test(slot));
+      const navText = root?.querySelector('nav')?.textContent || '';
+      const centerPad = root?.querySelector('div.absolute.inset-0.flex.flex-col.items-center.justify-center.pointer-events-none.z-10');
+      return {
+        title: document.title,
+        appMounted: Boolean(root?.firstElementChild),
+        keyCount: keySlots.length,
+        hasEncoder: Boolean(root?.querySelector('button[title^="Dial:"]')),
+        hasNavigation: ['Keymap', 'Preset', 'Settings'].every((label) => navText.includes(label)),
+        centerPadPosition: centerPad ? getComputedStyle(centerPad).position : null,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      };
+    })()`);
+
+    if (
+      !renderedUi.appMounted ||
+      renderedUi.keyCount !== 9 ||
+      !renderedUi.hasEncoder ||
+      !renderedUi.hasNavigation ||
+      renderedUi.centerPadPosition !== 'relative'
+    ) {
+      throw new Error(`Packaged UI did not pass its visual smoke checks: ${JSON.stringify(renderedUi)}`);
+    }
+
+    const image = await mainWindow.webContents.capturePage();
+    const png = image.toPNG();
+    // A clean, compact Windows rendering can compress below 10 KiB; the DOM
+    // checks above plus the workflow's PNG header/dimension checks establish
+    // validity, so reject only implausibly tiny image data here.
+    if (png.length < 4 * 1024) {
+      throw new Error(`Screenshot is unexpectedly small (${png.length} bytes)`);
+    }
+    fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+    fs.writeFileSync(screenshotPath, png);
+    console.log(`Packaged UI visual smoke test passed: ${screenshotPath} (${png.length} bytes)`);
+    app.exit(0);
+  } catch (error) {
+    const diagnostics = {
+      stage: 'capture-failed',
+      error: error instanceof Error ? error.message : String(error),
+      renderedUi,
+      windowBounds: mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null,
+      pageUrl: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getURL() : null,
+    };
+    writeVisualSmokeDiagnostics(diagnostics);
+    console.error('Packaged UI visual smoke test failed:', JSON.stringify(diagnostics));
+    app.exit(1);
+  }
+}
+
+function startVisualSmokeCapture() {
+  if (!isVisualSmokeTest() || visualSmokeCaptureStarted || !mainWindow) return;
+  visualSmokeCaptureStarted = true;
+  writeVisualSmokeDiagnostics({ stage: 'capture-started', pageUrl: mainWindow.webContents.getURL() });
+  mainWindow.show();
+  void captureVisualSmokeScreenshot();
+}
+
+let persistenceSmokeTestStarted = false;
+
+function writePersistenceSmokeDiagnostics(details) {
+  const diagnosticsPath = process.env.NODE_GRID_PERSISTENCE_SMOKE_DIAGNOSTICS;
+  if (!diagnosticsPath) return;
+  try {
+    fs.mkdirSync(path.dirname(diagnosticsPath), { recursive: true });
+    fs.writeFileSync(
+      diagnosticsPath,
+      JSON.stringify({
+        appDataEnvironment: process.env.APPDATA || null,
+        localAppDataEnvironment: process.env.LOCALAPPDATA || null,
+        appDataPath: app.getPath('appData'),
+        userDataPath: app.getPath('userData'),
+        settingsFilePath: getAppSettingsPath(),
+        ...details,
+        timestamp: new Date().toISOString(),
+      }, null, 2)
+    );
+  } catch (error) {
+    console.error('Could not write installed-app persistence diagnostics:', error);
+  }
+}
+
+async function runPersistenceSmokeTest() {
+  const phase = process.env.NODE_GRID_PERSISTENCE_PHASE;
+  const profileName = 'Installed persistence smoke profile';
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Persistence smoke window is unavailable');
+    if (phase === 'write') {
+      const ready = await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+        const deadline = Date.now() + 25000;
+        const check = () => {
+          if (document.querySelector('#root')?.firstElementChild) return resolve(true);
+          if (Date.now() >= deadline) return reject(new Error('Renderer did not mount before the persistence write'));
+          setTimeout(check, 100);
+        };
+        check();
+      })`);
+      if (!ready) throw new Error('Renderer was not ready to persist test data');
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const state = {
+        v: 1,
+        profiles: [{
+          id: 'installed-persistence-smoke-profile',
+          name: profileName,
+          color: '#0051ff',
+          layers: [{
+            r1c1: {
+              label: 'Smoke shortcut',
+              binding: 'Smoke shortcut (Ctrl + Shift + S)',
+              actionType: 'Shortcut',
+              execution: { kind: 'shortcut', value: 'Ctrl + Shift + S' },
+            },
+          }],
+        }],
+        activeProfileIndex: 0,
+        customItems: {
+          Action: [{
+            id: 'installed-persistence-smoke-action',
+            main: 'Smoke sequence',
+            listLabel: 'Smoke sequence (Ctrl + S)',
+            macropadLabel: 'Smoke',
+            execution: {
+              kind: 'sequence',
+              steps: [{ kind: 'key', key: 'Ctrl + S', mode: 'press-release' }],
+            },
+          }],
+          'Multi-A': [],
+          'Smart-A': [],
+        },
+      };
+      const serializedState = JSON.stringify(state);
+      const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+        const setting = await window.electronAPI?.setAppSetting('allowTerminalSmartActions', true);
+        if (!setting?.ok || setting.settings?.allowTerminalSmartActions !== true) {
+          const error = setting?.error || 'Native Settings did not save the terminal-action preference';
+          throw new Error(error + (setting?.diagnostics ? ' ' + JSON.stringify(setting.diagnostics) : ''));
+        }
+        window.localStorage.setItem('cm2.state.v2', ${JSON.stringify(serializedState)});
+        const savedState = JSON.parse(window.localStorage.getItem('cm2.state.v2') || 'null');
+        if (savedState?.profiles?.[0]?.name !== ${JSON.stringify(profileName)}) {
+          throw new Error('The profile state was not written to the installed app storage');
+        }
+        return { settingSaved: true, profileSaved: true };
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      writePersistenceSmokeDiagnostics({ stage: 'write-complete', ...result });
+    } else if (phase === 'verify') {
+      const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+        const expectedName = ${JSON.stringify(profileName)};
+        const deadline = Date.now() + 30000;
+        while (Date.now() < deadline) {
+          const profileVisible = Array.from(document.querySelectorAll('[title]')).some((element) =>
+            element.getAttribute('title') === expectedName && element.textContent?.trim() === expectedName
+          );
+          if (profileVisible) {
+            const native = await window.electronAPI?.getAppSettings();
+            const rawState = window.localStorage.getItem('cm2.state.v2');
+            const state = rawState ? JSON.parse(rawState) : null;
+            const shortcut = state?.profiles?.[0]?.layers?.[0]?.r1c1?.execution;
+            const custom = state?.customItems?.Action?.[0]?.execution;
+            if (native?.ok && native.settings?.allowTerminalSmartActions === true &&
+                shortcut?.kind === 'shortcut' && shortcut?.value === 'Ctrl + Shift + S' &&
+                custom?.kind === 'sequence' && custom?.steps?.[0]?.key === 'Ctrl + S') {
+              return {
+                settingRestored: true,
+                profileLoaded: true,
+                structuredExecutionRestored: true,
+                profileName: expectedName,
+              };
+            }
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        throw new Error('Native Settings or structured profile data did not survive the app restart');
+      })()`);
+      writePersistenceSmokeDiagnostics({ stage: 'verify-complete', ...result });
+    } else {
+      throw new Error('NODE_GRID_PERSISTENCE_PHASE must be write or verify');
+    }
+    console.log(`Installed-app persistence smoke test passed (${phase})`);
+    app.quit();
+  } catch (error) {
+    const details = {
+      stage: 'persistence-smoke-failed',
+      phase,
+      error: error instanceof Error ? error.message : String(error),
+      pageUrl: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getURL() : null,
+    };
+    writePersistenceSmokeDiagnostics(details);
+    console.error('Installed-app persistence smoke test failed:', JSON.stringify(details));
+    app.exit(1);
+  }
+}
+
+function startPersistenceSmokeTest() {
+  if (!isPersistenceSmokeTest() || persistenceSmokeTestStarted || !mainWindow) return;
+  persistenceSmokeTestStarted = true;
+  void runPersistenceSmokeTest();
 }
 
 function createWindow() {
+  const bounds = getInitialWindowBounds();
+  if (isVisualSmokeTest()) {
+    const workArea = screen.getPrimaryDisplay().workAreaSize;
+    bounds.width = Math.min(1100, Math.max(640, workArea.width - 32));
+    bounds.height = Math.min(700, Math.max(520, workArea.height - 32));
+    bounds.minWidth = Math.min(900, bounds.width);
+    bounds.minHeight = Math.min(600, bounds.height);
+  }
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 1024,
-    minHeight: 700,
+    ...bounds,
+    center: true,
     backgroundColor: '#0a0a0a',
     title: 'NØDE — Grid Macro 1 Studio',
     titleBarStyle: 'hidden',
@@ -176,73 +466,122 @@ function createWindow() {
 
   const ses = mainWindow.webContents.session;
 
-  // Granular WebHID & Web Serial permission checking
+  // Limit device access to the expected VIA Raw HID keyboard and RP2040 serial
+  // interface, and only from the trusted app window/origin.
   ses.setDevicePermissionHandler((details) => {
-    // Only allow HID and Serial for USB devices
-    if (details.deviceType === 'hid' || details.deviceType === 'serial') {
-      return true;
+    if (!isAllowedHardwareOrigin(details.origin) || !details.device) return false;
+    if (details.deviceType === 'hid') {
+      return details.device.vendorId === 0xfeed && details.device.productId === 0x6001;
+    }
+    if (details.deviceType === 'serial') {
+      return details.device.vendorId?.toLowerCase() === '2e8a';
     }
     return false;
   });
 
-  // Strict permission handler: only allow 'serial' and 'hid' when originating from internal app
   ses.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    // Allow serial and hid permissions for local dev and packaged file protocols
-    if (permission === 'serial' || permission === 'hid') {
-      if (
-        requestingOrigin.startsWith('http://localhost:') ||
-        requestingOrigin.startsWith('http://127.0.0.1:') ||
-        requestingOrigin === 'null' ||
-        requestingOrigin.startsWith('file:')
-      ) {
-        return true;
-      }
+    if (
+      webContents !== mainWindow?.webContents ||
+      !isTrustedAppUrl(webContents.getURL()) ||
+      !isAllowedHardwareOrigin(requestingOrigin)
+    ) {
+      return false;
     }
-    // Block all other high-privilege permissions (camera, microphone, geolocation, etc.)
-    return false;
+    return permission === 'serial' || permission === 'hid';
   });
 
-  // Automatically select connected RP2040-Zero device when requested by web app
+  // Select only the supported RP2040 USB serial device; never fall back to an
+  // unrelated port that happened to be connected.
   ses.on('select-serial-port', (event, portList, webContents, callback) => {
     event.preventDefault();
-    if (portList && portList.length > 0) {
-      const rp2040Port = portList.find(
-        (p) =>
-          p.vendorId === '2e8a' ||
-          p.vendorId === '2E8A' ||
-          (p.displayName && p.displayName.includes('RP2040'))
-      );
-      callback(rp2040Port ? rp2040Port.portId : portList[0].portId);
-    } else {
+    if (webContents !== mainWindow?.webContents || !isTrustedAppUrl(webContents.getURL())) {
       callback('');
+      return;
     }
+    const rp2040Port = (portList || []).find(
+      (port) => port.vendorId?.toLowerCase() === '2e8a'
+    );
+    callback(rp2040Port?.portId || '');
   });
 
   ses.on('select-hid-device', (event, details, callback) => {
     event.preventDefault();
-    if (details.deviceList && details.deviceList.length > 0) {
-      const rp2040Hid = details.deviceList.find(
-        (d) => d.vendorId === 0x2e8a || d.vendorId === 0xfeed
-      );
-      callback(rp2040Hid ? rp2040Hid.deviceId : details.deviceList[0].deviceId);
-    } else {
-      callback('');
-    }
+    const viaDevice = (details.deviceList || []).find(
+      (device) => device.vendorId === 0xfeed && device.productId === 0x6001
+    );
+    callback(viaDevice?.deviceId || '');
   });
 
-  // Load URL
-  if (isDev && process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+  const handleUntrustedNavigation = (event, targetUrl) => {
+    if (isTrustedAppUrl(targetUrl)) return;
+    event.preventDefault();
+    try {
+      const parsedUrl = new URL(targetUrl);
+      if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+        shell.openExternal(parsedUrl.href);
+      }
+    } catch {}
+  };
+  mainWindow.webContents.on('will-navigate', handleUntrustedNavigation);
+  mainWindow.webContents.on('will-redirect', handleUntrustedNavigation);
+
+  if (isPersistenceSmokeTest()) {
+    mainWindow.webContents.once('did-finish-load', startPersistenceSmokeTest);
+    mainWindow.webContents.on(
+      'did-fail-load',
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame) return;
+        const details = { stage: 'persistence-load-failed', errorCode, errorDescription, validatedURL };
+        writePersistenceSmokeDiagnostics(details);
+        console.error('Installed-app persistence smoke could not load:', JSON.stringify(details));
+        app.exit(1);
+      }
+    );
+  }
+
+  // Packaged builds load the Vite output using file://; its relative asset base
+  // keeps the inline configurator and static public assets working inside asar.
+  if (isDev) {
+    mainWindow.loadURL(getAppEntryUrl());
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
+  if (isVisualSmokeTest()) {
+    // A packaged smoke-test window is initially hidden. Start from
+    // did-finish-load so the test cannot hang if ready-to-show is delayed by
+    // headless/virtualized Windows graphics; the capture function guards
+    // against this and ready-to-show racing each other.
+    mainWindow.webContents.once('did-finish-load', startVisualSmokeCapture);
+    mainWindow.webContents.on(
+      'did-fail-load',
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame) return;
+        const diagnostics = {
+          stage: 'main-frame-load-failed',
+          errorCode,
+          errorDescription,
+          validatedURL,
+        };
+        writeVisualSmokeDiagnostics(diagnostics);
+        console.error('Packaged UI failed to load:', diagnostics);
+        app.exit(1);
+      }
+    );
+    mainWindow.webContents.on('render-process-gone', (_event, details) => {
+      const diagnostics = { stage: 'renderer-process-gone', ...details };
+      writeVisualSmokeDiagnostics(diagnostics);
+      console.error('Packaged UI renderer exited unexpectedly:', diagnostics);
+      app.exit(1);
+    });
+  }
+
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    if (!isPersistenceSmokeTest()) mainWindow.show();
     if (isDev) {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
+    } else {
+      startVisualSmokeCapture();
     }
   });
 
@@ -258,133 +597,195 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    void desktopActionExecutor.setSimulationEnabled(false);
   });
 }
 
 // IPC Handlers for Native Windows Control
-ipcMain.handle('window-minimize', () => {
-  if (mainWindow) mainWindow.minimize();
+ipcMain.handle('window-minimize', (event) => {
+  if (isTrustedRenderer(event) && mainWindow) mainWindow.minimize();
 });
 
-ipcMain.handle('window-maximize', () => {
-  if (mainWindow) {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
-    }
+ipcMain.handle('window-maximize', (event) => {
+  if (!isTrustedRenderer(event) || !mainWindow) return;
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
   }
 });
 
-ipcMain.handle('window-close', () => {
-  if (mainWindow) mainWindow.close();
+ipcMain.handle('window-close', (event) => {
+  if (isTrustedRenderer(event) && mainWindow) mainWindow.close();
 });
 
-ipcMain.handle('window-is-maximized', () => {
-  return mainWindow ? mainWindow.isMaximized() : false;
+ipcMain.handle('window-is-maximized', (event) => {
+  return isTrustedRenderer(event) && mainWindow ? mainWindow.isMaximized() : false;
 });
 
-ipcMain.handle('get-app-version', () => {
-  return app.getVersion();
+ipcMain.handle('get-app-version', (event) => {
+  return isTrustedRenderer(event) ? app.getVersion() : null;
 });
 
-// Sanitized & Safe Smart Action Execution (Open URL, Launch App, Safe Commands, Inject Keystrokes)
-ipcMain.handle('execute-smart-action', async (event, payload) => {
-  if (!payload || typeof payload !== 'object') {
-    return { success: false, error: 'Invalid payload' };
+ipcMain.handle('get-app-settings', (event) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  try {
+    return getNativeAppSettings();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
-  const { type, value } = payload;
-  if (!value || typeof value !== 'string') {
-    return { success: false, error: 'Invalid action value' };
+});
+
+ipcMain.handle('set-app-setting', (event, key, value) => {
+  if (!isTrustedRenderer(event)) {
+    return {
+      ok: false,
+      error: 'Untrusted renderer',
+      ...(isPersistenceSmokeTest() ? { diagnostics: getRendererTrustDiagnostics(event) } : {}),
+    };
+  }
+  if (!APP_SETTING_KEYS.has(key) || typeof value !== 'boolean') {
+    return { ok: false, error: 'Invalid app setting' };
   }
 
   try {
-    if (type === 'Web') {
-      let urlStr = value.trim();
-      if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
-        urlStr = 'https://' + urlStr;
+    if (key === 'launchAtStartup') {
+      if (!getSettingsCapabilities().launchAtStartup) {
+        return { ok: false, error: 'Launch at startup is only supported by an installed Windows or macOS app' };
       }
-      const parsedUrl = new URL(urlStr);
-      if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
-        await shell.openExternal(parsedUrl.href);
-        return { success: true, message: `Opened URL: ${parsedUrl.href}` };
-      }
-      return { success: false, error: 'Unsupported URL protocol' };
-    } else if (type === 'App') {
-      const appTarget = value.trim();
-      // Safe execution using shell.openPath or direct sanitized execFile
-      if (path.isAbsolute(appTarget)) {
-        await shell.openPath(appTarget);
-        return { success: true, message: `Opened Path: ${appTarget}` };
-      }
-      // Common Windows app aliases allowlist
-      const SAFE_WIN_APPS = {
-        calc: 'calc.exe',
-        calculator: 'calc.exe',
-        notepad: 'notepad.exe',
-        explorer: 'explorer.exe',
-        cmd: 'cmd.exe',
-        powershell: 'powershell.exe',
-        taskmgr: 'taskmgr.exe',
-        spotify: 'spotify.exe',
-        code: 'code.cmd',
-      };
-      const cleanKey = appTarget.toLowerCase().replace(/\.exe$/i, '');
-      const binaryName = SAFE_WIN_APPS[cleanKey] || appTarget;
+      app.setLoginItemSettings({ openAtLogin: value, path: process.execPath });
+      return getNativeAppSettings();
+    }
 
-      if (process.platform === 'win32') {
-        execFile('cmd.exe', ['/c', 'start', '', binaryName], { windowsHide: true }, (err) => {
-          if (err) console.error('App launch error:', err);
-        });
-      } else {
-        execFile('open', ['-a', appTarget], (err) => {
-          if (err) console.error('App launch fallback error:', err);
-        });
-      }
-      return { success: true, message: `Launched App: ${appTarget}` };
-    } else if (type === 'Cmd') {
-      // Command sanitization & execution protection
-      const rawCmd = value.trim();
-      // Block dangerous chaining operators when untrusted
-      const containsDangerousPipes = /[;&|`$><]/.test(rawCmd);
-      if (containsDangerousPipes) {
+    const settings = { ...readStoredAppSettings(), [key]: value };
+    writeStoredAppSettings(settings);
+    return getNativeAppSettings();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('open-external-url', async (event, rawUrl) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  if (!isAllowedExternalUrl(rawUrl)) {
+    return { ok: false, error: 'Only trusted HTTPS GitHub links can be opened from Settings' };
+  }
+  try {
+    await shell.openExternal(new URL(rawUrl).href);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('flash-uf2', async (event) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  if (!mainWindow || !getSettingsCapabilities().firmwareFlash) {
+    return { ok: false, error: 'Firmware flashing is unavailable in this desktop environment' };
+  }
+
+  try {
+    const firmwareSelection = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose Grid Macro 1 RP2040 firmware',
+      properties: ['openFile'],
+      filters: [{ name: 'RP2040 UF2 firmware', extensions: ['uf2'] }],
+    });
+    if (firmwareSelection.canceled || firmwareSelection.filePaths.length !== 1) {
+      return { ok: false, cancelled: true };
+    }
+
+    const firmwarePath = firmwareSelection.filePaths[0];
+    if (path.extname(firmwarePath).toLowerCase() !== '.uf2') {
+      return { ok: false, error: 'Choose a .uf2 firmware file' };
+    }
+    const firmware = await fs.promises.readFile(firmwarePath);
+    const validation = validateRp2040Uf2(firmware);
+    if (!validation.ok) return validation;
+
+    const bootloaderSelection = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose INFO_UF2.TXT on the mounted RPI-RP2 bootloader drive',
+      properties: ['openFile'],
+      filters: [{ name: 'RP2040 bootloader marker', extensions: ['txt'] }],
+    });
+    if (bootloaderSelection.canceled || bootloaderSelection.filePaths.length !== 1) {
+      return { ok: false, cancelled: true };
+    }
+
+    const markerPath = bootloaderSelection.filePaths[0];
+    if (path.basename(markerPath).toLowerCase() !== 'info_uf2.txt') {
+      return { ok: false, error: 'Select INFO_UF2.TXT from the mounted RPI-RP2 drive' };
+    }
+    const marker = await fs.promises.readFile(markerPath, 'utf8');
+    if (!/\bRPI-RP2\b/i.test(marker)) {
+      return { ok: false, error: 'That bootloader marker does not identify the RPI-RP2 drive' };
+    }
+
+    const destination = path.join(path.dirname(markerPath), 'firmware.uf2');
+    try {
+      await fs.promises.writeFile(destination, firmware, { flag: 'wx' });
+    } catch (error) {
+      if (error && error.code === 'EEXIST') {
         return {
-          success: false,
-          error: 'Security Warning: Command contains restricted shell characters.',
+          ok: false,
+          error: 'A firmware.uf2 file is already on that drive. Eject it, re-enter BOOTSEL mode, and try again.',
         };
       }
-      // Execute command safely as an isolated argument
-      const parts = rawCmd.split(/\s+/).filter(Boolean);
-      if (parts.length > 0) {
-        const bin = parts[0];
-        const args = parts.slice(1);
-        execFile(bin, args, { windowsHide: true, timeout: 5000 }, (err) => {
-          if (err) console.error('Cmd execution error:', err);
-        });
-        return { success: true, message: `Executed Command: ${rawCmd}` };
-      }
-    } else if (type === 'Shortcut' || type === 'Key' || !type) {
-      if (process.platform === 'win32') {
-        const vkCodes = parseShortcutToVK(value);
-        if (vkCodes.length > 0) {
-          injectWindowsKeystrokes(vkCodes);
-          return { success: true, message: `Injected Keystroke: ${value}` };
-        }
-      }
-      return { success: true, message: `Shortcut: ${value}` };
-    } else if (type === 'Text') {
-      return { success: true, message: `Text: ${value}` };
+      throw error;
     }
-  } catch (err) {
-    console.error('Smart Action Error:', err);
-    return { success: false, error: err.message };
+
+    return {
+      ok: true,
+      message: 'Firmware copied to the RPI-RP2 bootloader drive. The board should flash and reboot automatically; reconnect it after it returns to normal mode.',
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
-  return { success: false };
+});
+
+ipcMain.handle('set-simulation-enabled', async (event, enabled) => {
+  if (!isTrustedRenderer(event)) {
+    return { ok: false, enabled: false, error: 'Untrusted renderer' };
+  }
+  if (typeof enabled !== 'boolean') {
+    return { ok: false, enabled: false, error: 'Simulation state must be a boolean' };
+  }
+
+  try {
+    const result = await desktopActionExecutor.setSimulationEnabled(enabled);
+    return { ok: result.success, enabled: result.enabled, error: result.error };
+  } catch (error) {
+    return {
+      ok: false,
+      enabled: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+});
+
+ipcMain.handle('execute-smart-action', async (event, payload) => {
+  if (!isTrustedRenderer(event)) return { success: false, error: 'Untrusted renderer' };
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { success: false, error: 'Invalid action payload' };
+  }
+
+  try {
+    return await desktopActionExecutor.execute(payload, {
+      // Settings are read in the main process; the renderer cannot grant itself
+      // terminal-command permission by setting a request field.
+      allowTerminal: readStoredAppSettings().allowTerminalSmartActions === true,
+      commandConsent: payload.commandConsent === true,
+    });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
 });
 
 // App Lifecycle
 app.whenReady().then(() => {
-  initFastWindowsInjector();
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.node.gridmacro1');
+  }
+  writeVisualSmokeDiagnostics({ stage: 'app-ready', packaged: app.isPackaged });
   createWindow();
 
   const template = [
@@ -453,13 +854,14 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', (event) => {
+  if (completingQuit) return;
+  event.preventDefault();
+  completingQuit = true;
+  void desktopActionExecutor.close().finally(() => app.quit());
+});
+
 app.on('window-all-closed', () => {
-  if (psWorker) {
-    try {
-      psWorker.kill();
-    } catch {}
-    psWorker = null;
-  }
   if (process.platform !== 'darwin') {
     app.quit();
   }

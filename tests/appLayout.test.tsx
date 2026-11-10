@@ -19,9 +19,13 @@ function snapshotElement(element: Element): unknown {
     [...element.attributes]
       .filter(
         (attribute) =>
-          !(attribute.name === 'style' && attribute.value.trim() === 'transform: none;')
+          !(attribute.name === 'style' && ['transform: none;', 'opacity: 1; transform: none;'].includes(attribute.value.trim()))
       )
-      .map(({ name, value }) => [name, value])
+      .map(({ name, value }) => [
+        name,
+        // Exclude the loading-curtain hook from the stable layout snapshot.
+        name === 'class' ? value.replace(/^app-shell\s+/, '') : value,
+      ])
       .sort(([left], [right]) => left.localeCompare(right))
   );
   const text = [...element.childNodes]
@@ -43,7 +47,10 @@ let root: Root;
 
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  window.localStorage.clear();
   container = document.createElement('div');
+  container.id = 'root';
+  container.classList.add('is-ready');
   document.body.append(container);
   root = createRoot(container);
 });

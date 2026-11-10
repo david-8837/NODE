@@ -87,12 +87,29 @@ export interface ViaConfiguration {
   layers: ViaConfigLayer[];
 }
 
+export interface ViaKeymapSnapshotLayer {
+  keys: Record<string, number>;
+  enc: { ccw: number; cw: number; press: number };
+}
+
+/** A read-only VIA keymap snapshot. No profile metadata is stored on-device. */
+export interface ViaKeymapSnapshot {
+  protocolVersion: number;
+  layerCount: number;
+  capturedLayerCount: number;
+  layers: ViaKeymapSnapshotLayer[];
+}
+
 export interface BridgeResult {
   ok: boolean;
   error?: string;
   warnings?: string[];
   layerCount?: number;
   localOnly?: boolean;
+  snapshot?: ViaKeymapSnapshot;
+  changedMappings?: number;
+  /** True only when a local pre-restore keymap snapshot was saved before a restore write. */
+  preRestoreBackupSaved?: boolean;
 }
 
 const KEY_SLOTS = [
@@ -374,12 +391,48 @@ export class QmkViaBridge {
     this.emit({ type: 'disconnect' });
   }
 
-  /** Implements the current renderer's set_config call using stock VIA reports. */
-  public async request(request: { cmd?: string; config?: ViaConfiguration }): Promise<BridgeResult> {
-    if (request?.cmd !== 'set_config') return { ok: false, error: 'Unsupported QMK/VIA request' };
+  /**
+   * These command names are local renderer APIs, not firmware commands.
+   * Reads and restores use only the stock VIA keycode/encoder reports below.
+   */
+  public async request(request: {
+    cmd?: string;
+    config?: ViaConfiguration;
+    snapshot?: ViaKeymapSnapshot;
+  }): Promise<BridgeResult> {
+    if (!['set_config', 'get_config', 'restore_config'].includes(request?.cmd ?? '')) {
+      return { ok: false, error: 'Unsupported QMK/VIA request' };
+    }
     if (!this.device || this.status.state !== 'connected') {
       return { ok: false, error: 'No QMK/VIA device is connected' };
     }
+
+    if (request.cmd === 'get_config' || request.cmd === 'restore_config') {
+      try {
+        const layerCount = await this.readLayerCount();
+        if (request.cmd === 'get_config') {
+          const snapshot = await this.readDeviceKeymap(layerCount);
+          return {
+            ok: true,
+            layerCount,
+            snapshot,
+            warnings: layerCount > 8
+              ? [`Device has ${layerCount} layers; the snapshot includes only the first 8`]
+              : [],
+          };
+        }
+        const restored = await this.restoreDeviceKeymap(request.snapshot, layerCount);
+        return {
+          ok: true,
+          layerCount,
+          changedMappings: restored.changedMappings,
+          warnings: restored.warnings,
+        };
+      } catch (error) {
+        return { ok: false, error: this.errorMessage(error) };
+      }
+    }
+
     if (
       request.config?.version !== 1 ||
       !Array.isArray(request.config.layers) ||
@@ -546,6 +599,117 @@ export class QmkViaBridge {
       } catch {}
       throw error;
     }
+  }
+
+  private async readDeviceKeymap(layerCount: number): Promise<ViaKeymapSnapshot> {
+    const capturedLayerCount = Math.min(layerCount, 8);
+    const layers: ViaKeymapSnapshotLayer[] = [];
+    for (let layer = 0; layer < capturedLayerCount; layer += 1) {
+      const keys: Record<string, number> = {};
+      for (const [slot, row, col] of KEY_SLOTS) {
+        keys[slot] = await this.readKeycode(layer, row, col);
+      }
+      layers.push({
+        keys,
+        enc: {
+          ccw: await this.readEncoder(layer, false),
+          cw: await this.readEncoder(layer, true),
+          press: await this.readKeycode(layer, 3, 0),
+        },
+      });
+    }
+    return {
+      protocolVersion: VIA_PROTOCOL_VERSION,
+      layerCount,
+      capturedLayerCount,
+      layers,
+    };
+  }
+
+  private async restoreDeviceKeymap(
+    candidate: ViaKeymapSnapshot | undefined,
+    deviceLayerCount: number,
+  ): Promise<{ changedMappings: number; warnings: string[] }> {
+    const snapshot = this.validateKeymapSnapshot(candidate);
+    const warnings: string[] = [];
+    const layersToRestore = Math.min(snapshot.capturedLayerCount, deviceLayerCount, 8);
+    if (snapshot.layerCount !== deviceLayerCount) {
+      warnings.push(`Backup captured ${snapshot.layerCount} layers; this device has ${deviceLayerCount}. Only ${layersToRestore} common layers can be restored`);
+    }
+    if (deviceLayerCount > 8 || snapshot.capturedLayerCount < snapshot.layerCount) {
+      warnings.push('This tool supports at most 8 layers; higher device layers were left unchanged');
+    }
+
+    let changedMappings = 0;
+    for (let layer = 0; layer < layersToRestore; layer += 1) {
+      const source = snapshot.layers[layer];
+      for (const [slot, row, col] of KEY_SLOTS) {
+        const keycode = source.keys[slot];
+        const current = await this.readKeycode(layer, row, col);
+        if (current !== keycode) {
+          await this.setKeycode(layer, row, col, keycode);
+          changedMappings += 1;
+        }
+      }
+      for (const direction of [
+        { name: 'ccw', clockwise: false },
+        { name: 'cw', clockwise: true },
+      ] as const) {
+        const keycode = source.enc[direction.name];
+        const current = await this.readEncoder(layer, direction.clockwise);
+        if (current !== keycode) {
+          await this.setEncoder(layer, direction.clockwise, keycode);
+          changedMappings += 1;
+        }
+      }
+      const currentPress = await this.readKeycode(layer, 3, 0);
+      if (currentPress !== source.enc.press) {
+        await this.setKeycode(layer, 3, 0, source.enc.press);
+        changedMappings += 1;
+      }
+    }
+    return { changedMappings, warnings };
+  }
+
+  private validateKeymapSnapshot(candidate: unknown): ViaKeymapSnapshot {
+    if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      throw new Error('Invalid device keymap backup');
+    }
+    const snapshot = candidate as Partial<ViaKeymapSnapshot>;
+    if (
+      snapshot.protocolVersion !== VIA_PROTOCOL_VERSION ||
+      !Number.isInteger(snapshot.layerCount) ||
+      (snapshot.layerCount as number) < 1 ||
+      (snapshot.layerCount as number) > 32 ||
+      !Number.isInteger(snapshot.capturedLayerCount) ||
+      snapshot.capturedLayerCount !== Math.min(snapshot.layerCount as number, 8) ||
+      !Array.isArray(snapshot.layers) ||
+      snapshot.layers.length !== snapshot.capturedLayerCount
+    ) {
+      throw new Error('Invalid or incomplete device keymap backup');
+    }
+    for (const layer of snapshot.layers) {
+      if (
+        layer === null || typeof layer !== 'object' || Array.isArray(layer) ||
+        layer.keys === null || typeof layer.keys !== 'object' || Array.isArray(layer.keys) ||
+        layer.enc === null || typeof layer.enc !== 'object' || Array.isArray(layer.enc)
+      ) {
+        throw new Error('Invalid device keymap backup layer');
+      }
+      for (const [slot] of KEY_SLOTS) {
+        const keycode = layer.keys[slot];
+        if (!Number.isInteger(keycode) || keycode < 0 || keycode > 0xffff) {
+          throw new Error(`Invalid backup keycode for ${slot}`);
+        }
+      }
+      for (const direction of ['ccw', 'cw', 'press'] as const) {
+        const keycode = layer.enc[direction];
+        if (!Number.isInteger(keycode) || keycode < 0 || keycode > 0xffff) {
+          throw new Error(`Invalid backup encoder ${direction.toUpperCase()} keycode`);
+        }
+      }
+    }
+    return snapshot as ViaKeymapSnapshot;
   }
 
   private async readLayerCount(): Promise<number> {
