@@ -3051,7 +3051,7 @@ export default function App() {
           offsetY: -12,
           initialScale: 0.99,
         })}
-        className="h-[38px] w-full bg-[#000000] flex items-center justify-between pl-[18px] pr-0 shrink-0 z-40"
+        className="h-[38px] w-full bg-[#000000] grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-[18px] shrink-0 z-40"
       >
         {/* Left Zone: Brand Logo + Undo/Redo */}
         <div className="flex items-center gap-[22px] shrink-0 min-w-[140px]">
@@ -3126,7 +3126,7 @@ export default function App() {
         </div>
 
         {/* Center Zone: Keymap | Preset | Settings */}
-        <nav className="flex items-center gap-[28px] text-[12.5px] tracking-[0.01em] whitespace-nowrap shrink-0">
+        <nav className="justify-self-center flex items-center gap-[28px] text-[12.5px] tracking-[0.01em] whitespace-nowrap shrink-0">
           {(['Keymap', 'Preset', 'Settings'] as const).map((tab) => {
             const isActive = activeNav === tab;
             return (
@@ -3167,7 +3167,7 @@ export default function App() {
                 ? 'WebHID unavailable; use Chrome or Edge over HTTPS or localhost'
                 : deviceStatus.error ?? 'Connect Grid Macro 1 using VIA Raw HID'
           }
-          className={`h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 transition-colors cursor-pointer disabled:cursor-wait ${
+          className={`h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 justify-self-end transition-colors cursor-pointer disabled:cursor-wait ${
             deviceStatus.state === 'connected' ? 'bg-[#0051ff]' : 'bg-[#4a4a4a]'
           }`}
         >

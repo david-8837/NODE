@@ -50,7 +50,8 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(viteConfig).toContain("base: './'");
     expect(htmlContent).toContain("desktopApi?.isElectron");
     expect(htmlContent).toContain("desktopApi.platform === 'win32'");
-    expect(htmlContent).toContain('padding-right: 146px');
+    expect(htmlContent).toContain('margin-right: 128px');
+    expect(htmlContent).not.toContain('padding-right: 146px');
     expect(htmlContent).toContain('-webkit-app-region: drag');
     expect(htmlContent).toContain('-webkit-app-region: no-drag');
     expect(htmlContent).toContain("document.documentElement.classList.add('grid-macro-ui')");
@@ -163,6 +164,14 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(appSource).toContain('group h-[54px] shrink-0');
     expect(appSource).not.toContain('group min-h-[54px]');
     expect(shippedInlineBundle).toContain('group h-[54px] shrink-0');
+  });
+
+  it('centers the top navigation independently of the side controls and Windows caption buttons', () => {
+    expect(appSource).toContain('grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+    expect(appSource).toContain('justify-self-center flex items-center gap-[28px]');
+    expect(appSource).toContain('justify-self-end transition-colors cursor-pointer');
+    expect(htmlContent).toContain('margin-right: 128px');
+    expect(htmlContent).not.toContain('padding-right: 146px');
   });
 
   it('adapts the desktop geometry only at constrained window sizes', () => {

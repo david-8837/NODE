@@ -28,8 +28,13 @@
     /* Leave room for Electron's native Windows caption buttons and make the
        existing top bar draggable without blocking its interactive controls. */
     html.electron-windows-shell #root > div > header {
-      padding-right: 146px;
       -webkit-app-region: drag;
+    }
+
+    /* The header keeps an 18px gutter, so this preserves the existing 146px
+       caption-button clearance without shifting the centered navigation. */
+    html.electron-windows-shell #root > div > header > button {
+      margin-right: 128px;
     }
 
     html.electron-windows-shell #root > div > header :is(button, input, select, a, [role='button']) {

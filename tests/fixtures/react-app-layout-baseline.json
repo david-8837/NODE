@@ -10,7 +10,7 @@
       {
         "tag": "header",
         "attributes": {
-          "class": "h-[38px] w-full bg-[#000000] flex items-center justify-between pl-[18px] pr-0 shrink-0 z-40"
+          "class": "h-[38px] w-full bg-[#000000] grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-[18px] shrink-0 z-40"
         },
         "text": "",
         "children": [
@@ -139,7 +139,7 @@
           {
             "tag": "nav",
             "attributes": {
-              "class": "flex items-center gap-[28px] text-[12.5px] tracking-[0.01em] whitespace-nowrap shrink-0"
+              "class": "justify-self-center flex items-center gap-[28px] text-[12.5px] tracking-[0.01em] whitespace-nowrap shrink-0"
             },
             "text": "",
             "children": [
@@ -173,7 +173,7 @@
             "tag": "button",
             "attributes": {
               "aria-label": "Connect Grid Macro 1 via QMK/VIA",
-              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 transition-colors cursor-pointer disabled:cursor-wait bg-[#4a4a4a]",
+              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 justify-self-end transition-colors cursor-pointer disabled:cursor-wait bg-[#4a4a4a]",
               "title": "WebHID unavailable; use Chrome or Edge over HTTPS or localhost",
               "type": "button"
             },
