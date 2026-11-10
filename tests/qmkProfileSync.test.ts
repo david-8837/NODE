@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { actionToViaKeycode } from '../src/qmkViaBridge';
 import { buildViaConfiguration } from '../src/qmkProfileSync';
 
 const blankKey = { label: '', binding: 'blank', actionType: 'Basic input' };
@@ -37,6 +38,24 @@ describe('QMK profile-to-VIA configuration', () => {
       press: { t: 'media', c: 'PLAY_PAUSE' },
       ccw: { t: 'keys', k: ['PAGE_DOWN'] },
     });
+  });
+
+  it.each([
+    ['bright up', 'BRIGHTNESS_INCREMENT', 0x00bd],
+    ['brightness up', 'BRIGHTNESS_INCREMENT', 0x00bd],
+    ['brightness +', 'BRIGHTNESS_INCREMENT', 0x00bd],
+    ['bright down', 'BRIGHTNESS_DECREMENT', 0x00be],
+    ['brightness down', 'BRIGHTNESS_DECREMENT', 0x00be],
+    ['brightness -', 'BRIGHTNESS_DECREMENT', 0x00be],
+  ])('syncs %s through to the correct VIA brightness keycode', (binding, action, expectedCode) => {
+    const { config, warnings } = buildViaConfiguration(oneLayer({
+      r1c1: { label: binding, binding, actionType: 'Shortcut' },
+    }), 'win');
+    const mapped = config.layers[0]?.keys?.r1c1;
+
+    expect(warnings).toEqual([]);
+    expect(mapped).toEqual({ t: 'media', c: action });
+    expect(actionToViaKeycode(mapped)).toBe(expectedCode);
   });
 
   it('uses the selected OS for Cmd and Mod and fails closed on unsupported bindings', () => {

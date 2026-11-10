@@ -12,7 +12,13 @@ export type DesktopExecutionDefinition =
   | { kind: 'shortcut'; value: string }
   | { kind: 'sequence'; steps: DesktopExecutionStep[] }
   | { kind: 'text'; value: string }
-  | { kind: 'smart'; actionType: SmartActionSubTab; value: string; requiresConsent?: boolean }
+  | {
+      kind: 'smart';
+      actionType: SmartActionSubTab;
+      value: string;
+      requiresConsent?: boolean;
+      applicationShortcutPath?: string;
+    }
   | { kind: 'multi'; gestures: Partial<Record<MultiGestureKey, string>>; tappingTermMs?: number };
 
 export type SimulationAction = {
@@ -152,6 +158,9 @@ function executePayloadFor(action: SimulationAction): {
           actionType: execution.actionType,
           value: execution.value,
           requiresConsent: execution.requiresConsent === true,
+          ...(execution.applicationShortcutPath
+            ? { applicationShortcutPath: execution.applicationShortcutPath }
+            : {}),
         },
       },
       type: execution.actionType,

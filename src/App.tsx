@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
 import {
   APP_READY_EVENT,
@@ -30,6 +30,7 @@ import {
   saveAppSettings,
   type AppSettingKey,
   type AppSettings,
+  type InstalledApplication,
   type SettingsCapabilities,
   type SupportLinkKey,
 } from './appSettings';
@@ -974,7 +975,83 @@ export default function App() {
   const [smartWebValue, setSmartWebValue] = useState('');
   const [smartAppValue, setSmartAppValue] = useState('');
   const [smartAppDropdownOpen, setSmartAppDropdownOpen] = useState(false);
+  const [selectedSmartApplication, setSelectedSmartApplication] =
+    useState<InstalledApplication | null>(null);
+  const [installedApplications, setInstalledApplications] = useState<InstalledApplication[]>([]);
+  const [installedApplicationsLoading, setInstalledApplicationsLoading] = useState(false);
+  const [installedApplicationsError, setInstalledApplicationsError] = useState('');
+  const installedApplicationsRequestRef = useRef(0);
   const [enableCommandActions, setEnableCommandActions] = useState(true);
+
+  const loadInstalledApplications = useCallback(async () => {
+    const requestId = ++installedApplicationsRequestRef.current;
+    const getApplications = window.electronAPI?.getInstalledApplications;
+    if (!getApplications) {
+      setInstalledApplications([]);
+      setInstalledApplicationsError('Installed app search is available in the Windows desktop app.');
+      setInstalledApplicationsLoading(false);
+      return;
+    }
+    if (window.electronAPI?.platform && window.electronAPI.platform !== 'win32') {
+      setInstalledApplications([]);
+      setInstalledApplicationsError('Installed app search is currently available on Windows.');
+      setInstalledApplicationsLoading(false);
+      return;
+    }
+
+    setInstalledApplicationsLoading(true);
+    setInstalledApplicationsError('');
+    try {
+      const result = await getApplications();
+      if (requestId !== installedApplicationsRequestRef.current) return;
+      if (!result?.ok || !Array.isArray(result.apps)) {
+        setInstalledApplications([]);
+        setInstalledApplicationsError(result?.error || 'Could not load installed applications.');
+        return;
+      }
+      setInstalledApplications(result.apps.filter((application) =>
+        typeof application?.name === 'string' && application.name.trim() &&
+        typeof application.shortcutPath === 'string' && application.shortcutPath.trim()
+      ));
+    } catch (error) {
+      if (requestId !== installedApplicationsRequestRef.current) return;
+      setInstalledApplications([]);
+      setInstalledApplicationsError(
+        error instanceof Error ? error.message : 'Could not load installed applications.'
+      );
+    } finally {
+      if (requestId === installedApplicationsRequestRef.current) {
+        setInstalledApplicationsLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (creatorModalTab !== 'Smart-A' || smartSubTab !== 'App') return;
+    setSmartAppDropdownOpen(true);
+    void loadInstalledApplications();
+    return () => {
+      installedApplicationsRequestRef.current += 1;
+    };
+  }, [creatorModalTab, smartSubTab, loadInstalledApplications]);
+
+  useEffect(() => {
+    const selectedName = smartAppValue.trim().toLocaleLowerCase();
+    if (smartSubTab !== 'App' || !selectedName) return;
+    const matchingApp = installedApplications.find((application) =>
+      application.name.toLocaleLowerCase() === selectedName
+    );
+    if (matchingApp && matchingApp.shortcutPath !== selectedSmartApplication?.shortcutPath) {
+      setSelectedSmartApplication(matchingApp);
+    }
+  }, [smartSubTab, smartAppValue, installedApplications, selectedSmartApplication]);
+
+  const filteredInstalledApplications = useMemo(() => {
+    const query = smartAppValue.trim().toLocaleLowerCase();
+    return installedApplications
+      .filter((application) => application.name.toLocaleLowerCase().includes(query))
+      .slice(0, 100);
+  }, [installedApplications, smartAppValue]);
 
   // Action editor states (Interactive keyboard recorder + Advance mode)
   const [actionAdvanceMode, setActionAdvanceMode] = useState(false);
@@ -2617,6 +2694,7 @@ export default function App() {
     setGestureKeySearch('');
     setExpandedGestureSection(null);
     setSmartAppDropdownOpen(false);
+    setSelectedSmartApplication(null);
 
     if (existingItem) {
       setEditingCustomItemId(existingItem.id);
@@ -2709,6 +2787,12 @@ export default function App() {
         setSmartCmdValue(safeTab === 'Cmd' ? value : '');
         setSmartWebValue(safeTab === 'Web' ? value : '');
         setSmartAppValue(safeTab === 'App' ? value : '');
+        if (safeTab === 'App' && execution?.kind === 'smart' && execution.applicationShortcutPath) {
+          setSelectedSmartApplication({
+            name: value,
+            shortcutPath: execution.applicationShortcutPath,
+          });
+        }
       }
     } else {
       setEditingCustomItemId(null);
@@ -2760,15 +2844,16 @@ export default function App() {
       const hasGesture = Object.values(multiGestures).some((v) => !!v.trim());
       if (!hasGesture) return;
     } else if (creatorModalTab === 'Smart-A') {
-      const val =
-        smartSubTab === 'Text'
+      if (smartSubTab === 'App') {
+        if (!selectedSmartApplication) return;
+      } else {
+        const val = smartSubTab === 'Text'
           ? smartTextValue
           : smartSubTab === 'Cmd'
-          ? smartCmdValue
-          : smartSubTab === 'Web'
-          ? smartWebValue
-          : smartAppValue;
-      if (!val.trim()) return;
+            ? smartCmdValue
+            : smartWebValue;
+        if (!val.trim()) return;
+      }
     }
 
     const defaultName =
@@ -2796,14 +2881,13 @@ export default function App() {
         tappingTermMs: Math.max(0, Number.parseInt(tappingTermMs, 10) || 250),
       };
     } else if (creatorModalTab === 'Smart-A') {
-      const val =
-        smartSubTab === 'Text'
+      const val = smartSubTab === 'App'
+        ? selectedSmartApplication?.name || ''
+        : smartSubTab === 'Text'
           ? smartTextValue
           : smartSubTab === 'Cmd'
-          ? smartCmdValue
-          : smartSubTab === 'Web'
-          ? smartWebValue
-          : smartAppValue;
+            ? smartCmdValue
+            : smartWebValue;
       summaryBinding = val.trim()
         ? `${finalName} (${smartSubTab}: ${val.trim()})`
         : finalName;
@@ -2811,6 +2895,9 @@ export default function App() {
         kind: 'smart',
         actionType: smartSubTab,
         value: val.trim(),
+        ...(smartSubTab === 'App' && selectedSmartApplication
+          ? { applicationShortcutPath: selectedSmartApplication.shortcutPath }
+          : {}),
       };
     } else if (creatorModalTab === 'Action') {
       if (actionAdvanceMode) {
@@ -4695,13 +4782,13 @@ export default function App() {
                               ? Object.values(multiGestures).some(
                                   (v) => !!v.trim()
                                 )
-                              : !!(smartSubTab === 'Text'
-                                  ? smartTextValue.trim()
+                              : smartSubTab === 'App'
+                                ? !!selectedSmartApplication
+                                : smartSubTab === 'Text'
+                                  ? !!smartTextValue.trim()
                                   : smartSubTab === 'Cmd'
-                                  ? smartCmdValue.trim()
-                                  : smartSubTab === 'Web'
-                                  ? smartWebValue.trim()
-                                  : smartAppValue.trim());
+                                    ? !!smartCmdValue.trim()
+                                    : !!smartWebValue.trim();
                           const canDelete = !!editingCustomItemId;
 
                           return (
@@ -5235,7 +5322,15 @@ export default function App() {
                             return (
                               <button
                                 key={sub}
-                                onClick={() => setSmartSubTab(sub)}
+                                onClick={() => {
+                                  setSmartSubTab(sub);
+                                  if (sub === 'App') {
+                                    setSmartAppDropdownOpen(true);
+                                    if (smartSubTab === 'App') void loadInstalledApplications();
+                                  } else {
+                                    setSmartAppDropdownOpen(false);
+                                  }
+                                }}
                                 className={`h-[26px] rounded-full text-[10.5px] font-medium border-[1.5px] transition-all cursor-pointer ${
                                   isSubActive
                                     ? 'bg-[#000000] text-white border-[#000000] hover:border-[#0051ff]'
@@ -5383,74 +5478,104 @@ export default function App() {
                               className="flex-1 flex flex-col"
                             >
                               <div className="relative mb-[12px] shrink-0">
-                                <div
-                                  onClick={() => setSmartAppDropdownOpen((o) => !o)}
-                                  className="w-full h-[38px] rounded-[12px] bg-[#e2e2e2] px-[12px] flex items-center justify-between gap-[8px] cursor-pointer"
-                                >
+                                <div className="w-full h-[38px] rounded-[12px] bg-[#e2e2e2] px-[12px] flex items-center justify-between gap-[8px]">
                                   <Search className="w-[11px] h-[11px] text-[#9c9c9c] stroke-[1.8] shrink-0" />
                                   <input
                                     type="text"
                                     value={smartAppValue}
+                                    onFocus={() => setSmartAppDropdownOpen(true)}
                                     onChange={(e) => {
                                       setSmartAppValue(e.target.value);
+                                      setSelectedSmartApplication(null);
                                       setSmartAppDropdownOpen(true);
                                     }}
                                     placeholder="Search your software..."
+                                    aria-label="Search installed applications"
+                                    aria-expanded={smartAppDropdownOpen}
+                                    aria-controls="installed-app-options"
                                     className="w-full bg-transparent text-[10.5px] text-[#333333] placeholder:text-[#9c9c9c] focus:outline-none"
                                   />
-                                  <svg
-                                    width="11"
-                                    height="11"
-                                    viewBox="0 0 12 12"
-                                    fill="none"
-                                    stroke="#555555"
-                                    strokeWidth="1.6"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="shrink-0"
+                                  <button
+                                    type="button"
+                                    aria-label={smartAppDropdownOpen ? 'Hide installed apps' : 'Show installed apps'}
+                                    aria-expanded={smartAppDropdownOpen}
+                                    onClick={() => {
+                                      const shouldOpen = !smartAppDropdownOpen;
+                                      setSmartAppDropdownOpen(shouldOpen);
+                                      if (shouldOpen && !installedApplicationsLoading) {
+                                        void loadInstalledApplications();
+                                      }
+                                    }}
+                                    className="shrink-0 text-[#555555] hover:text-black cursor-pointer"
                                   >
-                                    <path d="M4.5 2.5L8 6L4.5 9.5" />
-                                  </svg>
+                                    <svg
+                                      width="11"
+                                      height="11"
+                                      viewBox="0 0 12 12"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.6"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className={`transition-transform ${smartAppDropdownOpen ? 'rotate-90' : ''}`}
+                                    >
+                                      <path d="M4.5 2.5L8 6L4.5 9.5" />
+                                    </svg>
+                                  </button>
                                 </div>
 
                                 <AnimatePresence>
                                   {smartAppDropdownOpen && (
                                     <motion.div
+                                      id="installed-app-options"
+                                      role="listbox"
+                                      aria-label="Installed applications"
                                       initial={{ opacity: 0, y: -4 }}
                                       animate={{ opacity: 1, y: 0 }}
                                       exit={{ opacity: 0, y: -4 }}
                                       className="absolute top-[42px] left-0 right-0 bg-white rounded-[12px] shadow-[0_6px_18px_rgba(0,0,0,0.1)] border border-black/[0.05] max-h-[150px] overflow-y-auto z-40 py-1"
                                     >
-                                      {[
-                                        'Figma',
-                                        'Framer',
-                                        'Adobe Photoshop',
-                                        'Adobe Illustrator',
-                                        'Adobe Premiere Pro',
-                                        'Blender',
-                                        'DaVinci Resolve',
-                                        'Affinity Designer',
-                                        'ChatGPT',
-                                        'VS Code',
-                                        'Spotify',
-                                      ]
-                                        .filter((app) =>
-                                          app
-                                            .toLowerCase()
-                                            .includes(smartAppValue.toLowerCase())
-                                        )
-                                        .map((app) => (
+                                      {installedApplicationsLoading ? (
+                                        <div role="status" className="px-3 py-2 text-[10.5px] text-[#777]">
+                                          Scanning installed apps…
+                                        </div>
+                                      ) : installedApplicationsError ? (
+                                        <div className="px-3 py-2 text-[10.5px] text-[#777]">
+                                          <p>{installedApplicationsError}</p>
                                           <button
-                                            key={app}
+                                            type="button"
+                                            onClick={() => void loadInstalledApplications()}
+                                            className="mt-1 text-[#0051ff] hover:underline cursor-pointer"
+                                          >
+                                            Try again
+                                          </button>
+                                        </div>
+                                      ) : filteredInstalledApplications.length > 0 ? (
+                                        filteredInstalledApplications.map((application) => (
+                                          <button
+                                            key={application.shortcutPath}
+                                            type="button"
+                                            role="option"
+                                            aria-selected={selectedSmartApplication?.shortcutPath === application.shortcutPath}
                                             onClick={() => {
-                                              setSmartAppValue(app);
+                                              setSmartAppValue(application.name);
+                                              setSelectedSmartApplication(application);
                                               setSmartAppDropdownOpen(false);
                                             }}
                                             className="w-full px-3 py-1.5 text-left text-[10.5px] text-[#444] hover:bg-[#0051ff] hover:text-white transition-colors cursor-pointer"
                                           >
-                                            {app}
+                                            {application.name}
                                           </button>
-                                        ))}
+                                        ))
+                                      ) : smartAppValue.trim() ? (
+                                        <div className="px-3 py-2 text-[10.5px] text-[#777]">
+                                          No installed apps match “{smartAppValue.trim()}”.
+                                        </div>
+                                      ) : (
+                                        <div className="px-3 py-2 text-[10.5px] text-[#777]">
+                                          No apps found in the Start Menu or Desktop. Add an app shortcut, then try again.
+                                        </div>
+                                      )}
                                     </motion.div>
                                   )}
                                 </AnimatePresence>

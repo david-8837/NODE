@@ -137,7 +137,12 @@ MEDIA_MAP = {
     "stop": ConsumerControlCode.STOP,
     "fast_forward": ConsumerControlCode.FAST_FORWARD,
     "rewind": ConsumerControlCode.REWIND,
+    # App-facing names plus legacy aliases used by earlier firmware profiles.
+    "bright up": ConsumerControlCode.BRIGHTNESS_INCREMENT,
+    "brightness up": ConsumerControlCode.BRIGHTNESS_INCREMENT,
     "brightness +": ConsumerControlCode.BRIGHTNESS_INCREMENT,
+    "bright down": ConsumerControlCode.BRIGHTNESS_DECREMENT,
+    "brightness down": ConsumerControlCode.BRIGHTNESS_DECREMENT,
     "brightness -": ConsumerControlCode.BRIGHTNESS_DECREMENT,
 }
 

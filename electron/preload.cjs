@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   close: () => ipcRenderer.invoke('window-close'),
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
   getVersion: () => ipcRenderer.invoke('get-app-version'),
+  getInstalledApplications: () => ipcRenderer.invoke('list-installed-applications'),
   getAppSettings: () => ipcRenderer.invoke('get-app-settings'),
   setAppSetting: (key, value) => ipcRenderer.invoke('set-app-setting', key, value),
   openExternal: (url) => ipcRenderer.invoke('open-external-url', url),
