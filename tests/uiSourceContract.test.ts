@@ -1,10 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { PRESET_CATALOG } from '../src/presetCatalog';
 
-describe('Embedded app regression checks', () => {
+describe('Production React source and legacy inline regression checks', () => {
   const htmlContent = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
+  const legacyInlineBundle = fs.readFileSync(
+    path.join(process.cwd(), 'tests/fixtures/legacyEmbeddedApp.js'),
+    'utf-8'
+  );
+  const mainSource = fs.readFileSync(path.join(process.cwd(), 'src/main.tsx'), 'utf-8');
   const bridgeSource = fs.readFileSync(path.join(process.cwd(), 'src/qmkViaBridge.ts'), 'utf-8');
+  const deviceLayoutSource = fs.readFileSync(path.join(process.cwd(), 'src/deviceLayout.ts'), 'utf-8');
   const backupSource = fs.readFileSync(path.join(process.cwd(), 'src/deviceKeymapFiles.ts'), 'utf-8');
   const viteConfig = fs.readFileSync(path.join(process.cwd(), 'vite.config.ts'), 'utf-8');
   const electronMain = fs.readFileSync(path.join(process.cwd(), 'electron/main.cjs'), 'utf-8');
@@ -24,6 +31,7 @@ describe('Embedded app regression checks', () => {
     'utf-8'
   );
   const appSource = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const nativeExecutorSource = fs.readFileSync(path.join(process.cwd(), 'native-executor.ts'), 'utf-8');
   const entranceAnimations = fs.readFileSync(
     path.join(process.cwd(), 'src/entranceAnimations.ts'),
     'utf-8'
@@ -36,9 +44,7 @@ describe('Embedded app regression checks', () => {
     path.join(process.cwd(), 'src/embeddedEntranceRuntime.js'),
     'utf-8'
   ).trim();
-  const shippedInlineBundle = htmlContent.match(
-    /<script type="module">([\s\S]*?)<\/script>/
-  )?.[1] ?? '';
+  const shippedInlineBundle = legacyInlineBundle;
 
   it('prepares relative packaged assets and Windows Electron titlebar interaction', () => {
     expect(viteConfig).toContain("base: './'");
@@ -48,6 +54,16 @@ describe('Embedded app regression checks', () => {
     expect(htmlContent).toContain('-webkit-app-region: drag');
     expect(htmlContent).toContain('-webkit-app-region: no-drag');
     expect(htmlContent).toContain("document.documentElement.classList.add('grid-macro-ui')");
+  });
+
+  it('uses the React source app as the production entry and splits dependencies into a vendor chunk', () => {
+    expect(htmlContent).toContain('src="/src/main.tsx"');
+    expect(htmlContent).not.toContain('<script type="module">');
+    expect(mainSource).toContain("import './qmkViaBridge'");
+    expect(mainSource).toContain("import App from './App.tsx'");
+    expect(viteConfig).toContain('codeSplitting:');
+    expect(viteConfig).toContain("name: 'vendor'");
+    expect(viteConfig).toContain('test: /node_modules/');
   });
 
   it('keeps the startup loader visible for at least four seconds before revealing the app', () => {
@@ -61,6 +77,8 @@ describe('Embedded app regression checks', () => {
     expect(loadingScript).toContain('hidden || appRoot.childElementCount === 0');
     expect(loadingScript).toContain("appRoot.classList.add('is-ready')");
     expect(loadingStyles).toContain('#app-loading-screen.is-hidden');
+    expect(loadingStyles).toContain('background: #fff;');
+    expect(loadingStyles).toContain('color: #222;');
     expect(loadingScript).toContain('window.dispatchEvent(new Event(APP_READY_EVENT))');
     expect(loadingStyles).toContain('#root.is-ready .app-shell::before');
     expect(loadingStyles).toContain('transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1)');
@@ -84,7 +102,7 @@ describe('Embedded app regression checks', () => {
     expect(embeddedEntranceRuntime).toContain('0.58 + row * 0.11 + column * 0.035');
   });
 
-  it('keeps the entire Macropad movement unit inside the open canvas in source and shipped app', () => {
+  it('keeps the entire Macropad movement unit inside the open canvas in source and legacy app', () => {
     expect(appSource).toContain('macropadMoveUnitRef');
     expect(appSource).toContain('clampMacropadOffsetToArea');
     expect(appSource).toContain('bottom: rect.bottom - 132');
@@ -113,7 +131,7 @@ describe('Embedded app regression checks', () => {
     expect(shippedInlineBundle).toContain('Rename profile ${e.name||t+1}');
   });
 
-  it('refreshes every preset app badge in source and shipped library views', () => {
+  it('refreshes every preset app badge in source and legacy library views', () => {
     const presetIconIds = [
       'chatgpt', 'vscode', 'github', 'terminal', 'docker', 'chrome_devtools', 'photoshop',
       'illustrator', 'premiere', 'aftereffects', 'davinci', 'blender', 'figma', 'framer',
@@ -184,30 +202,25 @@ describe('Embedded app regression checks', () => {
     expect(packageConfig.build.nsis.deleteAppDataOnUninstall).toBe(false);
   });
 
-  it('should contain the complete Macropad 3x3 direct matrix DOM structure', () => {
-    // Verifies 9 key matrix elements and grid containers exist in the markup
-    expect(htmlContent).toContain('r1c1');
-    expect(htmlContent).toContain('r1c2');
-    expect(htmlContent).toContain('r1c3');
-    expect(htmlContent).toContain('r2c1');
-    expect(htmlContent).toContain('r2c2');
-    expect(htmlContent).toContain('r2c3');
-    expect(htmlContent).toContain('r3c1');
-    expect(htmlContent).toContain('r3c2');
-    expect(htmlContent).toContain('r3c3');
+  it('renders the complete Macropad 3x3 direct matrix in the production React app', () => {
+    for (const slot of ['r1c1', 'r1c2', 'r1c3', 'r2c1', 'r2c2', 'r2c3', 'r3c1', 'r3c2', 'r3c3']) {
+      expect(deviceLayoutSource).toContain(`'${slot}'`);
+    }
+    expect(appSource).toContain('data-drop-slot={slotId}');
+    expect(appSource).toContain('GRID_MACRO_KEY_SLOTS.map');
   });
 
-  it('should contain one Grid Macro 1 encoder and no second-knob layout', () => {
-    expect(htmlContent).toContain('Grid Macro 1');
-    expect(htmlContent).toContain('dial-tl');
-    expect(htmlContent).toContain('encoderActions');
-    expect(htmlContent).toContain('volume +');
-    expect(htmlContent).toContain('volume -');
-    expect(htmlContent).not.toContain('knob-tr');
-    expect(htmlContent).not.toContain('Creator Micro 2');
+  it('renders one Grid Macro 1 encoder and no second-knob layout in the production React app', () => {
+    expect(deviceLayoutSource).toContain("GRID_MACRO_ENCODER_SLOT = 'dial-tl'");
+    expect(appSource).toContain('layer[GRID_MACRO_ENCODER_SLOT]');
+    expect(appSource).toContain('encoderActions');
+    expect(appSource).toContain('volume +');
+    expect(appSource).toContain('volume -');
+    expect(appSource).not.toContain('knob-tr');
+    expect(appSource).not.toContain('Creator Micro 2');
   });
 
-  it('should include the required Creator and Power-User presets in the embedded app', () => {
+  it('includes the required Creator and Power-User presets in the production React app', () => {
     // Verify preset identifiers
     const requiredPresets = [
       'obs',
@@ -224,23 +237,27 @@ describe('Embedded app regression checks', () => {
     ];
 
     for (const preset of requiredPresets) {
-      const regex = new RegExp(`id:\\s*[\`'"]${preset}[\`'"]`);
-      expect(regex.test(htmlContent), `Expected preset "${preset}" to exist in index.html`).toBe(true);
+      expect(
+        PRESET_CATALOG.some((entry) => entry.id === preset),
+        `Expected preset "${preset}" to exist in the React preset catalog`
+      ).toBe(true);
     }
   });
 
-  it('should include Simulation Mode toggle and real-time PC action bridge trigger', () => {
-    expect(htmlContent).toContain('/api/execute-action');
-    expect(htmlContent).toContain('Simulation');
+  it('keeps simulation controls in the production React app and terminal execution gated', () => {
+    expect(appSource).toContain('setSimulationMode((current) => !current)');
+    expect(appSource).toContain('Simulation on');
+    expect(nativeExecutorSource).toContain('options.allowTerminal !== true');
+    expect(viteConfig).toContain('/api/execute-action');
   });
 
-  it('routes both app implementations through real profile and device backup file helpers', () => {
+  it('routes the React app and legacy inline reference through profile and automatic device-backup helpers', () => {
     expect(appSource).toContain('profileFileTools.pickFile()');
     expect(appSource).toContain('profileFileTools.merge(');
     expect(appSource).toContain('profileFileTools.download(source, customItemsByTab)');
-    expect(appSource).toContain('deviceKeymapFileTools.downloadLatestBackup()');
-    expect(appSource).toContain('deviceKeymapFileTools.restoreFromFile(bridge');
     expect(appSource).toContain('deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot');
+    expect(appSource).not.toContain('deviceKeymapFileTools.downloadLatestBackup()');
+    expect(appSource).not.toContain('deviceKeymapFileTools.restoreFromFile(bridge');
     expect(appSource).not.toContain("name: 'Imported Profile'");
     expect(shippedInlineBundle).toContain('window.nodeStudioProfileFiles');
     expect(shippedInlineBundle).toContain('await e.pickFile()');
@@ -250,19 +267,17 @@ describe('Embedded app regression checks', () => {
     expect(shippedInlineBundle).toContain('savePreSyncSnapshot(e.snapshot');
   });
 
-  it('loads the stock VIA bridge, profile-file helpers, and local backup controls', () => {
-    expect(htmlContent).toContain('src="/src/qmkViaBridge.ts"');
-    expect(htmlContent).toContain('src="/src/profileFiles.ts"');
-    expect(htmlContent).toContain('src="/src/deviceKeymapFiles.ts"');
-    expect(htmlContent).toContain('Connect Grid Macro 1 via QMK/VIA');
-    expect(htmlContent).toContain('Profile saved locally; keymap synced to device');
-    expect(htmlContent).toContain('sync warning');
-    expect(htmlContent).toContain('Pre-sync device keymap backup');
-    expect(htmlContent).toContain('get_config');
-    expect(htmlContent).toContain('restoreFromFile');
+  it('loads the stock VIA bridge and keeps automatic pre-write backups without backup controls in Settings', () => {
+    expect(mainSource).toContain("import './qmkViaBridge'");
+    expect(appSource).toContain("from './profileFiles'");
+    expect(appSource).toContain("from './deviceKeymapFiles'");
+    expect(appSource).toContain('Connect Grid Macro 1 via QMK/VIA');
+    expect(appSource).not.toContain('Pre-sync device keymap backup');
+    expect(appSource).toContain("cmd: 'get_config'");
+    expect(appSource).toContain('savePreSyncSnapshot');
     expect(bridgeSource).toContain("cmd === 'restore_config'");
     expect(backupSource).toContain('savePreSyncSnapshot');
-    expect(htmlContent).not.toContain('children:`Device connected:`');
+    expect(legacyInlineBundle).not.toContain('children:`Device connected:`');
   });
 
   it('should load the full 8,703 vector icon library via static public script', () => {

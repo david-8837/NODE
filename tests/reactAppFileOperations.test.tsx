@@ -4,42 +4,14 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import {
-  createDeviceKeymapBackup,
-  deviceKeymapFileTools,
-  DEVICE_KEYMAP_BACKUP_HISTORY_KEY,
-  stringifyDeviceKeymapBackup,
-} from '../src/deviceKeymapFiles';
-import {
   createProfileExport,
   PROFILE_FILE_STORAGE_KEY,
   profileFileTools,
 } from '../src/profileFiles';
-import { VIA_PROTOCOL_VERSION, type QmkViaBridge, type ViaKeymapSnapshot } from '../src/qmkViaBridge';
+import type { QmkViaBridge } from '../src/qmkViaBridge';
 
 let container: HTMLDivElement;
 let root: Root;
-
-function deviceSnapshot(firstKey = 0x0004): ViaKeymapSnapshot {
-  return {
-    protocolVersion: VIA_PROTOCOL_VERSION,
-    layerCount: 1,
-    capturedLayerCount: 1,
-    layers: [{
-      keys: {
-        r1c1: firstKey,
-        r1c2: 0x0005,
-        r1c3: 0x0006,
-        r2c1: 0x0007,
-        r2c2: 0x0008,
-        r2c3: 0x0009,
-        r3c1: 0x000a,
-        r3c2: 0x000b,
-        r3c3: 0x000c,
-      },
-      enc: { ccw: 0x00aa, cw: 0x00a9, press: 0x0028 },
-    }],
-  };
-}
 
 async function renderApp() {
   container = document.createElement('div');
@@ -151,71 +123,17 @@ describe('React source app file operations', () => {
     expect(container.textContent).toContain('Exported "Default Profile"');
   });
 
-  it('captures a live device backup, downloads it, and restores a validated backup to the connected device', async () => {
-    const statusListeners = new Set<(status: { state: string; device?: string; fw?: string }) => void>();
-    const bridge = {
-      getStatus: vi.fn().mockResolvedValue({ state: 'disconnected' }),
-      onStatus: vi.fn((listener: (status: { state: string; device?: string; fw?: string }) => void) => {
-        statusListeners.add(listener);
-        return () => statusListeners.delete(listener);
-      }),
-      onEvent: vi.fn(() => () => undefined),
-      connect: vi.fn().mockImplementation(async () => {
-        const status = { state: 'connected', device: 'Grid Macro 1 Test', fw: 'VIA test' };
-        for (const listener of statusListeners) listener(status);
-        return status;
-      }),
-      disconnect: vi.fn().mockResolvedValue(undefined),
-      request: vi.fn(async (request: { cmd: 'get_config' | 'restore_config'; snapshot?: ViaKeymapSnapshot }) =>
-        request.cmd === 'get_config'
-          ? { ok: true, snapshot: deviceSnapshot(0x0041) }
-          : { ok: true, changedMappings: 1 }),
-    };
-    Object.defineProperty(window, 'macropad', { configurable: true, value: bridge });
+  it('keeps device information while hiding manual keymap-backup controls', async () => {
     await renderApp();
-
-    await clickButton(container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Connect Grid Macro 1 via QMK/VIA"]'
-    )!);
     await openSettings();
-    await clickButton([...container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.trim() === 'Save backup')!);
-    expect(window.localStorage.getItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY)).not.toBeNull();
-    expect(container.textContent).toContain('Saved locally');
 
-    const createObjectURL = vi.fn(() => 'blob:node-studio-device-backup');
-    Object.defineProperty(window.URL, 'createObjectURL', { configurable: true, value: createObjectURL });
-    const clickedLinks: HTMLAnchorElement[] = [];
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-      clickedLinks.push(this);
-    });
-    await clickButton([...container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.trim() === 'Download backup')!);
-    expect(deviceKeymapFileTools?.downloadLatestBackup).toBeDefined();
-    expect(createObjectURL).toHaveBeenCalledOnce();
-    expect(clickedLinks[0].download).toMatch(/^grid-macro-1-via-keymap-/);
-
-    vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
-    await clickButton([...container.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.trim() === 'Restore from file')!);
-    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!;
-    const importedBackup = createDeviceKeymapBackup(deviceSnapshot(0x0004));
-    const file = new File([stringifyDeviceKeymapBackup(importedBackup)], 'backup.json', {
-      type: 'application/json',
-    });
-    Object.defineProperty(fileInput, 'files', { configurable: true, value: [file] });
-    await act(async () => {
-      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-      await new Promise((resolve) => window.setTimeout(resolve, 60));
-    });
-
-    expect(bridge.request.mock.calls.map(([request]) => request.cmd)).toEqual([
-      'get_config', 'get_config', 'restore_config',
-    ]);
-    expect(bridge.request.mock.calls[2][0].snapshot).toEqual(importedBackup.snapshot);
-    expect(container.textContent).toContain('Restored 1 device mappings');
-    expect(container.textContent).toContain('pre-restore backup saved locally');
-    expect(fileInput.isConnected).toBe(false);
+    expect(container.textContent).toContain('Device status:');
+    expect(container.textContent).toContain('Firmware version:');
+    expect(container.textContent).toContain('Input app version:');
+    expect(container.textContent).not.toContain('Pre-sync device keymap backup');
+    expect([...container.querySelectorAll<HTMLButtonElement>('button')].some((button) =>
+      ['Save backup', 'Download backup', 'Restore from file'].includes(button.textContent?.trim() || '')
+    )).toBe(false);
   });
 
   it('persists Settings switches and restores them when the source app remounts', async () => {

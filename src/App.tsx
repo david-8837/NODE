@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
 import {
   APP_READY_EVENT,
@@ -13,6 +13,7 @@ import {
 } from './deviceLayout';
 import { clampMacropadOffsetToArea } from './macropadMovement';
 import { deviceKeymapFileTools } from './deviceKeymapFiles';
+import { triggerSimulationAction } from './actionExecution';
 import { PROFILE_FILE_STORAGE_KEY, profileFileTools } from './profileFiles';
 import {
   APP_VERSION_FALLBACK,
@@ -25,6 +26,16 @@ import {
   type SupportLinkKey,
 } from './appSettings';
 import type { QmkViaStatus } from './qmkViaBridge';
+import { buildViaConfiguration } from './qmkProfileSync';
+import type { EmojiCatalogEntry } from './emojiCatalog';
+import { PRESET_CATALOG } from './presetCatalog';
+import {
+  buildIconCatalog,
+  findIconMetadata,
+  ICON_SEARCH_PAGE_SIZE,
+  searchIconCatalog,
+  type IconLibrary,
+} from './iconCatalog';
 import {
   ChevronDown,
   ChevronUp,
@@ -56,11 +67,12 @@ interface KeyAssignment {
     | 'Layer Cycle';
   binding: string;
   iconId?: string;
+  actionId?: string;
+  color?: string;
   encoderActions?: Record<EncoderSubActionId, EncoderSubBinding>;
 }
 
 type LayerKeymap = Record<KeySlotId, KeyAssignment>;
-type LegacyLayerKeymap = Partial<Record<string, KeyAssignment>>;
 
 function formatEncoderShortLabel(text: string): string {
   const clean = text.trim();
@@ -94,11 +106,9 @@ interface PresetItem {
   description: string;
   author: string;
   hasPreview: boolean;
+  color: string;
   layerKeymap: LayerKeymap;
-}
-
-interface LegacyPresetItem extends Omit<PresetItem, 'layerKeymap'> {
-  layerKeymap: LegacyLayerKeymap;
+  actionItems: CustomItemsByTab;
 }
 
 interface BasicTileItem {
@@ -114,6 +124,42 @@ interface BasicTileItem {
 }
 
 type CustomItemsByTab = Record<Exclude<MappingTabId, 'Basic'>, BasicTileItem[]>;
+
+interface CustomItemGroup {
+  id: string;
+  title: string;
+  presetId?: string;
+  presetColor?: string;
+  items: BasicTileItem[];
+}
+
+function groupCustomItemsByPreset(
+  items: BasicTileItem[],
+  customGroupTitle: string
+): CustomItemGroup[] {
+  const groups = new Map<string, CustomItemGroup>();
+
+  items.forEach((item) => {
+    const preset = PRESET_CATALOG.find((entry) => item.id.startsWith(`preset-${entry.id}-`));
+    const groupId = preset ? `preset-${preset.id}` : 'custom';
+    const existingGroup = groups.get(groupId);
+
+    if (existingGroup) {
+      existingGroup.items.push(item);
+      return;
+    }
+
+    groups.set(groupId, {
+      id: groupId,
+      title: preset?.title ?? customGroupTitle,
+      presetId: preset?.id,
+      presetColor: preset?.color,
+      items: [item],
+    });
+  });
+
+  return [...groups.values()];
+}
 
 interface PersistedAppProfileState {
   profiles: ProfileData[];
@@ -135,90 +181,6 @@ function formatCustomTileText(name: string): string {
   const single = words[0] || 'Action';
   return single.length > 7 ? `${single.slice(0, 5)}..` : single;
 }
-
-const SELECTABLE_ICON_LIST: { id: string; keywords: string }[] = [
-  { id: 'copy-plus', keywords: 'copy duplicate plus add layer' },
-  { id: 'layers-plus', keywords: 'layers stack plus add' },
-  { id: 'plus-square', keywords: 'plus add new square' },
-  { id: 'stop-square', keywords: 'stop square media' },
-  { id: 'rows-two', keywords: 'rows pause bars list' },
-  { id: 'type-square', keywords: 'text type font t' },
-  { id: 'diamonds', keywords: 'diamonds grid component' },
-  { id: 'circle-fill', keywords: 'circle record dot' },
-  { id: 'square-fill', keywords: 'square box' },
-  { id: 'globe', keywords: 'globe web browser internet url' },
-  { id: 'sparkles', keywords: 'sparkles magic smart ai star' },
-  { id: 'play-square', keywords: 'play video media square' },
-  { id: 'image', keywords: 'image photo picture gallery' },
-  { id: 'refresh', keywords: 'refresh reload sync rotate' },
-  { id: 'arrow-left', keywords: 'arrow left back previous' },
-  { id: 'arrow-right', keywords: 'arrow right next forward' },
-  { id: 'grid-four', keywords: 'grid dashboard apps' },
-  { id: 'lock', keywords: 'lock security privacy' },
-  { id: 'chat-bubble', keywords: 'chat message comment' },
-  { id: 'clock', keywords: 'clock time timer history' },
-  { id: 'pause-circle', keywords: 'pause media wait' },
-  { id: 'zap', keywords: 'zap bolt lightning flash action' },
-  { id: 'maximize', keywords: 'maximize fullscreen expand' },
-  { id: 'apps-plus', keywords: 'apps grid add widget' },
-  { id: 'hexagon-nut', keywords: 'settings gear config nut' },
-  { id: 'minimize', keywords: 'minimize shrink window' },
-  { id: 'moon', keywords: 'moon dark night sleep' },
-  { id: 'framer-bolt', keywords: 'framer bolt design' },
-  { id: 'database', keywords: 'database storage server' },
-  { id: 'play-triangle', keywords: 'play start run triangle' },
-  { id: 'num-0', keywords: '0 zero number' },
-  { id: 'num-1', keywords: '1 one number' },
-  { id: 'num-2', keywords: '2 two number' },
-  { id: 'num-3', keywords: '3 three number' },
-  { id: 'num-4', keywords: '4 four number' },
-  { id: 'num-5', keywords: '5 five number' },
-  { id: 'num-6', keywords: '6 six number' },
-  { id: 'num-7', keywords: '7 seven number' },
-  { id: 'num-8', keywords: '8 eight number' },
-  { id: 'num-9', keywords: '9 nine number' },
-  { id: 'terminal', keywords: 'terminal command cmd shell' },
-  { id: 'volume', keywords: 'volume audio sound speaker' },
-];
-
-const SELECTABLE_EMOJI_LIST: { emoji: string; keywords: string }[] = [
-  { emoji: '🚀', keywords: 'rocket launch fast app' },
-  { emoji: '⚡', keywords: 'zap bolt lightning fast' },
-  { emoji: '🔥', keywords: 'fire hot trend' },
-  { emoji: '✨', keywords: 'sparkles magic clean' },
-  { emoji: '🎯', keywords: 'target goal focus' },
-  { emoji: '💡', keywords: 'idea bulb light' },
-  { emoji: '🎨', keywords: 'art design palette color' },
-  { emoji: '🎵', keywords: 'music note audio song' },
-  { emoji: '🎧', keywords: 'headphones audio listen' },
-  { emoji: '🎬', keywords: 'video movie clapper cut' },
-  { emoji: '📸', keywords: 'camera screenshot photo' },
-  { emoji: '💻', keywords: 'laptop computer code dev' },
-  { emoji: '🖥️', keywords: 'desktop monitor screen' },
-  { emoji: '⌨️', keywords: 'keyboard type key' },
-  { emoji: '🖱️', keywords: 'mouse click cursor' },
-  { emoji: '🕹️', keywords: 'joystick game control' },
-  { emoji: '🎮', keywords: 'gamepad controller play' },
-  { emoji: '📁', keywords: 'folder file directory' },
-  { emoji: '📌', keywords: 'pin bookmark save' },
-  { emoji: '🔍', keywords: 'search find zoom' },
-  { emoji: '🔒', keywords: 'lock secure password' },
-  { emoji: '🔓', keywords: 'unlock open' },
-  { emoji: '🔔', keywords: 'bell notification alert' },
-  { emoji: '⏱️', keywords: 'stopwatch timer speed' },
-  { emoji: '✅', keywords: 'check done complete' },
-  { emoji: '⭐', keywords: 'star favorite bookmark' },
-  { emoji: '❤️', keywords: 'heart like love' },
-  { emoji: '💎', keywords: 'diamond gem premium' },
-  { emoji: '🧠', keywords: 'brain ai smart think' },
-  { emoji: '🤖', keywords: 'robot bot automation' },
-  { emoji: '🛠️', keywords: 'tools build settings' },
-  { emoji: '⚙️', keywords: 'gear settings config' },
-  { emoji: '🌐', keywords: 'globe web internet browser' },
-  { emoji: '📡', keywords: 'satellite stream broadcast' },
-  { emoji: '🔋', keywords: 'battery power energy' },
-  { emoji: '☕', keywords: 'coffee break cup' },
-];
 
 interface BasicSection {
   title: string;
@@ -526,208 +488,159 @@ export const INITIAL_LAYER_1: LayerKeymap = {
   r3c3: { label: '', actionType: 'Basic input', binding: 'blank' },
 };
 
-// Existing preset definitions came from a larger 14-key pad. Keep their
-// compacted source map private and migrate it into Grid Macro 1's 3x3 layout.
-const LEGACY_PRESET_BASE: LegacyLayerKeymap = {
-  'dial-tl': INITIAL_LAYER_1[GRID_MACRO_ENCODER_SLOT],
-  r1c2: { label: 'esc', actionType: 'Basic input', binding: 'esc' },
-  r1c3: { label: 'tab', actionType: 'Basic input', binding: 'tab' },
-  r2c1: { label: 'Q', actionType: 'Basic input', binding: 'Q' },
-  r2c2: { label: 'W', actionType: 'Basic input', binding: 'W' },
-  r2c3: { label: 'E', actionType: 'Basic input', binding: 'E' },
-  r2c4: { label: 'R', actionType: 'Basic input', binding: 'R' },
-  r3c1: { label: 'A', actionType: 'Basic input', binding: 'A' },
-  r3c2: { label: 'S', actionType: 'Basic input', binding: 'S' },
-  r3c3: { label: 'D', actionType: 'Basic input', binding: 'D' },
+const PRESET_MACROPAD_LABELS: Record<string, string> = {
+  Duplicate: 'Dupl.',
+  Rectangle: 'Rect',
+  Eyedropper: 'Eyedrop',
+  Instructions: 'Instr.',
+  Shortcuts: 'Keys',
+  Component: 'Comp.',
+  Transform: 'Xform',
 };
 
-function normalizeLegacyPresetLayer(legacy: LegacyLayerKeymap): LayerKeymap {
-  const copy = (legacySlot: string, gridSlot: KeySlotId): KeyAssignment => {
-    const assignment = legacy[legacySlot] ?? INITIAL_LAYER_1[gridSlot];
-    return {
-      ...assignment,
-      ...(assignment.encoderActions
-        ? { encoderActions: { ...assignment.encoderActions } }
-        : {}),
-    };
-  };
+const PRESET_DIAL_LABELS: Record<string, string> = {
+  'Scroll Down': 'dn',
+  Latest: 'end',
+  'Scroll Up': 'up',
+  'Zoom In': 'zo+',
+  'Zoom Fit': 'fit',
+  'Zoom Out': 'zo-',
+  Fit: 'fit',
+  'Fit Screen': 'fit',
+  'Brush +': 'br+',
+  'Brush -': 'br-',
+  'Next Frame': 'nxt',
+  Play: 'ply',
+  'Prev Frame': 'prv',
+  Redo: 'rdo',
+  Undo: 'und',
+  'View Selected': 'sel',
+};
 
+const PRESET_SINGLE_MODIFIERS = new Set([
+  'win', 'ctrl', 'alt', 'shift', 'cmd', 'option', 'command', 'control', 'super',
+]);
+
+function formatPresetSequence(sequence: string, os: 'mac' | 'win'): string {
+  return sequence
+    .split('+')
+    .map((key) => key === 'Mod' ? (os === 'mac' ? 'Cmd' : 'Ctrl') : key)
+    .join(' + ');
+}
+
+function isPresetShortcut(sequence: string): boolean {
+  const clean = sequence.trim();
+  if (!clean || PRESET_SINGLE_MODIFIERS.has(clean.toLowerCase())) return false;
+  return clean.includes('+') || clean.includes(' ') || clean.toLowerCase().includes('mod+');
+}
+
+function makePresetActionItem(
+  id: string,
+  name: string,
+  binding: string,
+  iconId: string
+): BasicTileItem {
   return {
-    [GRID_MACRO_ENCODER_SLOT]: copy('dial-tl', GRID_MACRO_ENCODER_SLOT),
-    r1c1: copy('r1c2', 'r1c1'),
-    r1c2: copy('r1c3', 'r1c2'),
-    r1c3: copy('r2c1', 'r1c3'),
-    r2c1: copy('r2c2', 'r2c1'),
-    r2c2: copy('r2c3', 'r2c2'),
-    r2c3: copy('r2c4', 'r2c3'),
-    r3c1: copy('r3c1', 'r3c1'),
-    r3c2: copy('r3c2', 'r3c2'),
-    r3c3: copy('r3c3', 'r3c3'),
+    id,
+    main: name,
+    listLabel: binding,
+    macropadLabel: PRESET_MACROPAD_LABELS[name] ?? name,
+    iconId,
   };
 }
 
-const LEGACY_PRESET_LIBRARY: LegacyPresetItem[] = [
-  {
-    id: 'chatgpt',
-    title: 'ChatGPT',
-    description: 'Install this layer to use with the ChatGPT app.',
-    author: 'Work Louder',
-    hasPreview: false,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r1c2: { label: 'new', actionType: 'Shortcut', binding: 'Cmd+N (New Chat)' },
-      r1c3: { label: 'find', actionType: 'Shortcut', binding: 'Cmd+K (Search)' },
-      r2c1: { label: '⌘Spc', actionType: 'Shortcut', binding: 'Companion Bar' },
-      r2c2: { label: 'Voice', actionType: 'Multi-step action', binding: 'Toggle Voice Mode' },
-      r2c3: { label: 'Copy', actionType: 'Shortcut', binding: 'Cmd+Shift+C' },
-      r2c4: { label: 'Regen', actionType: 'Shortcut', binding: 'Cmd+Shift+R' },
-    },
-  },
-  {
-    id: 'framer',
-    title: 'Framer',
-    description: 'This is a great preset for getting started with Framer.',
-    author: 'Work Louder',
-    hasPreview: true,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r2c1: { label: 'F', actionType: 'Basic input', binding: 'Frame (F)' },
-      r2c2: { label: 'S', actionType: 'Basic input', binding: 'Stack (S)' },
-      r2c3: { label: 'G', actionType: 'Basic input', binding: 'Grid (G)' },
-      r2c4: { label: 'T', actionType: 'Basic input', binding: 'Text (T)' },
-      r3c1: { label: 'I', actionType: 'Basic input', binding: 'Insert (I)' },
-      r3c2: { label: '⌘P', actionType: 'Shortcut', binding: 'Preview (Cmd+P)' },
-      r3c3: { label: '⌘K', actionType: 'Shortcut', binding: 'Quick Actions' },
-    },
-  },
-  {
-    id: 'figma',
-    title: 'Figma',
-    description: 'This is a great preset for getting started with Figma.',
-    author: 'Work Louder',
-    hasPreview: true,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r2c1: { label: 'F', actionType: 'Basic input', binding: 'Frame Tool (F)' },
-      r2c2: { label: 'R', actionType: 'Basic input', binding: 'Rectangle (R)' },
-      r2c3: { label: 'P', actionType: 'Basic input', binding: 'Pen Tool (P)' },
-      r2c4: { label: 'T', actionType: 'Basic input', binding: 'Text Tool (T)' },
-      r3c1: { label: '⌘G', actionType: 'Shortcut', binding: 'Group Selection' },
-      r3c2: { label: '⇧A', actionType: 'Shortcut', binding: 'Auto Layout' },
-      r3c3: { label: '⌥⌘K', actionType: 'Shortcut', binding: 'Create Component' },
-    },
-  },
-  {
-    id: 'illustrator',
-    title: 'Illustrator',
-    description: 'This is a great preset for getting started with Adobe Illustrator.',
-    author: 'Preset Author',
-    hasPreview: true,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r2c1: { label: 'V', actionType: 'Basic input', binding: 'Selection (V)' },
-      r2c2: { label: 'A', actionType: 'Basic input', binding: 'Direct Select (A)' },
-      r2c3: { label: 'P', actionType: 'Basic input', binding: 'Pen Tool (P)' },
-      r2c4: { label: 'M', actionType: 'Basic input', binding: 'Rectangle (M)' },
-      r3c1: { label: '⇧M', actionType: 'Shortcut', binding: 'Shape Builder' },
-      r3c2: { label: 'I', actionType: 'Basic input', binding: 'Eyedropper (I)' },
-      r3c3: { label: '⌘G', actionType: 'Shortcut', binding: 'Group' },
-    },
-  },
-  {
-    id: 'photoshop',
-    title: 'Photoshop',
-    description: 'This preset is great for getting started with Adobe Photoshop.',
-    author: 'Preset Author',
-    hasPreview: true,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r2c1: { label: 'B', actionType: 'Basic input', binding: 'Brush Tool (B)' },
-      r2c2: { label: 'E', actionType: 'Basic input', binding: 'Eraser (E)' },
-      r2c3: { label: 'L', actionType: 'Basic input', binding: 'Lasso Tool (L)' },
-      r2c4: { label: 'W', actionType: 'Basic input', binding: 'Object Select (W)' },
-      r3c1: { label: '[', actionType: 'Basic input', binding: 'Brush Smaller' },
-      r3c2: { label: ']', actionType: 'Basic input', binding: 'Brush Larger' },
-      r3c3: { label: '⌘T', actionType: 'Shortcut', binding: 'Free Transform' },
-    },
-  },
-  {
-    id: 'premiere',
-    title: 'Premiere',
-    description: 'This preset is great for getting started with Adobe Premiere Pro.',
-    author: 'Work Louder',
-    hasPreview: true,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r2c1: { label: 'V', actionType: 'Basic input', binding: 'Selection (V)' },
-      r2c2: { label: 'C', actionType: 'Basic input', binding: 'Razor Tool (C)' },
-      r2c3: { label: 'I', actionType: 'Basic input', binding: 'Mark In (I)' },
-      r2c4: { label: 'O', actionType: 'Basic input', binding: 'Mark Out (O)' },
-      r3c1: { label: 'J', actionType: 'Basic input', binding: 'Shuttle Left' },
-      r3c2: { label: 'K', actionType: 'Basic input', binding: 'Stop / Pause' },
-      r3c3: { label: 'L', actionType: 'Basic input', binding: 'Shuttle Right' },
-    },
-  },
-  {
-    id: 'blender',
-    title: 'Blender',
-    description: 'This preset is great for getting started with Blender 3D.',
-    author: 'Work Louder',
-    hasPreview: true,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r2c1: { label: 'G', actionType: 'Basic input', binding: 'Grab / Move (G)' },
-      r2c2: { label: 'R', actionType: 'Basic input', binding: 'Rotate (R)' },
-      r2c3: { label: 'S', actionType: 'Basic input', binding: 'Scale (S)' },
-      r2c4: { label: 'E', actionType: 'Basic input', binding: 'Extrude (E)' },
-      r3c1: { label: 'I', actionType: 'Basic input', binding: 'Inset Faces (I)' },
-      r3c2: { label: '⌃B', actionType: 'Shortcut', binding: 'Bevel (Ctrl+B)' },
-      r3c3: { label: '⌃R', actionType: 'Shortcut', binding: 'Loop Cut (Ctrl+R)' },
-    },
-  },
-  {
-    id: 'davinci',
-    title: 'DaVinci',
-    description: 'This preset is great for getting started with DaVinci.',
-    author: 'Work Louder',
-    hasPreview: true,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r2c1: { label: 'A', actionType: 'Basic input', binding: 'Selection Mode (A)' },
-      r2c2: { label: 'B', actionType: 'Basic input', binding: 'Blade Mode (B)' },
-      r2c3: { label: 'T', actionType: 'Basic input', binding: 'Trim Edit Mode (T)' },
-      r2c4: { label: '⌘B', actionType: 'Shortcut', binding: 'Split Clip' },
-      r3c1: { label: '⌥S', actionType: 'Shortcut', binding: 'Add Serial Node' },
-      r3c2: { label: '⌥P', actionType: 'Shortcut', binding: 'Add Parallel Node' },
-      r3c3: { label: '⌘D', actionType: 'Shortcut', binding: 'Disable Node' },
-    },
-  },
-  {
-    id: 'affinity',
-    title: 'Affinity',
-    description: 'This preset is great for getting started with Affinity.',
-    author: 'Work Louder',
-    hasPreview: true,
-    layerKeymap: {
-      ...LEGACY_PRESET_BASE,
-      r2c1: { label: 'V', actionType: 'Basic input', binding: 'Move Tool (V)' },
-      r2c2: { label: 'A', actionType: 'Basic input', binding: 'Node Tool (A)' },
-      r2c3: { label: 'P', actionType: 'Basic input', binding: 'Pen Tool (P)' },
-      r2c4: { label: 'N', actionType: 'Basic input', binding: 'Pencil Tool (N)' },
-      r3c1: { label: 'M', actionType: 'Basic input', binding: 'Shape Tool (M)' },
-      r3c2: { label: 'T', actionType: 'Basic input', binding: 'Artistic Text (T)' },
-      r3c3: { label: 'G', actionType: 'Basic input', binding: 'Fill Tool (G)' },
-    },
-  },
-];
+export function buildPresetLibrary(os: 'mac' | 'win'): PresetItem[] {
+  return PRESET_CATALOG.map((preset) => {
+    const actionItems: CustomItemsByTab = {
+      Action: [],
+      'Multi-A': [],
+      'Smart-A': [],
+    };
+    const keyAssignments = {} as Pick<LayerKeymap, (typeof GRID_MACRO_KEY_SLOTS)[number]>;
 
+    preset.keys.forEach((action, index) => {
+      const slot = GRID_MACRO_KEY_SLOTS[index];
+      if (!slot) return;
 
-export const PRESET_LIBRARY: PresetItem[] = LEGACY_PRESET_LIBRARY.map(
-  ({ layerKeymap, ...preset }) => ({
-    ...preset,
-    layerKeymap: normalizeLegacyPresetLayer(layerKeymap),
-  })
-);
+      const itemId = `preset-${preset.id}-${slot}`;
+      const iconId = action.iconId ?? 'sparkles';
+      const shortName = PRESET_MACROPAD_LABELS[action.name] ?? action.name;
+      let actionType: KeyAssignment['actionType'];
+      let label: string;
+      let binding: string;
+
+      if (action.multi) {
+        actionType = 'Multi-step action';
+        label = shortName;
+        const onTap = formatPresetSequence(action.multi.onTap, os);
+        const doubleTap = action.multi.doubleTap
+          ? formatPresetSequence(action.multi.doubleTap, os)
+          : '';
+        binding = `${action.name} (onTap: ${onTap}${doubleTap ? `, doubleTap: ${doubleTap}` : ''})`;
+        actionItems['Multi-A'].push(makePresetActionItem(itemId, action.name, binding, iconId));
+      } else if (isPresetShortcut(action.keys)) {
+        const lowerName = action.name.toLowerCase();
+        const isSmartAction =
+          lowerName.includes('prompt') ||
+          lowerName.includes('ai') ||
+          lowerName.includes('smart') ||
+          lowerName.includes('auto') ||
+          lowerName.includes('instruction');
+        actionType = isSmartAction ? 'Smart Action' : 'Shortcut';
+        label = shortName;
+        binding = `${action.name} (${formatPresetSequence(action.keys, os)})`;
+        actionItems[isSmartAction ? 'Smart-A' : 'Action'].push(
+          makePresetActionItem(itemId, action.name, binding, iconId)
+        );
+      } else {
+        actionType = 'Basic input';
+        label = action.keys.length <= 3 ? action.keys.toUpperCase() : action.keys;
+        binding = `${action.name} (${action.keys})`;
+      }
+
+      keyAssignments[slot] = {
+        label,
+        actionType,
+        binding,
+        iconId,
+        actionId: itemId,
+        color: preset.color,
+      };
+    });
+
+    const encoderActions = Object.fromEntries(
+      (['cw', 'press', 'ccw'] as const).map((direction) => {
+        const action = preset.dial[direction];
+        return [direction, {
+          label: PRESET_DIAL_LABELS[action.name] ?? formatEncoderShortLabel(action.name),
+          binding: `${action.name} (${formatPresetSequence(action.keys, os)})`,
+        }];
+      })
+    ) as Record<EncoderSubActionId, EncoderSubBinding>;
+
+    return {
+      id: preset.id,
+      title: preset.title,
+      description: preset.description,
+      author: preset.author,
+      hasPreview: preset.hasPreview,
+      color: preset.color,
+      layerKeymap: {
+        [GRID_MACRO_ENCODER_SLOT]: {
+          label: preset.title,
+          actionType: 'Shortcut',
+          binding: `${preset.title} Dial`,
+          color: preset.color,
+          encoderActions,
+        },
+        ...keyAssignments,
+      },
+      actionItems,
+    };
+  });
+}
+
+export const PRESET_LIBRARY = buildPresetLibrary('win');
 
 const INITIAL_PROFILES: ProfileData[] = [
   {
@@ -959,6 +872,25 @@ export default function App() {
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [iconPickerTab, setIconPickerTab] = useState<'Icon' | 'Emoji'>('Icon');
   const [iconPickerSearch, setIconPickerSearch] = useState('');
+  const [iconPickerShowAll, setIconPickerShowAll] = useState(false);
+  const [iconPickerPage, setIconPickerPage] = useState(0);
+  const [selectableEmojiList, setSelectableEmojiList] = useState<EmojiCatalogEntry[]>([]);
+  const iconCatalog = useMemo(() => buildIconCatalog(getMacroIconLibrary()), []);
+  const iconSearchResults = useMemo(
+    () =>
+      searchIconCatalog(
+        iconCatalog,
+        iconPickerSearch,
+        ICON_SEARCH_PAGE_SIZE,
+        iconPickerShowAll,
+        iconPickerPage * ICON_SEARCH_PAGE_SIZE
+      ),
+    [iconCatalog, iconPickerSearch, iconPickerShowAll, iconPickerPage]
+  );
+
+  useEffect(() => {
+    if (!iconPickerOpen) setIconPickerPage(0);
+  }, [iconPickerOpen]);
 
   // Multiaction editor states
   const [multiGestures, setMultiGestures] = useState<
@@ -1117,6 +1049,8 @@ export default function App() {
   const [presetSearch, setPresetSearch] = useState('');
   const [presetOs, setPresetOs] = useState<'mac' | 'win'>('win');
   const [previewPreset, setPreviewPreset] = useState<PresetItem | null>(null);
+  const [hoveredPreviewSlot, setHoveredPreviewSlot] = useState<KeySlotId | null>(null);
+  const [hoveredPreviewDial, setHoveredPreviewDial] = useState<'cw' | 'press' | 'ccw' | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Settings view state
@@ -1137,9 +1071,8 @@ export default function App() {
   );
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
-  const [deviceBackupSummary, setDeviceBackupSummary] = useState(
-    () => deviceKeymapFileTools?.latestSummary() ?? 'Device backup tools are unavailable'
-  );
+  const [deviceSyncReady, setDeviceSyncReady] = useState(false);
+  const lastSyncedConfigKeyRef = useRef('');
 
   useEffect(() => {
     const bridge = window.macropad;
@@ -1287,10 +1220,184 @@ export default function App() {
     }, 2200);
   };
 
-  const refreshDeviceBackupSummary = () => {
-    setDeviceBackupSummary(
-      deviceKeymapFileTools?.latestSummary() ?? 'Device backup tools are unavailable'
-    );
+  useEffect(() => {
+    const bridge = window.macropad;
+    if (!bridge || deviceStatus.state !== 'connected') {
+      lastSyncedConfigKeyRef.current = '';
+      setDeviceSyncReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setDeviceSyncReady(false);
+    lastSyncedConfigKeyRef.current = '';
+
+    void (async () => {
+      try {
+        const remote = await bridge.getFile('app_state') as {
+          ok: boolean;
+          text?: string;
+        };
+        if (cancelled) return;
+        if (remote.ok && typeof remote.text === 'string' && profileFileTools) {
+          try {
+            const saved = profileFileTools.parse(remote.text);
+            const nextProfiles = saved.profiles.map((profile) =>
+              normalizeProfileForEditor(profile as unknown as ProfileData)
+            );
+            setProfiles(nextProfiles);
+            setActiveProfileIndex(saved.activeProfileIndex);
+            setActiveLayerIndex(0);
+            setCustomItemsByTab(normalizeCustomItemsForEditor(
+              saved.customItems as unknown as CustomItemsByTab
+            ));
+            const selected = nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0];
+            lastSyncedConfigKeyRef.current = JSON.stringify(
+              buildViaConfiguration(selected, presetOs).config
+            );
+            showToast('Loaded keymap profile from Grid Macro 1');
+          } catch {
+            // Ignore malformed device metadata; the validated local profile remains authoritative.
+          }
+        }
+      } catch {
+        // A stock VIA device stores keymaps, not profile metadata. Sync local profiles below.
+      }
+
+      if (!cancelled) setDeviceSyncReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceStatus.state, deviceStatus.device, deviceStatus.fw]);
+
+  useEffect(() => {
+    const bridge = window.macropad;
+    if (!bridge || deviceStatus.state !== 'connected' || !deviceSyncReady) return;
+
+    const { config, warnings: configWarnings } = buildViaConfiguration(currentProfile, presetOs);
+    if (config.layers.length === 0) return;
+    const configKey = JSON.stringify(config);
+    if (configKey === lastSyncedConfigKeyRef.current) return;
+
+    let cancelled = false;
+    const syncTimer = window.setTimeout(() => {
+      if (configKey === lastSyncedConfigKeyRef.current) return;
+      void (async () => {
+        try {
+          const current = await bridge.request({ cmd: 'get_config' });
+          if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
+          if (!current.ok || !current.snapshot) {
+            showToast(
+              `Profile saved locally; device sync paused because a pre-sync backup could not be read: ${
+                current.error || 'no keymap snapshot returned'
+              }`
+            );
+            return;
+          }
+          if (!deviceKeymapFileTools) {
+            showToast('Profile saved locally; device sync paused because local backup tools are unavailable');
+            return;
+          }
+
+          const backup = deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot, {
+            device: deviceStatus.device,
+            firmware: deviceStatus.fw,
+          });
+          if (!backup.ok) {
+            showToast(
+              `Profile saved locally; device sync paused because the pre-sync backup could not be saved: ${
+                backup.error || 'unknown storage error'
+              }`
+            );
+            return;
+          }
+          if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
+
+          const synced = await bridge.request({ cmd: 'set_config', config });
+          if (cancelled) return;
+          if (!synced.ok) {
+            showToast(
+              `Profile saved locally; device sync failed: ${synced.error || 'unknown error'}. A pre-sync backup was saved locally.`
+            );
+            return;
+          }
+
+          lastSyncedConfigKeyRef.current = configKey;
+          const state = JSON.stringify({
+            v: 1,
+            profiles,
+            activeProfileIndex,
+            customItems: customItemsByTab,
+          });
+          const saved = await bridge.putFile('app_state', state);
+          if (cancelled) return;
+          if (!saved.ok) {
+            showToast(`Keymap synced to device; local profile save failed: ${saved.error || 'unknown error'}`);
+            return;
+          }
+
+          const syncWarnings = [
+            ...configWarnings,
+            ...(current.warnings ?? []),
+            ...(synced.warnings ?? []),
+          ];
+          showToast(
+            syncWarnings.length
+              ? `Profile saved locally; ${syncWarnings.length} sync warning${syncWarnings.length === 1 ? '' : 's'}: ${syncWarnings[0]}`
+              : 'Profile saved locally; keymap synced to device'
+          );
+        } catch (error) {
+          if (!cancelled) {
+            showToast(
+              `Profile saved locally; device sync failed: ${error instanceof Error ? error.message : String(error)}. Keymap writes require a locally saved pre-sync backup.`
+            );
+          }
+        }
+      })();
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(syncTimer);
+    };
+  }, [
+    deviceSyncReady,
+    deviceStatus.state,
+    deviceStatus.device,
+    deviceStatus.fw,
+    profiles,
+    activeProfileIndex,
+    currentProfile,
+    customItemsByTab,
+    presetOs,
+  ]);
+
+  const ensureEmojiCatalog = async () => {
+    if (selectableEmojiList.length > 0) return true;
+    try {
+      const catalog = await import('./emojiCatalog');
+      setSelectableEmojiList(catalog.SELECTABLE_EMOJI_LIST);
+      return true;
+    } catch {
+      showToast('Could not load the emoji choices');
+      return false;
+    }
+  };
+
+  const handleToggleIconPicker = async () => {
+    if (iconPickerOpen) {
+      setIconPickerOpen(false);
+      return;
+    }
+    if (iconPickerTab === 'Emoji' && !(await ensureEmojiCatalog())) return;
+    setIconPickerOpen(true);
+  };
+
+  const handleIconPickerTabChange = async (tab: 'Icon' | 'Emoji') => {
+    if (tab === 'Emoji' && !(await ensureEmojiCatalog())) return;
+    setIconPickerTab(tab);
   };
 
   const handleAppSettingChange = async (key: AppSettingKey, value: boolean) => {
@@ -1364,66 +1471,6 @@ export default function App() {
     }
   };
 
-  const handleSaveDeviceBackup = async () => {
-    const bridge = window.macropad;
-    if (!bridge || deviceStatus.state !== 'connected' || !deviceKeymapFileTools) {
-      showToast('Connect a device before saving a keymap backup');
-      return;
-    }
-
-    try {
-      const current = await bridge.request({ cmd: 'get_config' });
-      if (!current.ok || !current.snapshot) {
-        showToast(`Device backup failed: ${current.error || 'no keymap snapshot returned'}`);
-        return;
-      }
-      const saved = deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot, {
-        device: deviceStatus.device,
-        firmware: deviceStatus.fw,
-      });
-      refreshDeviceBackupSummary();
-      showToast(
-        saved.ok
-          ? 'Saved device keymap backup locally'
-          : `Device backup failed: ${saved.error || 'storage failed'}`
-      );
-    } catch (error) {
-      showToast(`Device backup failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-  const handleDownloadDeviceBackup = () => {
-    if (!deviceKeymapFileTools) {
-      showToast('Device backup tools are unavailable');
-      return;
-    }
-    const result = deviceKeymapFileTools.downloadLatestBackup();
-    showToast(result.ok ? 'Downloaded device keymap backup' : result.error || 'No valid device backup is available');
-  };
-
-  const handleRestoreDeviceBackup = async () => {
-    const bridge = window.macropad;
-    if (!deviceKeymapFileTools || !bridge) {
-      showToast('QMK/VIA device backup tools are unavailable');
-      return;
-    }
-
-    const result = await deviceKeymapFileTools.restoreFromFile(bridge, {
-      device: deviceStatus.device,
-      firmware: deviceStatus.fw,
-    });
-    refreshDeviceBackupSummary();
-    showToast(
-      result.ok
-        ? `Restored ${result.changedMappings ?? 0} device mappings${
-            result.preRestoreBackupSaved ? '; pre-restore backup saved locally' : ''
-          }${result.warnings?.length ? `: ${result.warnings[0]}` : ''}`
-        : `${result.error || 'Device restore failed'}${
-            result.preRestoreBackupSaved ? '; current device keymap saved locally before restore' : ''
-          }`
-    );
-  };
-
   const pushState = (nextProfiles: ProfileData[]) => {
     setHistory((prev) => [...prev.slice(-19), profiles]);
     setRedoStack([]);
@@ -1462,10 +1509,10 @@ export default function App() {
 
   const handleAddLayer = () => {
     if (currentProfile.layers.length >= 8) return;
-    const clonedLayer: LayerKeymap = JSON.parse(JSON.stringify(currentLayer));
+    const blankLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
     const nextProfiles = profiles.map((p, idx) =>
       idx === activeProfileIndex
-        ? { ...p, layers: [...p.layers, clonedLayer] }
+        ? { ...p, layers: [...p.layers, blankLayer] }
         : p
     );
     pushState(nextProfiles);
@@ -1556,6 +1603,7 @@ export default function App() {
       binding: item.isClearIcon ? 'blank' : displayBinding,
       actionType: actionTypeMap[effectiveTab],
       iconId: item.isClearIcon ? undefined : item.iconId,
+      actionId: item.isClearIcon ? undefined : item.id,
     });
     showToast(`Assigned "${displayBinding}" to ${targetSlot.toUpperCase()}`);
   };
@@ -2333,8 +2381,39 @@ export default function App() {
     };
   };
 
+  const runSimulationAction = (assignment: {
+    label: string;
+    binding: string;
+    actionId?: string;
+  }) => {
+    triggerSimulationAction(
+      { ...assignment, id: assignment.actionId },
+      (targetLayer) => {
+        if (targetLayer >= currentProfile.layers.length) {
+          showToast(`Layer ${targetLayer + 1} is not available on this profile`);
+          return false;
+        }
+        setActiveLayerIndex(targetLayer);
+        setSelectedKey(null);
+        setSelectedEncoderSub(null);
+        setMappingDrawerOpen(false);
+      },
+      showToast,
+      window
+    );
+  };
+
   const handleSelectKey = (slotId: KeySlotId) => {
     if (suppressNextClickRef.current) return;
+    if (simulationMode) {
+      if (slotId === GRID_MACRO_ENCODER_SLOT) {
+        setEncoderAngle((angle) => (angle + 30) % 360);
+        runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
+      } else {
+        runSimulationAction(currentLayer[slotId]);
+      }
+      return;
+    }
     if (slotId === GRID_MACRO_ENCODER_SLOT) {
       setEncoderAngle((angle) => (angle + 45) % 360);
       if (selectedKey === slotId && !selectedEncoderSub) {
@@ -2367,6 +2446,12 @@ export default function App() {
     subAction: EncoderSubActionId
   ) => {
     if (suppressNextClickRef.current) return;
+    if (simulationMode) {
+      if (subAction === 'cw') setEncoderAngle((angle) => (angle + 30) % 360);
+      if (subAction === 'ccw') setEncoderAngle((angle) => (angle - 30 + 360) % 360);
+      runSimulationAction(getEncoderActions(currentLayer[slotId])[subAction]);
+      return;
+    }
     if (selectedDrawerTile) {
       assignItemToSlot(
         selectedDrawerTile.item,
@@ -2635,22 +2720,137 @@ export default function App() {
   };
 
   const handleInstallPreset = (preset: PresetItem) => {
+    if (currentProfile.layers.length >= 8) {
+      showToast('A profile can have up to 8 layers. Remove one first.');
+      return;
+    }
+
     const clonedLayer: LayerKeymap = JSON.parse(JSON.stringify(preset.layerKeymap));
-    const nextProfiles = profiles.map((p, idx) => {
-      if (idx !== activeProfileIndex) return p;
-      return {
-        ...p,
-        layers: [...p.layers, clonedLayer],
-      };
+    const nextLayerIndex = currentProfile.layers.length;
+    const nextProfiles = profiles.map((profile, index) => {
+      if (index !== activeProfileIndex) return profile;
+      return { ...profile, layers: [...profile.layers, clonedLayer] };
     });
+    const mergePresetItems = (existing: BasicTileItem[], incoming: BasicTileItem[]) => [
+      ...existing.filter((item) => !incoming.some((nextItem) => nextItem.id === item.id)),
+      ...incoming,
+    ];
+
+    setCustomItemsByTab((current) => ({
+      Action: mergePresetItems(current.Action, preset.actionItems.Action),
+      'Multi-A': mergePresetItems(current['Multi-A'], preset.actionItems['Multi-A']),
+      'Smart-A': mergePresetItems(current['Smart-A'], preset.actionItems['Smart-A']),
+    }));
     pushState(nextProfiles);
-    setActiveLayerIndex(currentProfile.layers.length);
+    setActiveLayerIndex(nextLayerIndex);
     setPreviewPreset(null);
     setActiveNav('Keymap');
+    const savedActionCount = preset.actionItems.Action.length + preset.actionItems['Multi-A'].length;
     showToast(
-      `Installed ${preset.title} preset on Layer ${currentProfile.layers.length + 1}`
+      `Installed ${preset.title} preset on Layer ${nextLayerIndex + 1}${
+        savedActionCount ? ` and saved ${savedActionCount} actions` : ''
+      }`
     );
   };
+
+  const renderCustomItemGroups = (
+    tab: Exclude<MappingTabId, 'Basic'>,
+    items: BasicTileItem[],
+    customGroupTitle: string
+  ) => (
+    <div className="flex-1 overflow-y-auto pt-[2px] pb-[3px]">
+      <div className="text-[11.5px] font-normal text-[#5c5c5c] mb-[10px]">
+        {customGroupTitle}
+      </div>
+      <div className="space-y-[16px]">
+        {groupCustomItemsByPreset(items, customGroupTitle).map((group) => (
+          <section key={group.id} data-preset-action-group={group.presetId}>
+            {group.presetId && (
+              <div className="h-[20px] flex items-center gap-[7px] mb-[9px]">
+                <PresetAppIcon id={group.presetId} size={18} />
+                <span
+                  className="text-[11.5px] font-medium leading-none"
+                  style={{ color: group.presetColor }}
+                >
+                  {group.title}
+                </span>
+                {group.presetColor && (
+                  <span
+                    aria-hidden="true"
+                    className="flex-1 h-px rounded-full"
+                    style={{
+                      background: `linear-gradient(90deg, ${group.presetColor}66, transparent)`,
+                    }}
+                  />
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-5 gap-[6px] content-start">
+              {group.items.map((item) => {
+                const isBeingDragged = draggedTile?.item.id === item.id;
+                const isFlashed = flashedTileId === item.id;
+                const presetTileStyle = group.presetColor && !isFlashed && !isBeingDragged
+                  ? {
+                      borderColor: `${group.presetColor}55`,
+                      backgroundColor: `${group.presetColor}0D`,
+                    }
+                  : undefined;
+                const presetIconStyle = group.presetColor
+                  ? {
+                      color: group.presetColor,
+                      backgroundColor: `${group.presetColor}1A`,
+                    }
+                  : undefined;
+
+                return (
+                  <button
+                    key={item.id}
+                    data-preset-action-item={group.presetId ? item.id : undefined}
+                    onPointerDown={(e) => handleStartTileDrag(e, item, tab)}
+                    onClick={() => handleAssignTileFromDrawer(item)}
+                    onDoubleClick={() => handleOpenCreatorEditor(tab, item)}
+                    title={`${item.main} (Click or drag onto key, double-click to edit)`}
+                    style={presetTileStyle}
+                    className={`h-[54px] rounded-[10px] border-[1.5px] flex flex-col items-center justify-center px-1 text-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${
+                      isFlashed
+                        ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
+                        : isBeingDragged
+                          ? 'bg-[#e8e8e8] text-[#a8a8a8] border-transparent transition-colors duration-200'
+                          : 'bg-white hover:bg-[#fafafa] text-[#444444] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
+                    }`}
+                  >
+                    {item.iconId ? (
+                      <span
+                        data-preset-action-icon={group.presetId ?? undefined}
+                        className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
+                        style={presetIconStyle}
+                      >
+                        <CustomPickerIcon id={item.iconId} size={20} />
+                      </span>
+                    ) : item.emoji ? (
+                      <span
+                        className="text-[20px] leading-none"
+                        style={group.presetColor ? { color: group.presetColor } : undefined}
+                      >
+                        {item.emoji}
+                      </span>
+                    ) : (
+                      <span
+                        className="text-[10px] leading-[1.2] whitespace-pre-line"
+                        style={group.presetColor ? { color: group.presetColor } : undefined}
+                      >
+                        {formatCustomTileText(item.main)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
 
   const handleDuplicateProfile = (idx: number) => {
     const source = profiles[idx];
@@ -2816,11 +3016,17 @@ export default function App() {
     }
   };
 
-  const filteredPresets = PRESET_LIBRARY.filter(
-    (p) =>
-      p.title.toLowerCase().includes(presetSearch.toLowerCase()) ||
-      p.description.toLowerCase().includes(presetSearch.toLowerCase())
+  const filteredPresets = useMemo(
+    () => buildPresetLibrary(presetOs).filter(
+      (preset) =>
+        preset.title.toLowerCase().includes(presetSearch.toLowerCase()) ||
+        preset.description.toLowerCase().includes(presetSearch.toLowerCase())
+    ),
+    [presetOs, presetSearch]
   );
+  const previewPresetDetails = previewPreset
+    ? PRESET_CATALOG.find((preset) => preset.id === previewPreset.id)
+    : undefined;
 
   const filteredBasicSections = BASIC_KEY_SECTIONS.map((sec) => ({
     ...sec,
@@ -2851,6 +3057,7 @@ export default function App() {
         <div className="flex items-center gap-[22px] shrink-0 min-w-[140px]">
           <button
             onClick={() => {
+              setPreviewPreset(null);
               setActiveNav('Keymap');
               setSelectedKey(null);
               setMappingDrawerOpen(false);
@@ -2926,6 +3133,7 @@ export default function App() {
               <button
                 key={tab}
                 onClick={() => {
+                  setPreviewPreset(null);
                   setActiveNav(tab);
                   setActiveTooltip(null);
                   setProfileMenuOpen(false);
@@ -4232,7 +4440,7 @@ export default function App() {
                     {/* Identity Row: 62x62 Icon Button + Name Input + Save/Discard/Delete */}
                     <div className="flex items-start gap-[10px] shrink-0 relative">
                       <button
-                        onClick={() => setIconPickerOpen((o) => !o)}
+                        onClick={() => void handleToggleIconPicker()}
                         title="Select Icon or Emoji"
                         className="w-[62px] h-[62px] rounded-[12px] bg-[#2f2f2f] hover:bg-[#252525] border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-white shrink-0 transition-all cursor-pointer"
                       >
@@ -4384,7 +4592,7 @@ export default function App() {
                               {(['Icon', 'Emoji'] as const).map((t) => (
                                 <button
                                   key={t}
-                                  onClick={() => setIconPickerTab(t)}
+                                  onClick={() => void handleIconPickerTabChange(t)}
                                   className={`flex-1 h-full text-[10.5px] font-medium transition-colors cursor-pointer ${
                                     iconPickerTab === t
                                       ? 'bg-[#000000] text-white rounded-full'
@@ -4402,7 +4610,10 @@ export default function App() {
                               <input
                                 type="text"
                                 value={iconPickerSearch}
-                                onChange={(e) => setIconPickerSearch(e.target.value)}
+                                onChange={(e) => {
+                                  setIconPickerSearch(e.target.value);
+                                  setIconPickerPage(0);
+                                }}
                                 placeholder={
                                   iconPickerTab === 'Icon'
                                     ? 'Search icon'
@@ -4414,17 +4625,9 @@ export default function App() {
 
                             {/* Grid of Real Icons or Real Emojis */}
                             <div className="bg-white rounded-[14px] p-[8px] h-[196px] overflow-y-auto list-accordion-scroll grid grid-cols-6 gap-[6px] content-start">
-                              {iconPickerTab === 'Icon'
-                                ? SELECTABLE_ICON_LIST.filter(
-                                    (ic) =>
-                                      !iconPickerSearch.trim() ||
-                                      ic.keywords
-                                        .toLowerCase()
-                                        .includes(iconPickerSearch.toLowerCase()) ||
-                                      ic.id
-                                        .toLowerCase()
-                                        .includes(iconPickerSearch.toLowerCase())
-                                  ).map((ic) => {
+                              {iconPickerTab === 'Icon' ? (
+                                iconSearchResults.icons.length > 0 ? (
+                                  iconSearchResults.icons.map((ic) => {
                                     const isChosen = selectedIconId === ic.id;
                                     return (
                                       <button
@@ -4435,6 +4638,8 @@ export default function App() {
                                           setIconPickerOpen(false);
                                         }}
                                         title={ic.id}
+                                        aria-label={`Select icon ${ic.id.replaceAll('-', ' ')}`}
+                                        aria-pressed={isChosen}
                                         className={`w-[26px] h-[26px] rounded-full flex items-center justify-center transition-colors cursor-pointer ${
                                           isChosen
                                             ? 'bg-[#0051ff] text-white'
@@ -4445,14 +4650,22 @@ export default function App() {
                                       </button>
                                     );
                                   })
-                                : SELECTABLE_EMOJI_LIST.filter(
+                                ) : (
+                                  <p className="col-span-6 py-4 text-center text-[10px] text-[#777777]">
+                                    No icons found
+                                  </p>
+                                )
+                              ) : (
+                                selectableEmojiList
+                                  .filter(
                                     (em) =>
                                       !iconPickerSearch.trim() ||
                                       em.keywords
                                         .toLowerCase()
                                         .includes(iconPickerSearch.toLowerCase()) ||
                                       em.emoji.includes(iconPickerSearch)
-                                  ).map((em) => {
+                                  )
+                                  .map((em) => {
                                     const isChosen = selectedEmoji === em.emoji;
                                     return (
                                       <button
@@ -4472,8 +4685,62 @@ export default function App() {
                                         {em.emoji}
                                       </button>
                                     );
-                                  })}
+                                  })
+                              )}
                             </div>
+                            {iconPickerTab === 'Icon' && (
+                              <div className="mt-[7px] flex min-h-[17px] items-center justify-between px-[3px]">
+                                {!iconPickerSearch.trim() && !iconPickerShowAll ? (
+                                  <button
+                                    onClick={() => {
+                                      setIconPickerShowAll(true);
+                                      setIconPickerPage(0);
+                                    }}
+                                    className="text-[9px] font-medium text-[#0051ff] hover:underline cursor-pointer"
+                                  >
+                                    Browse all {iconCatalog.length.toLocaleString()} icons
+                                  </button>
+                                ) : (
+                                  <>
+                                    <span className="text-[8px] text-[#777777]" aria-live="polite">
+                                      Showing{' '}
+                                      {iconSearchResults.total === 0
+                                        ? '0'
+                                        : `${(iconPickerPage * ICON_SEARCH_PAGE_SIZE + 1).toLocaleString()}–${Math.min(
+                                            (iconPickerPage + 1) * ICON_SEARCH_PAGE_SIZE,
+                                            iconSearchResults.total
+                                          ).toLocaleString()}`}{' '}
+                                      of {iconSearchResults.total.toLocaleString()}
+                                    </span>
+                                    <div className="flex items-center gap-[4px]">
+                                      {iconPickerPage > 0 && (
+                                        <button
+                                          aria-label="Previous icon results"
+                                          title="Previous icons"
+                                          onClick={() =>
+                                            setIconPickerPage((page) => Math.max(0, page - 1))
+                                          }
+                                          className="w-[18px] h-[18px] rounded-full text-[12px] text-[#555555] hover:bg-[#e8e8e8] cursor-pointer"
+                                        >
+                                          ‹
+                                        </button>
+                                      )}
+                                      {(iconPickerPage + 1) * ICON_SEARCH_PAGE_SIZE <
+                                        iconSearchResults.total && (
+                                        <button
+                                          aria-label="Next icon results"
+                                          title="Next icons"
+                                          onClick={() => setIconPickerPage((page) => page + 1)}
+                                          className="w-[18px] h-[18px] rounded-full text-[12px] text-[#555555] hover:bg-[#e8e8e8] cursor-pointer"
+                                        >
+                                          ›
+                                        </button>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </motion.div>
                         )}
                       </AnimatePresence>
@@ -6219,50 +6486,7 @@ export default function App() {
                             </button>
                           </div>
                         ) : (
-                          <div className="flex-1 overflow-y-auto pt-[2px]">
-                            <div className="text-[11.5px] font-normal text-[#5c5c5c] mb-[10px]">
-                              My Actions
-                            </div>
-                            <div className="grid grid-cols-5 gap-[6px] content-start">
-                              {customItemsByTab.Action.map((item) => {
-                                const isBeingDragged =
-                                  draggedTile?.item.id === item.id;
-                                const isFlashed = flashedTileId === item.id;
-                                return (
-                                  <button
-                                    key={item.id}
-                                    onPointerDown={(e) =>
-                                      handleStartTileDrag(e, item, 'Action')
-                                    }
-                                    onClick={() => handleAssignTileFromDrawer(item)}
-                                    onDoubleClick={() =>
-                                      handleOpenCreatorEditor('Action', item)
-                                    }
-                                    title={`${item.main} (Click or drag onto key, double-click to edit)`}
-                                    className={`h-[54px] rounded-[10px] border-[1.5px] flex flex-col items-center justify-center px-1 text-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${
-                                      isFlashed
-                                        ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
-                                        : isBeingDragged
-                                        ? 'bg-[#e8e8e8] text-[#a8a8a8] border-transparent transition-colors duration-200'
-                                        : 'bg-white hover:bg-[#fafafa] text-[#444444] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
-                                    }`}
-                                  >
-                                    {item.iconId ? (
-                                      <CustomPickerIcon id={item.iconId} size={20} />
-                                    ) : item.emoji ? (
-                                      <span className="text-[20px] leading-none">
-                                        {item.emoji}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] leading-[1.2] whitespace-pre-line">
-                                        {formatCustomTileText(item.main)}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
+                          renderCustomItemGroups('Action', customItemsByTab.Action, 'My Actions')
                         )}
                       </motion.div>
                     )}
@@ -6336,50 +6560,7 @@ export default function App() {
                             </button>
                           </div>
                         ) : (
-                          <div className="flex-1 overflow-y-auto pt-[2px]">
-                            <div className="text-[11.5px] font-normal text-[#5c5c5c] mb-[10px]">
-                              My Multiactions
-                            </div>
-                            <div className="grid grid-cols-5 gap-[6px] content-start">
-                              {customItemsByTab['Multi-A'].map((item) => {
-                                const isBeingDragged =
-                                  draggedTile?.item.id === item.id;
-                                const isFlashed = flashedTileId === item.id;
-                                return (
-                                  <button
-                                    key={item.id}
-                                    onPointerDown={(e) =>
-                                      handleStartTileDrag(e, item, 'Multi-A')
-                                    }
-                                    onClick={() => handleAssignTileFromDrawer(item)}
-                                    onDoubleClick={() =>
-                                      handleOpenCreatorEditor('Multi-A', item)
-                                    }
-                                    title={`${item.main} (Click or drag onto key, double-click to edit)`}
-                                    className={`h-[54px] rounded-[10px] border-[1.5px] flex flex-col items-center justify-center px-1 text-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${
-                                      isFlashed
-                                        ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
-                                        : isBeingDragged
-                                        ? 'bg-[#e8e8e8] text-[#a8a8a8] border-transparent transition-colors duration-200'
-                                        : 'bg-white hover:bg-[#fafafa] text-[#444444] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
-                                    }`}
-                                  >
-                                    {item.iconId ? (
-                                      <CustomPickerIcon id={item.iconId} size={20} />
-                                    ) : item.emoji ? (
-                                      <span className="text-[20px] leading-none">
-                                        {item.emoji}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] leading-[1.2] whitespace-pre-line">
-                                        {formatCustomTileText(item.main)}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
+                          renderCustomItemGroups('Multi-A', customItemsByTab['Multi-A'], 'My Multiactions')
                         )}
                       </motion.div>
                     )}
@@ -6425,50 +6606,7 @@ export default function App() {
                             </button>
                           </div>
                         ) : (
-                          <div className="flex-1 overflow-y-auto pt-[2px]">
-                            <div className="text-[11.5px] font-normal text-[#5c5c5c] mb-[10px]">
-                              My Smart Actions
-                            </div>
-                            <div className="grid grid-cols-5 gap-[6px] content-start">
-                              {customItemsByTab['Smart-A'].map((item) => {
-                                const isBeingDragged =
-                                  draggedTile?.item.id === item.id;
-                                const isFlashed = flashedTileId === item.id;
-                                return (
-                                  <button
-                                    key={item.id}
-                                    onPointerDown={(e) =>
-                                      handleStartTileDrag(e, item, 'Smart-A')
-                                    }
-                                    onClick={() => handleAssignTileFromDrawer(item)}
-                                    onDoubleClick={() =>
-                                      handleOpenCreatorEditor('Smart-A', item)
-                                    }
-                                    title={`${item.main} (Click or drag onto key, double-click to edit)`}
-                                    className={`h-[54px] rounded-[10px] border-[1.5px] flex flex-col items-center justify-center px-1 text-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${
-                                      isFlashed
-                                        ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
-                                        : isBeingDragged
-                                        ? 'bg-[#e8e8e8] text-[#a8a8a8] border-transparent transition-colors duration-200'
-                                        : 'bg-white hover:bg-[#fafafa] text-[#444444] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
-                                    }`}
-                                  >
-                                    {item.iconId ? (
-                                      <CustomPickerIcon id={item.iconId} size={20} />
-                                    ) : item.emoji ? (
-                                      <span className="text-[20px] leading-none">
-                                        {item.emoji}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] leading-[1.2] whitespace-pre-line">
-                                        {formatCustomTileText(item.main)}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
+                          renderCustomItemGroups('Smart-A', customItemsByTab['Smart-A'], 'My Smart Actions')
                         )}
                       </motion.div>
                     )}
@@ -6659,38 +6797,6 @@ export default function App() {
                         {deviceStatus.state === 'connected' ? deviceStatus.fw || 'Unknown' : '—'}
                       </span>
                     </div>
-                    <div className="pt-[7px] pb-[2px] flex flex-col gap-[5px]">
-                      <span className="text-[#585858]">Pre-sync device keymap backup</span>
-                      <span className="text-[#777777] leading-[1.35]" aria-live="polite">
-                        {deviceBackupSummary}
-                      </span>
-                      <div className="flex gap-[6px]">
-                        <button
-                          type="button"
-                          onClick={handleSaveDeviceBackup}
-                          disabled={deviceStatus.state !== 'connected'}
-                          className="h-[25px] px-[9px] rounded-full bg-white hover:bg-neutral-50 disabled:opacity-40 text-[10px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed"
-                        >
-                          Save backup
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleDownloadDeviceBackup}
-                          disabled={!deviceKeymapFileTools?.getLatestBackup()}
-                          className="h-[25px] px-[9px] rounded-full bg-white hover:bg-neutral-50 disabled:opacity-40 text-[10px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed"
-                        >
-                          Download backup
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleRestoreDeviceBackup}
-                          disabled={deviceStatus.state !== 'connected'}
-                          className="h-[25px] px-[9px] rounded-full bg-white hover:bg-neutral-50 disabled:opacity-40 text-[10px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed"
-                        >
-                          Restore from file
-                        </button>
-                      </div>
-                    </div>
                     <div className="pt-[7px] pb-[2px] flex items-center justify-between">
                       <span className="text-[#585858]">Input app version:</span>
                       <span className="text-[#444444] font-medium tabular-nums">
@@ -6827,70 +6933,238 @@ export default function App() {
       )}
       </AnimatePresence>
 
-      {/* PRESET PREVIEW MODAL */}
+      {/* PRESET DETAIL PREVIEW PAGE */}
       <AnimatePresence>
-        {previewPreset && (
-          <motion.div
-            key="preset-preview-modal-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/30 backdrop-blur-[1px] flex items-center justify-center z-50"
+        {previewPreset && previewPresetDetails && (
+          <motion.main
+            key={`preset-preview-${previewPreset.id}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute inset-0 z-50 overflow-y-auto bg-[#efefef]"
+            aria-label={`${previewPreset.title} preset preview`}
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 8 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="bg-[#efefef] rounded-[22px] w-[360px] p-6 shadow-2xl border border-black/10 flex flex-col items-center"
-            >
-              <div className="w-full flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2.5">
-                  <PresetAppIcon id={previewPreset.id} />
-                  <div>
-                    <div className="text-[10px] text-[#6d6d6d] leading-none">
-                      Preset Preview
+            <div className="w-full max-w-[1300px] mx-auto px-5 sm:px-7 lg:px-[30px] pt-[12px] pb-[52px]">
+              <div className="w-full max-w-[1125px]">
+                <button
+                  type="button"
+                  aria-label="Back to presets"
+                  onClick={() => {
+                    setPreviewPreset(null);
+                    setHoveredPreviewSlot(null);
+                    setHoveredPreviewDial(null);
+                  }}
+                  className="flex items-center gap-[12px] text-[16px] text-[#222] cursor-pointer hover:text-[#0051ff] transition-colors"
+                >
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M13 8H3M3 8L7 4M3 8L7 12" />
+                  </svg>
+                  Back
+                </button>
+
+                <header className="mt-[29px] flex flex-col md:flex-row md:items-start md:justify-between gap-6 md:gap-10">
+                  <div className="w-full md:w-[268px] shrink-0">
+                    <div className="flex items-center gap-[16px]">
+                      <PresetAppIcon id={previewPreset.id} size={52} />
+                      <div>
+                        <div className="text-[13px] text-[#8a8a8a] leading-none mb-[6px]">
+                          Layer preset
+                        </div>
+                        <h1 className="text-[21px] font-medium text-[#111] leading-none">
+                          {previewPreset.title}
+                        </h1>
+                      </div>
                     </div>
-                    <div className="text-sm font-semibold text-[#111]">
-                      {previewPreset.title}
+                    <button
+                      type="button"
+                      aria-label={`Install ${previewPreset.title} preset`}
+                      onClick={() => handleInstallPreset(previewPreset)}
+                      className="mt-[20px] w-full h-[39px] rounded-full bg-black hover:bg-[#0051ff] text-white text-[13px] font-medium transition-colors cursor-pointer"
+                    >
+                      Install
+                    </button>
+                  </div>
+                  <div className="md:max-w-[540px] md:pt-[8px] md:text-right">
+                    <p className="text-[15px] leading-[1.5] text-[#888]">
+                      {previewPresetDetails.description}
+                    </p>
+                    <p className="mt-[8px] text-[15px] text-[#222]">
+                      <span className="font-semibold">Author:</span>{' '}
+                      {previewPresetDetails.author}
+                    </p>
+                  </div>
+                </header>
+
+                <section className="mt-[58px] grid grid-cols-1 lg:grid-cols-[214px_minmax(0,1fr)] gap-x-[48px] gap-y-[30px]">
+                  <div className="flex flex-col items-center lg:items-start">
+                    <MacropadDevice
+                      layer={previewPreset.layerKeymap}
+                      selectedKey={null}
+                      selectedEncoderSub={null}
+                      dragOverTarget={null}
+                      encoderAngle={45}
+                      onSelectKey={() => {}}
+                      onSelectEncoderSub={() => {}}
+                      onHoverSlot={setHoveredPreviewSlot}
+                      highlightedSlot={hoveredPreviewSlot}
+                      showSlotNumbers
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-[36px] gap-y-[20px] content-start">
+                    {previewPresetDetails.keys.map((action, index) => {
+                      const keySlot = GRID_MACRO_KEY_SLOTS[index];
+                      const isHovered = keySlot !== undefined && hoveredPreviewSlot === keySlot;
+                      const shortcut = action.multi
+                        ? `Tap ${formatPresetSequence(action.multi.onTap, presetOs).toLowerCase()}${
+                            action.multi.doubleTap
+                              ? ` · Double tap ${formatPresetSequence(action.multi.doubleTap, presetOs).toLowerCase()}`
+                              : ''
+                          }`
+                        : formatPresetSequence(action.keys, presetOs).toLowerCase();
+                      return (
+                        <div
+                          key={`${previewPreset.id}-key-${index}`}
+                          onMouseEnter={() => setHoveredPreviewSlot(keySlot ?? null)}
+                          onMouseLeave={() => setHoveredPreviewSlot(null)}
+                          className="flex items-start gap-[11px] min-w-0"
+                        >
+                          <span
+                            data-preview-action-number={index + 1}
+                            className={`mt-[1px] w-[21px] h-[21px] shrink-0 rounded-full bg-white text-[9px] font-medium flex items-center justify-center transition-all duration-150 ${
+                              isHovered
+                                ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]'
+                                : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
+                            }`}
+                          >
+                            {index + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-[2px]">
+                              <span className="text-[14px] font-medium leading-[1.2] text-[#222]">
+                                {action.name}
+                              </span>
+                              <span className="text-[12px] font-medium leading-[1.2] text-[#222]">
+                                {shortcut}
+                              </span>
+                            </div>
+                            <p className="mt-[4px] text-[11.5px] leading-[1.35] text-[#999]">
+                              {action.description}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <div className="mt-[34px] h-px bg-black/[0.09]" />
+
+                <section className="pt-[24px] grid grid-cols-1 lg:grid-cols-[214px_minmax(0,1fr)] gap-x-[48px] gap-y-[24px]">
+                  <div className="flex flex-col items-center">
+                    <div className="text-[13px] text-[#666] mb-[9px]">Dial</div>
+                    <div className="h-[68px] px-[17px] rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex items-center gap-[10px]">
+                      {([
+                        { direction: 'cw', text: 'CW', glyph: '↻' },
+                        { direction: 'press', text: 'PRESS', glyph: '↓' },
+                        { direction: 'ccw', text: 'CCW', glyph: '↺' },
+                      ] as const).map((item, index) => {
+                        const actionNumber = previewPresetDetails.keys.length + index + 1;
+                        const isHovered = hoveredPreviewDial === item.direction;
+                        return (
+                          <div
+                            key={item.direction}
+                            data-preview-dial-control={item.direction}
+                            onMouseEnter={() => setHoveredPreviewDial(item.direction)}
+                            onMouseLeave={() => setHoveredPreviewDial(null)}
+                            className="relative"
+                          >
+                            <span
+                              data-preview-dial-control-number={actionNumber}
+                              className={`absolute -top-[5px] -right-[3px] z-10 w-[15px] h-[15px] rounded-full bg-white text-[8px] font-medium flex items-center justify-center transition-all duration-150 ${
+                                isHovered
+                                  ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]'
+                                  : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.1)]'
+                              }`}
+                            >
+                              {actionNumber}
+                            </span>
+                            <div
+                              data-preview-dial-circle={item.direction}
+                              className={`w-[48px] h-[48px] rounded-full bg-[#171717] text-white flex flex-col items-center justify-center transition-all duration-150 ${
+                                isHovered
+                                  ? 'ring-2 ring-[#0051ff] shadow-[0_0_12px_rgba(0,81,255,0.65)]'
+                                  : ''
+                              }`}
+                            >
+                              <span className="text-[15px] leading-none text-[#0051ff]">{item.glyph}</span>
+                              <span className="mt-[2px] text-[8px] font-semibold tracking-[0.04em] text-white/80">
+                                {item.text}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
-                <button
-                  onClick={() => setPreviewPreset(null)}
-                  className="w-7 h-7 rounded-full bg-white hover:bg-neutral-100 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555] transition-all cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
 
-              <MacropadDevice
-                layer={previewPreset.layerKeymap}
-                selectedKey={null}
-                selectedEncoderSub={null}
-                dragOverTarget={null}
-                encoderAngle={45}
-                onSelectKey={() => {}}
-                onSelectEncoderSub={() => {}}
-              />
-
-              <div className="w-full grid grid-cols-2 gap-2.5 mt-5">
-                <button
-                  onClick={() => setPreviewPreset(null)}
-                  className="h-8 rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-xs font-medium text-[#444] transition-all cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => handleInstallPreset(previewPreset)}
-                  className="h-8 rounded-full bg-[#0051ff] hover:bg-[#0045d8] text-xs font-medium text-white cursor-pointer"
-                >
-                  Install Layer
-                </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-[36px] gap-y-[20px] content-start">
+                    {([
+                      { direction: 'cw', action: previewPresetDetails.dial.cw },
+                      { direction: 'press', action: previewPresetDetails.dial.press },
+                      { direction: 'ccw', action: previewPresetDetails.dial.ccw },
+                    ] as const).map(({ direction, action }, index) => {
+                      const actionNumber = previewPresetDetails.keys.length + index + 1;
+                      const isHovered = hoveredPreviewDial === direction;
+                      return (
+                        <div
+                          key={`${previewPreset.id}-dial-${direction}`}
+                          onMouseEnter={() => setHoveredPreviewDial(direction)}
+                          onMouseLeave={() => setHoveredPreviewDial(null)}
+                          className="flex items-start gap-[11px] min-w-0"
+                        >
+                        <span
+                          data-preview-dial-action-number={actionNumber}
+                          className={`mt-[1px] w-[21px] h-[21px] shrink-0 rounded-full bg-white text-[9px] font-medium flex items-center justify-center transition-all duration-150 ${
+                            isHovered
+                              ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]'
+                              : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
+                          }`}
+                        >
+                          {actionNumber}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-[2px]">
+                            <span className="text-[14px] font-medium leading-[1.2] text-[#222]">
+                              {action.name}
+                            </span>
+                            <span className="text-[12px] font-medium leading-[1.2] text-[#222]">
+                              {formatPresetSequence(action.keys, presetOs).toLowerCase()}
+                            </span>
+                          </div>
+                          <p className="mt-[4px] text-[11.5px] leading-[1.35] text-[#999]">
+                            {action.description}
+                          </p>
+                        </div>
+                      </div>
+                      );
+                    })}
+                  </div>
+                </section>
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </motion.main>
         )}
       </AnimatePresence>
 
@@ -7287,14 +7561,16 @@ const PRESET_APP_ICON_CONFIGS: Record<string, PresetAppIconConfig> = {
   windows: { iconId: 'brand-windows', label: '⊞', background: 'linear-gradient(145deg, #35a6ed, #0068bc)', foreground: '#ffffff', iconMode: 'fill' },
 };
 
-function getPresetAppIconPath(iconId: string): string | undefined {
+function getMacroIconLibrary(): IconLibrary | undefined {
   if (typeof window === 'undefined') return undefined;
-  return (
-    window as Window & { __MACRO_ICONS__?: { d?: Record<string, string> } }
-  ).__MACRO_ICONS__?.d?.[iconId];
+  return (window as Window & { __MACRO_ICONS__?: IconLibrary }).__MACRO_ICONS__;
 }
 
-function PresetAppIcon({ id }: { id: string }) {
+function getPresetAppIconPath(iconId: string): string | undefined {
+  return getMacroIconLibrary()?.d?.[iconId];
+}
+
+function PresetAppIcon({ id, size = 30 }: { id: string; size?: number }) {
   const config = PRESET_APP_ICON_CONFIGS[id] ?? {
     label: '?',
     background: 'linear-gradient(145deg, #515866, #20242c)',
@@ -7307,9 +7583,11 @@ function PresetAppIcon({ id }: { id: string }) {
     <div
       data-preset-icon={id}
       aria-hidden="true"
-      className="w-[30px] h-[30px] flex items-center justify-center shrink-0 overflow-hidden"
+      className="flex items-center justify-center shrink-0 overflow-hidden"
       style={{
-        borderRadius: '9px',
+        width: size,
+        height: size,
+        borderRadius: Math.round(size * 0.3),
         background: config.background,
         color: config.foreground,
         border: '1px solid rgba(255,255,255,0.22)',
@@ -7318,8 +7596,8 @@ function PresetAppIcon({ id }: { id: string }) {
     >
       {iconPath ? (
         <svg
-          width="18"
-          height="18"
+          width={Math.round(size * 0.6)}
+          height={Math.round(size * 0.6)}
           viewBox="0 0 24 24"
           fill={iconMode === 'fill' ? 'currentColor' : 'none'}
           stroke={iconMode === 'stroke' ? 'currentColor' : 'none'}
@@ -7331,8 +7609,8 @@ function PresetAppIcon({ id }: { id: string }) {
         </svg>
       ) : id === 'affinity' ? (
         <svg
-          width="19"
-          height="19"
+          width={Math.round(size * 0.6)}
+          height={Math.round(size * 0.6)}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -7353,6 +7631,7 @@ function PresetAppIcon({ id }: { id: string }) {
                   ? 'text-[14px]'
                   : 'text-[12px]'
           }`}
+          style={size > 30 ? { fontSize: `${Math.round(size * 0.36)}px` } : undefined}
         >
           {config.label}
         </span>
@@ -7424,7 +7703,10 @@ interface MacropadDeviceProps {
     slotId: KeySlotId,
     sub?: EncoderSubActionId
   ) => void;
+  onHoverSlot?: (slotId: KeySlotId | null) => void;
+  highlightedSlot?: KeySlotId | null;
   entrancePhase?: EntrancePhase;
+  showSlotNumbers?: boolean;
 }
 
 function MacropadDevice({
@@ -7437,7 +7719,10 @@ function MacropadDevice({
   onSelectKey,
   onSelectEncoderSub,
   onStartKeyDrag = () => {},
+  onHoverSlot,
+  highlightedSlot = null,
   entrancePhase,
+  showSlotNumbers = false,
 }: MacropadDeviceProps) {
   const isEncoderOpen = selectedKey === GRID_MACRO_ENCODER_SLOT;
 
@@ -7509,11 +7794,15 @@ function MacropadDevice({
                 label={layer[slotId].label}
                 binding={layer[slotId].binding}
                 iconId={layer[slotId].iconId}
+                color={showSlotNumbers ? undefined : layer[slotId].color}
+                slotNumber={showSlotNumbers ? index + 1 : undefined}
                 selected={selectedKey === slotId}
                 dragOver={dragOverTarget?.slotId === slotId}
                 isDraggingSource={draggedFromSlot === slotId}
                 onClick={() => onSelectKey(slotId)}
                 onPointerDown={(e) => onStartKeyDrag(e, slotId)}
+                onHoverSlot={onHoverSlot}
+                previewHighlighted={highlightedSlot === slotId}
               />
             ))}
           </div>
@@ -7773,12 +8062,16 @@ interface KeycapButtonProps {
   label: string;
   binding: string;
   iconId?: string;
+  color?: string;
+  slotNumber?: number;
   selected: boolean;
   dragOver?: boolean;
   isDraggingSource?: boolean;
   isLowercase?: boolean;
   onClick: () => void;
   onPointerDown?: (e: React.PointerEvent) => void;
+  onHoverSlot?: (slotId: KeySlotId | null) => void;
+  previewHighlighted?: boolean;
 }
 
 function KeycapButton({
@@ -7788,12 +8081,16 @@ function KeycapButton({
   label,
   binding,
   iconId,
+  color,
+  slotNumber,
   selected,
   dragOver,
   isDraggingSource,
   isLowercase,
   onClick,
   onPointerDown,
+  onHoverSlot,
+  previewHighlighted = false,
 }: KeycapButtonProps) {
   const isEmpty =
     !iconId && (!label || label === '—' || binding === 'blank');
@@ -7812,15 +8109,22 @@ function KeycapButton({
       data-drop-slot={slotId}
       onPointerDown={onPointerDown}
       onClick={onClick}
+      onMouseEnter={() => onHoverSlot?.(slotId)}
+      onMouseLeave={() => onHoverSlot?.(null)}
       title={binding}
-      className={`w-[42px] h-[42px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all duration-150 cursor-grab active:cursor-grabbing focus:outline-none select-none ${
+      style={color && !isEmpty && !selected && !dragOver && !isDraggingSource
+        ? { backgroundColor: color, borderColor: color }
+        : undefined}
+      className={`${slotNumber !== undefined ? 'group ' : ''}w-[42px] h-[42px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all duration-150 cursor-grab active:cursor-grabbing focus:outline-none select-none ${
         isMultiWordCustom
           ? 'text-[8.5px] font-medium leading-[1.08] px-[2px] text-center'
           : isLowercase
           ? 'text-[11px] font-normal'
           : 'text-[11.5px] font-medium'
       } ${
-        isDraggingSource
+        previewHighlighted
+          ? 'bg-[#313131] text-[#f3f3f3] border-[#0051ff] shadow-[0_0_12px_rgba(0,81,255,0.65)] z-10'
+          : isDraggingSource
           ? 'bg-[#1e1e1e] text-[#6d6d6d] border-transparent'
           : selected
           ? 'bg-[#0051ff] border-[#0051ff] text-white shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
@@ -7829,7 +8133,18 @@ function KeycapButton({
           : 'bg-[#313131] text-[#f3f3f3] border-t-[#3e3e3e] border-l-[#3e3e3e] border-b-[#252525] border-r-[#252525] hover:border-[#0051ff] hover:z-10 active:scale-[0.97]'
       }`}
     >
-      {iconId ? (
+      {slotNumber !== undefined ? (
+        <span
+          data-preview-slot-number={slotNumber}
+          className={`text-[12px] font-medium leading-none text-white pointer-events-none transition-[filter] duration-150 ${
+            previewHighlighted
+              ? 'drop-shadow-[0_0_6px_#0051ff]'
+              : 'group-hover:drop-shadow-[0_0_6px_#0051ff]'
+          }`}
+        >
+          {slotNumber}
+        </span>
+      ) : iconId ? (
         <CustomPickerIcon id={iconId} size={17} />
       ) : isEmpty ? (
         <EmptyKeyPlusIcon size={16} stroke="#ffffff" />
@@ -7931,6 +8246,14 @@ function KnobControl({
 /* REAL VECTOR ICON RENDERER FOR SELECT ICON DRAWER & SAVED CUSTOM TILES      */
 /* ========================================================================== */
 
+const INLINE_CUSTOM_ICON_IDS = new Set([
+  'copy-plus', 'layers-plus', 'plus-square', 'stop-square', 'rows-two', 'type-square',
+  'diamonds', 'circle-fill', 'square-fill', 'globe', 'sparkles', 'play-square', 'image',
+  'refresh', 'arrow-left', 'arrow-right', 'grid-four', 'lock', 'chat-bubble', 'clock',
+  'pause-circle', 'zap', 'maximize', 'apps-plus', 'hexagon-nut', 'minimize', 'moon',
+  'framer-bolt', 'database', 'play-triangle', 'terminal', 'volume',
+]);
+
 function CustomPickerIcon({ id, size = 14 }: { id: string; size?: number }) {
   if (id.startsWith('num-')) {
     const digit = id.replace('num-', '');
@@ -7944,13 +8267,20 @@ function CustomPickerIcon({ id, size = 14 }: { id: string; size?: number }) {
     );
   }
 
+  const isInlineIcon = INLINE_CUSTOM_ICON_IDS.has(id);
+  const catalogIconPath = isInlineIcon ? undefined : getPresetAppIconPath(id);
+  const iconMetadata = catalogIconPath
+    ? findIconMetadata(getMacroIconLibrary(), id)
+    : undefined;
+  const isFilledIcon = iconMetadata?.t === 'f';
+
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
+      viewBox={catalogIconPath ? '0 0 24 24' : '0 0 16 16'}
+      fill={isFilledIcon ? 'currentColor' : 'none'}
+      stroke={isFilledIcon ? 'none' : 'currentColor'}
       strokeWidth="1.4"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -8161,6 +8491,7 @@ function CustomPickerIcon({ id, size = 14 }: { id: string; size?: number }) {
           <path d="M11.2 5.8C12 6.5 12 9.5 11.2 10.2" stroke="currentColor" strokeWidth="1.4" />
         </>
       )}
+      {catalogIconPath && <path d={catalogIconPath} />}
     </svg>
   );
 }

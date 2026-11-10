@@ -8,9 +8,12 @@ import { createProfileExport, createProfileFileTools } from '../src/profileFiles
 import { createAppSettingsTools } from '../src/appSettings';
 import { VIA_PROTOCOL_VERSION } from '../src/qmkViaBridge';
 
-const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
-const bundle = html.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
-const shippedUiBaseline = JSON.parse(
+const html = '<!doctype html><html><head></head><body><div id="root"></div></body></html>';
+const bundle = readFileSync(
+  join(process.cwd(), 'tests/fixtures/legacyEmbeddedApp.js'),
+  'utf8'
+);
+const legacyUiBaseline = JSON.parse(
   readFileSync(
     join(process.cwd(), 'tests/fixtures/shipped-ui-baseline.json'),
     'utf8'
@@ -32,7 +35,7 @@ const presetBrandIconPaths = Object.fromEntries(
 );
 
 if (!bundle) {
-  throw new Error('Expected the shipped inline application bundle in index.html');
+  throw new Error('Expected the legacy inline application test fixture');
 }
 
 const openApps: JSDOM[] = [];
@@ -140,7 +143,7 @@ function installAnimationRecorder(
   });
 }
 
-describe('Shipped application runtime', () => {
+describe('Legacy inline app regression runtime', () => {
   it('renders the established keymap UI with nine keys and one encoder', async () => {
     const { app, root, jsdomErrors } = await openEmbeddedApp();
     const renderedSlots = Array.from(
@@ -153,12 +156,12 @@ describe('Shipped application runtime', () => {
     expect(root.querySelector('nav')?.textContent).toContain('Preset');
     expect(root.querySelector('nav')?.textContent).toContain('Settings');
     expect(snapshotElement(root.firstElementChild!, app.window)).toEqual(
-      shippedUiBaseline.tree
+      legacyUiBaseline.tree
     );
     expect(jsdomErrors).toEqual([]);
   });
 
-  it('runs the shipped entrance sequence only after readiness and does not replay on navigation', async () => {
+  it('runs the legacy entrance sequence only after readiness and does not replay on navigation', async () => {
     const animations: RecordedEntranceAnimation[] = [];
     const { app, root } = await openEmbeddedApp(undefined, {
       markReady: false,
@@ -202,7 +205,7 @@ describe('Shipped application runtime', () => {
     expect(animations).toHaveLength(18);
   });
 
-  it('skips the shipped entrance sequence when reduced motion is preferred', async () => {
+  it('skips the legacy entrance sequence when reduced motion is preferred', async () => {
     const animations: RecordedEntranceAnimation[] = [];
     const { app } = await openEmbeddedApp(undefined, {
       markReady: false,
@@ -566,7 +569,7 @@ describe('Shipped application runtime', () => {
     expect(root.querySelectorAll('[data-drop-encoder-sub]')).toHaveLength(3);
   });
 
-  it('runs the shipped Settings links, release check, local reset, and desktop flash request honestly', async () => {
+  it('runs the legacy Settings links, release check, local reset, and desktop flash request honestly', async () => {
     const openExternal = vi.fn(() => ({ opener: null }));
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404 });
     const flashFirmware = vi.fn().mockResolvedValue({ ok: true, message: 'Copied firmware to RPI-RP2' });

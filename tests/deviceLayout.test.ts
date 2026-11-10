@@ -52,12 +52,22 @@ describe('Grid Macro 1 device layout', () => {
     }
   });
 
-  it('keeps the primary ChatGPT preset bindings when compacting to nine keys', () => {
+  it('keeps all nine ChatGPT preset bindings and their custom actions', () => {
     const chatgpt = PRESET_LIBRARY.find((preset) => preset.id === 'chatgpt');
     expect(chatgpt).toBeDefined();
-    expect(chatgpt?.layerKeymap.r1c1.label).toBe('new');
-    expect(chatgpt?.layerKeymap.r1c2.label).toBe('find');
-    expect(chatgpt?.layerKeymap.r1c3.label).toBe('⌘Spc');
-    expect(chatgpt?.layerKeymap.r2c1.label).toBe('Voice');
+    expect(chatgpt?.layerKeymap.r1c1).toMatchObject({
+      label: 'New Chat',
+      actionType: 'Shortcut',
+      binding: 'New Chat (Ctrl + Shift + O)',
+    });
+    expect(chatgpt?.layerKeymap.r1c2.label).toBe('Search');
+    expect(chatgpt?.layerKeymap.r1c3.label).toBe('Focus Input');
+    expect(chatgpt?.layerKeymap.r3c1.actionType).toBe('Smart Action');
+    expect(chatgpt?.layerKeymap['dial-tl'].encoderActions?.cw).toMatchObject({
+      label: 'dn',
+      binding: 'Scroll Down (Page Down)',
+    });
+    expect(chatgpt?.actionItems.Action).toHaveLength(8);
+    expect(chatgpt?.actionItems['Smart-A']).toHaveLength(1);
   });
 });

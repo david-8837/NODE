@@ -96,6 +96,17 @@ export default defineConfig(() => {
     define: {
       __APP_VERSION__: JSON.stringify(packageVersion),
     },
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              { name: 'vendor', test: /node_modules/, priority: 10 },
+            ],
+          },
+        },
+      },
+    },
     plugins: [react(), tailwindcss(), nativeExecutionPlugin()],
     resolve: {
       alias: {

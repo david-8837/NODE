@@ -5,10 +5,8 @@
   display: grid;
   place-items: center;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 44%, rgb(52 54 58 / 42%), transparent 34%),
-    #111214;
-  color: #f4f3f0;
+  background: #fff;
+  color: #222;
   opacity: 1;
   visibility: visible;
   transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s;
@@ -31,7 +29,7 @@
 }
 
 .node-loading-content strong {
-  color: #f5f4f1;
+  color: #222;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: 17px;
   font-weight: 700;
@@ -43,8 +41,8 @@
   position: relative;
   width: 26px;
   height: 26px;
-  border: 1px solid rgb(255 255 255 / 14%);
-  border-top-color: rgb(255 255 255 / 84%);
+  border: 1px solid rgb(34 34 34 / 14%);
+  border-top-color: rgb(34 34 34 / 84%);
   border-radius: 50%;
   animation: node-loading-spin 900ms linear infinite;
 }
@@ -52,13 +50,13 @@
 .node-loading-spinner::after {
   position: absolute;
   inset: 5px;
-  border: 1px solid rgb(255 255 255 / 9%);
+  border: 1px solid rgb(34 34 34 / 9%);
   border-radius: 50%;
   content: "";
 }
 
 .node-loading-label {
-  color: #a7a8aa;
+  color: #767676;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: 10px;
   font-weight: 500;
