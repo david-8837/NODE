@@ -14,7 +14,7 @@ This checklist is for the **QMK/VIA HID** target. It separates repository/host c
 
 ## Build and artifact provenance
 
-- [ ] Run the `QMK firmware build` GitHub Actions workflow and confirm both `via` and `default` compile jobs pass.
+- [x] Run the `QMK firmware build` GitHub Actions workflow and confirm both `via` and `default` compile jobs pass ([run 42731355502](https://github.com/david-8837/newww/actions/runs/42731355502)).
 - [ ] Download the `grid-macro-1-via-firmware` artifact from the exact Actions run being evaluated.
 - [ ] Verify `SHA256SUMS.txt` against `grid_macro_1_via.uf2` before flashing.
 - [ ] Confirm `BUILD-INFO.txt` records the repository commit, pinned QMK firmware commit, QMK CLI version, Ubuntu release, installed apt/Python package versions, ARM compiler, run ID, and artifact SHA-256.

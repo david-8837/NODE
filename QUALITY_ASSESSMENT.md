@@ -112,20 +112,20 @@ The original audit improvements preserved the shipped UI snapshot and serial com
 
 ## 4. AFTER scorecard and comparison
 
-Scoring rubric is unchanged from the BEFORE table: nine equally weighted categories, 0–100, overall is the arithmetic mean. These scores are qualitative and bounded by evidence; simulated transport and host analysis do not receive hardware-validation credit. **Current branch rating (2026-11-09): 64/100.** Profile import/export, backup gating, live Settings, test coverage, dependency resolution, and build/docs improved. The new pinned QMK workflow has not yet run on this branch, and no physical hardware was available.
+Scoring rubric is unchanged from the BEFORE table: nine equally weighted categories, 0–100, overall is the arithmetic mean. These scores are qualitative and bounded by evidence; simulated transport and host analysis do not receive hardware-validation credit. **Current branch rating (2026-11-09): 64/100.** Profile import/export, backup gating, live Settings, test coverage, dependency resolution, documentation, and a successful pinned hosted QMK build improved. No physical hardware was available.
 
 | Category | Before | After | Change | After evidence / remaining limit |
 |---|---:|---:|---:|---|
 | UI reliability | 70 | 84 | +14 | The shipped inline app imports/exports profile JSON, shows actual bridge state/firmware in Settings, and distinguishes local saves from keymap sync. JSDOM covers file import, status, sync gating, and the established UI fixture; no real browser/device test. |
 | Application logic | 58 | 74 | +16 | Profile-file schemas/size limits, sanitized JSON, ID/reference remapping, VIA snapshot validation, and fail-closed backup gating have unit/integration coverage. Unsupported keycodes remain warnings/no-ops by design. |
 | USB/device transport reliability | 42 | 75 | +33 | Serial lifecycle fixes and Binding Mock coverage remain; the selected QMK/VIA WebHID adapter has 26 fake-HID tests, including snapshot/restore behavior. No physical USB device. |
-| Firmware stability | 35 | 43 | +8 | An older hosted QMK build succeeded, but it used a moving QMK ref. The newly pinned workflow is syntax-checked but has not run; no current-branch compile, flash, or on-device test. |
+| Firmware stability | 35 | 50 | +15 | Current-branch hosted workflow compiled both keymaps using the pinned QMK commit/CLI and uploaded a non-empty VIA UF2 with provenance. No flash or on-device test; apt package sources are not immutable. |
 | Memory management | 45 | 45 | 0 | Fresh synthetic Node heap-delta check passed at +0.35 MB, but forced GC was unavailable; not browser lifecycle/MemLab evidence. |
 | Performance | 44 | 44 | 0 | No optimization or device latency work. Build still warns on the 648.94 kB minified JS chunk (187.12 kB gzip). |
 | Code quality | 52 | 70 | +18 | Profile/backup helpers are modular and typed; QMK build inputs/provenance, hardware prep, and local-vs-device data boundaries are documented. The shipped inline bundle/source App split remains. |
 | Security | 58 | 60 | +2 | Profile and keymap JSON have byte/schema bounds and reserved prototype fields are discarded; device restore is confirmed and backs up before writes. Electron sender validation/process-launch risks remain. |
-| Test coverage | 55 | 77 | +22 | **122 Vitest tests across 13 files** pass, including JSDOM profile import/export/live Settings/pre-sync gate, profile-file schema/merge, fake-HID bridge, and backup/restore safety. No real-browser, current QMK hosted build, or hardware test. |
-| **Overall quality** | **51** | **64** | **+13** | Mean after = 572 / 9 = 63.56, rounded to 64. Physical integration and the current pinned firmware build are the largest evidence gaps. |
+| Test coverage | 55 | 77 | +22 | **122 Vitest tests across 13 files** pass, including JSDOM profile import/export/live Settings/pre-sync gate, profile-file schema/merge, fake-HID bridge, and backup/restore safety. No real-browser or physical hardware test. |
+| **Overall quality** | **51** | **64** | **+13** | Mean after = 579 / 9 = 64.33, rounded to 64. Physical integration remains the largest evidence gap. |
 
 ### Current-branch validation results
 
@@ -138,7 +138,7 @@ Scoring rubric is unchanged from the BEFORE table: nine equally weighted categor
 - `npm run audit:mem` — passed its synthetic 15 MB threshold at **+0.35 MB**; forced GC was unavailable, so this is not leak evidence.
 - `npm run audit:cpp` — exited successfully but **skipped** because Cppcheck is not installed in this sandbox; no current-branch Cppcheck analysis was performed.
 - Workflow YAML parsed successfully; every embedded workflow shell block and `qmk_firmware/grid_macro_1/build_uf2.sh` passed `bash -n`. The QMK `keyboard.json` and `via.json` passed JSON parsing, and `git diff --check` passed.
-- `.github/workflows/qmk-build.yml` was **not executed** in hosted Actions in this pass. Local QMK CLI/core and ARM toolchain are unavailable, so no current UF2 was built or downloaded.
+- The pinned hosted QMK workflow passed in [run 42731355502](https://github.com/david-8837/newww/actions/runs/42731355502) for commit `cdc6e41eca8e9b9607dbf36eba90f25c2505df59`; both `via` and `default` compiled, the VIA UF2 was verified non-empty, and artifact upload/provenance staging passed. Artifact `grid-macro-1-via-firmware` (ID `13723834419`, 30,132-byte ZIP, GitHub archive digest `sha256:7a8f531baeeea5ec98b14815bdc60fcd77a935bf3fd8f89b2883fb942180fbcc`) is available in Actions. Downloading the ZIP from this sandbox failed with external-storage EOF, so its inner UF2 checksum was not locally inspected. The local QMK CLI/core/ARM toolchain is unavailable.
 - No physical USB/WebHID, firmware flash, hardware, Electron packaged-runtime, real browser/Playwright, MemLab, AFL++, or Unity/Ceedling test was run.
 
 ## 5. Confirmed findings: resolved vs remaining
@@ -150,13 +150,13 @@ Scoring rubric is unchanged from the BEFORE table: nine equally weighted categor
 - Automatic keymap writes read and save a local pre-sync device snapshot first; failed device reads or browser-storage writes stop the sync.
 - File-based keymap restore requires confirmation and also saves the current device map locally before writing the selected snapshot.
 - Device backups are bounded, validated, deduplicated, and contain only supported VIA keycode/encoder mappings—no profile JSON or custom firmware protocol.
-- QMK build workflow and local build instructions now pin the QMK source reference and CLI, verify artifacts, and record provenance. The pinned hosted workflow itself is still unrun.
+- QMK build workflow and local build instructions pin the QMK source reference and CLI, verify artifacts, and record provenance. The pinned hosted workflow passed on the current branch (run 42731355502); its artifact ZIP could not be fetched by this sandbox.
 
 ### Still confirmed / unresolved
 
 - No schematic or physical board is available. Pin wiring, electrical safety, USB identity, bootloader recovery, WebHID permission, firmware flashing, VIA transfers, key/encoder/RGB behavior, and sync latency remain physically unverified.
-- The new pinned QMK workflow has not run on the current branch. The older successful hosted run used a moving QMK ref and is historical evidence only. Current local QMK CLI/core/ARM compiler are absent.
-- QMK commit, CLI, Actions, and Ubuntu release are pinned; apt and runner package sources are not immutable. Exact apt/Python package versions are recorded per artifact, but byte-for-byte reproducibility is not yet guaranteed.
+- The current pinned QMK workflow passed on the current branch (run 42731355502). The previous successful hosted run used a moving QMK ref and remains historical evidence only. Current local QMK CLI/core/ARM compiler are absent.
+- QMK commit, CLI, Actions, and Ubuntu release are pinned; apt and runner package sources are not immutable. Exact apt/Python package versions are recorded per artifact, but byte-for-byte reproducibility is not yet guaranteed. The uploaded artifact ZIP could not be fetched from this sandbox, so verify `SHA256SUMS.txt` after downloading it from GitHub Actions.
 - The bridge is tested against fake HID devices only. Concurrent access from another VIA client, real board protocol compatibility, and power-loss/partial-write recovery remain untested.
 - CircuitPython configuration remains unvalidated/unbounded and its key/encoder debounce remains absent; the non-QMK variants are outside the selected transport.
 - Electron IPC still needs sender/frame allowlisting, restricted navigation, and a process-execution policy before production packaging.
@@ -176,8 +176,9 @@ The selected path remains **stock QMK/VIA HID**. `src/qmkViaBridge.ts` uses only
 
 ### Hosted and local build results
 
-- **Current branch:** the pinned workflow was not run in hosted Actions during this pass. Workflow YAML and shell syntax were validated only; no current-branch UF2 exists from this work.
-- **Historical hosted build:** [run 42662058460](https://github.com/david-8837/newww/actions/runs/42662058460), branch `arena/0e57631b-newww`, commit `3da359cf339236ac6017349b06278d3f2e0c3559`, passed with the earlier workflow that cloned moving QMK `master`. Its artifact `grid-macro-1-via-firmware` (ID `13694582307`) is not evidence that the newly pinned workflow ran. Attempting to download that historical artifact from this sandbox failed with an external-storage EOF; no local UF2 was retrieved.
+- **Current branch:** [run 42731355502](https://github.com/david-8837/newww/actions/runs/42731355502) completed successfully for commit `cdc6e41eca8e9b9607dbf36eba90f25c2505df59`. Both `via` and `default` keymaps compiled and their UF2s were verified non-empty; artifact staging and upload passed.
+- **Current artifact:** `grid-macro-1-via-firmware`, ID `13723834419`, 30,132 bytes as a ZIP; GitHub reports archive digest `sha256:7a8f531baeeea5ec98b14815bdc60fcd77a935bf3fd8f89b2883fb942180fbcc`, with expiry on 2026-11-17. This is the ZIP digest, not the inner UF2 checksum; `SHA256SUMS.txt` inside the artifact contains that checksum. The sandbox download attempt failed with external-storage EOF, so no local UF2 or inner checksum was obtained.
+- **Historical hosted build:** [run 42662058460](https://github.com/david-8837/newww/actions/runs/42662058460), branch `arena/0e57631b-newww`, commit `3da359cf339236ac6017349b06278d3f2e0c3559`, passed with the earlier workflow that cloned moving QMK `master`; it is superseded by the pinned run above.
 - **Local build:** unavailable because this sandbox lacks QMK CLI/core and the ARM toolchain; compiler download was blocked by sandbox network restrictions. No firmware was flashed.
 - Even a successful hosted compile and non-empty UF2 verify only source compilation/artifact staging. They do not verify target wiring, boot, USB descriptors on the board, VIA behavior, or physical input/RGB operation. Follow `HARDWARE_PREPARATION_CHECKLIST.md` before flashing.
 
@@ -185,7 +186,7 @@ The selected path remains **stock QMK/VIA HID**. `src/qmkViaBridge.ts` uses only
 
 ## 7. Remaining recommendations
 
-1. Run the new pinned `QMK firmware build` workflow on this branch and retain its VIA UF2, `SHA256SUMS.txt`, and `BUILD-INFO.txt`; confirm both `via` and `default` builds pass. For strict bit-for-bit reproducibility, pin the ARM compiler/apt packages or a digest-addressed build container rather than only recording their versions.
+1. Download the successful pinned build artifact from [run 42731355502](https://github.com/david-8837/newww/actions/runs/42731355502) and verify its `SHA256SUMS.txt` before flashing (the sandbox could not fetch the artifact ZIP). For strict bit-for-bit reproducibility, pin the ARM compiler/apt packages or a digest-addressed build container rather than only recording their versions.
 2. Obtain the board schematic or authoritative wiring table and verify MCU, GPIO/power, LED, USB identity, and bootloader recovery before flashing. Do not infer electrical safety from `keyboard.json`.
 3. Use `HARDWARE_PREPARATION_CHECKLIST.md` for first boot and test WebHID permission/cancel/reconnect, VIA protocol/version, all nine switches, encoder rotation/press, each supported layer, blank clearing, failed backup gate, restore, RGB power, and recovery. Record firmware hash and test environment.
 4. Add a real Chromium/Playwright smoke test when a browser runner/device becomes available; continue labeling JSDOM and fake-HID evidence accurately.
