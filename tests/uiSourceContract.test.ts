@@ -203,6 +203,27 @@ describe('Production React source and legacy inline regression checks', () => {
     ]);
     expect(packageConfig.build.nsis.oneClick).toBe(false);
     expect(packageConfig.build.nsis.deleteAppDataOnUninstall).toBe(false);
+    expect(packageConfig.build.nsis.installerHeader).toBe('windows-installer/installerHeader.bmp');
+    expect(packageConfig.build.nsis.installerSidebar).toBe('windows-installer/installerSidebar.bmp');
+    expect(packageConfig.build.nsis.uninstallerSidebar).toBe('windows-installer/installerSidebar.bmp');
+
+    for (const [assetPath, width, height] of [
+      [packageConfig.build.nsis.installerHeader, 150, 57],
+      [packageConfig.build.nsis.installerSidebar, 164, 314],
+    ] as const) {
+      const bitmap = fs.readFileSync(path.join(process.cwd(), assetPath));
+      expect(bitmap.subarray(0, 2).toString()).toBe('BM');
+      expect(bitmap.readInt32LE(18)).toBe(width);
+      expect(bitmap.readInt32LE(22)).toBe(height);
+      expect(bitmap.readUInt16LE(28)).toBe(24);
+    }
+
+    const installerSidebarSource = fs.readFileSync(
+      path.join(process.cwd(), 'windows-installer/installer-sidebar.svg'),
+      'utf8'
+    );
+    expect(installerSidebarSource).toContain('NØDE');
+    expect(installerSidebarSource).toContain('NINE KEYS.');
   });
 
   it('renders the complete Macropad 3x3 direct matrix in the production React app', () => {

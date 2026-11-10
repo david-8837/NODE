@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
+  <rect width="150" height="57" fill="#ffffff"/>
+  <rect x="9" y="11" width="35" height="35" rx="8" fill="#101216"/>
+  <g fill="#f7f8fa">
+    <rect x="15" y="17" width="9" height="9" rx="3"/>
+    <rect x="28" y="30" width="9" height="9" rx="3"/>
+  </g>
+  <circle cx="24" cy="34" r="3" fill="#0051ff"/>
+  <text x="52" y="27" fill="#17191d" font-family="DejaVu Sans, Arial, sans-serif" font-size="10.5" font-weight="700" letter-spacing="0.45">NØDE STUDIO</text>
+  <text x="52" y="39" fill="#777e88" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.1" font-weight="600" letter-spacing="0.75">GRID MACRO 1</text>
+  <rect x="139" y="11" width="2" height="35" rx="1" fill="#0051ff"/>
+</svg>
