@@ -9,6 +9,7 @@ const {
   parseKeyCombo,
   parseSequenceSteps,
   parseShortcutToVK,
+  resolveApplicationShortcutPath,
   POWERSHELL_WORKER_SCRIPT,
   MAX_SEQUENCE_DURATION_MS,
 } = require('../electron/desktopExecution.cjs');
@@ -86,6 +87,44 @@ describe('shared desktop action executor', () => {
     expect(normalizePayload({ type: 'Shortcut', value: 'not a shortcut' })).toMatchObject({ ok: false });
   });
 
+  it('normalizes bright up/down and legacy brightness bindings to desktop display operations', () => {
+    for (const [value, direction] of [
+      ['bright up', 'up'],
+      ['brightness up', 'up'],
+      ['brightness +', 'up'],
+      ['bright down', 'down'],
+      ['brightness down', 'down'],
+      ['brightness -', 'down'],
+    ]) {
+      expect(normalizePayload({ type: 'Shortcut', value })).toEqual({
+        ok: true,
+        operations: [{ kind: 'brightness', direction, delayAfterMs: 0 }],
+      });
+    }
+    // Brightness is a display action, not a Windows virtual-key event.
+    expect(parseShortcutToVK('bright up')).toEqual([]);
+  });
+
+  it('routes desktop brightness actions through the guarded Windows worker', async () => {
+    const inputAdapter = {
+      sendOperations: vi.fn().mockResolvedValue({ success: true }),
+      cancelAll: vi.fn().mockResolvedValue({ success: true }),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const executor = createDesktopActionExecutor({ platform: 'win32', inputAdapter });
+    await executor.setSimulationEnabled(true);
+
+    expect(await executor.execute({ type: 'Shortcut', value: 'bright up' })).toMatchObject({ success: true });
+    expect(await executor.execute({ type: 'Shortcut', value: 'brightness -' })).toMatchObject({ success: true });
+    expect(inputAdapter.sendOperations).toHaveBeenNthCalledWith(1, [
+      { kind: 'brightness', direction: 'up', delayAfterMs: 0 },
+    ]);
+    expect(inputAdapter.sendOperations).toHaveBeenNthCalledWith(2, [
+      { kind: 'brightness', direction: 'down', delayAfterMs: 0 },
+    ]);
+    await executor.close();
+  });
+
   it('refuses all execution until Simulation is enabled, and cancels held input when disabled', async () => {
     let finishInput: ((value: { success: boolean }) => void) | undefined;
     const inputAdapter = {
@@ -132,6 +171,47 @@ describe('shared desktop action executor', () => {
       error: expect.stringContaining('disabled in Settings'),
     });
     expect(await executor.execute({ type: 'Web', value: 'javascript:alert(1)' })).toMatchObject({ success: false });
+    await executor.close();
+  });
+
+  it('opens selected installed apps through validated Start Menu shortcuts', async () => {
+    const shortcutPath = 'C:\\Users\\runner\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Code.lnk';
+    const inputAdapter = {
+      sendOperations: vi.fn(),
+      cancelAll: vi.fn().mockResolvedValue({ success: true }),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const openApplicationShortcut = vi.fn().mockResolvedValue({
+      success: true,
+      message: 'Started Code',
+    });
+    const executor = createDesktopActionExecutor({
+      platform: 'win32',
+      inputAdapter,
+      openApplicationShortcut,
+      fsModule: { statSync: vi.fn(() => ({ isFile: () => true })) },
+    });
+
+    expect(resolveApplicationShortcutPath(shortcutPath, {
+      platform: 'win32',
+      fsModule: { statSync: vi.fn(() => ({ isFile: () => true })) },
+    })).toBe(shortcutPath);
+    expect(() => resolveApplicationShortcutPath('C:\\Apps\\Code.exe', {
+      platform: 'win32',
+      fsModule: { statSync: vi.fn(() => ({ isFile: () => true })) },
+    })).toThrow(/absolute \.lnk file/i);
+
+    await executor.setSimulationEnabled(true);
+    const result = await executor.execute({
+      execution: {
+        kind: 'smart',
+        actionType: 'App',
+        value: 'Visual Studio Code',
+        applicationShortcutPath: shortcutPath,
+      },
+    });
+    expect(result).toMatchObject({ success: true, message: 'Started Code' });
+    expect(openApplicationShortcut).toHaveBeenCalledWith(shortcutPath);
     await executor.close();
   });
 
@@ -184,6 +264,9 @@ describe('shared desktop action executor', () => {
     expect(POWERSHELL_WORKER_SCRIPT).toContain('SendInput');
     expect(POWERSHELL_WORKER_SCRIPT).toContain('Release-AllKeys');
     expect(POWERSHELL_WORKER_SCRIPT).toContain('OperationCanceledException');
+    expect(POWERSHELL_WORKER_SCRIPT).toContain('WmiMonitorBrightnessMethods');
+    expect(POWERSHELL_WORKER_SCRIPT).toContain('WmiSetBrightness');
+    expect(POWERSHELL_WORKER_SCRIPT).toContain("$opKind -eq 'brightness'");
     expect(POWERSHELL_WORKER_SCRIPT).not.toContain('keybd_event');
   });
 });

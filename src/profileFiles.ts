@@ -124,6 +124,20 @@ function normalizeExecutionDefinition(value: unknown, context: string): JsonReco
     if (execution.requiresConsent !== undefined && typeof execution.requiresConsent !== 'boolean') {
       throw makeError(`${context} Smart Action consent flag must be a boolean`);
     }
+    if (execution.applicationShortcutPath !== undefined) {
+      const shortcutPath = execution.applicationShortcutPath;
+      const isAbsolutePath = typeof shortcutPath === 'string' &&
+        /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(shortcutPath);
+      if (
+        execution.actionType !== 'App' ||
+        typeof shortcutPath !== 'string' ||
+        shortcutPath.length > 2048 ||
+        !isAbsolutePath ||
+        !/\.lnk$/i.test(shortcutPath)
+      ) {
+        throw makeError(`${context} Smart Action shortcut path must be an absolute .lnk path for an App action`);
+      }
+    }
     return execution;
   }
 

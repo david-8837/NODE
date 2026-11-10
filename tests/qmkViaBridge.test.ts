@@ -123,6 +123,8 @@ describe('QMK/VIA keycode translation', () => {
     [{ t: 'keys', k: ['RIGHT_SHIFT', 'A'] }, 0x1204],
     [{ t: 'keys', k: ['RIGHT_ALT', 'F'] }, 0x1409],
     [{ t: 'media', c: 'VOLUME_INCREMENT' }, 0x00a9],
+    [{ t: 'media', c: 'BRIGHTNESS_INCREMENT' }, 0x00bd],
+    [{ t: 'media', c: 'BRIGHTNESS_DECREMENT' }, 0x00be],
     [{ t: 'layer', op: 'set', n: 2 }, 0x5202],
     [{ t: 'layer', op: 'hold', n: 1 }, 0x5221],
   ])('translates supported action %j to VIA keycode %j', (action, expected) => {

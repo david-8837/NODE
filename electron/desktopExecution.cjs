@@ -241,6 +241,19 @@ function canonicalKeyName(value) {
   return String(value).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+const DISPLAY_BRIGHTNESS_ACTIONS = Object.freeze({
+  'bright up': 'up',
+  'brightness up': 'up',
+  'brightness +': 'up',
+  'bright down': 'down',
+  'brightness down': 'down',
+  'brightness -': 'down',
+});
+
+function displayBrightnessDirection(value) {
+  return DISPLAY_BRIGHTNESS_ACTIONS[canonicalKeyName(value)] || null;
+}
+
 function parseKeyCombo(rawValue) {
   if (typeof rawValue !== 'string') return { ok: false, error: 'Key binding must be text' };
   const raw = rawValue.trim();
@@ -656,6 +669,44 @@ function Wait-Cancelable([int]$durationMs) {
     Read-ControlLines
 }
 
+function Set-DisplayBrightness([string]$direction) {
+    if ($direction -ne 'up' -and $direction -ne 'down') {
+        throw 'Unsupported display brightness direction'
+    }
+
+    $monitors = @(Get-CimInstance -Namespace 'root/WMI' -ClassName 'WmiMonitorBrightness' -ErrorAction Stop)
+    $methods = @(Get-CimInstance -Namespace 'root/WMI' -ClassName 'WmiMonitorBrightnessMethods' -ErrorAction Stop)
+    $controllableDisplays = 0
+
+    foreach ($method in $methods) {
+        $monitor = $monitors | Where-Object { [string]$_.InstanceName -eq [string]$method.InstanceName } | Select-Object -First 1
+        if ($null -eq $monitor) { continue }
+
+        $levels = @($monitor.Levels | ForEach-Object { [int]$_ } | Sort-Object -Unique)
+        if ($levels.Count -eq 0) { continue }
+        $controllableDisplays += 1
+        $current = [int]$monitor.CurrentBrightness
+        if ($direction -eq 'up') {
+            $target = $levels | Where-Object { $_ -gt $current } | Sort-Object | Select-Object -First 1
+        } else {
+            $target = $levels | Where-Object { $_ -lt $current } | Sort-Object -Descending | Select-Object -First 1
+        }
+        if ($null -eq $target) { continue }
+
+        $result = Invoke-CimMethod -InputObject $method -MethodName 'WmiSetBrightness' -Arguments @{
+            Timeout = [uint32]1
+            Brightness = [byte]$target
+        } -ErrorAction Stop
+        if ([int]$result.ReturnValue -ne 0) {
+            throw "Windows rejected the display brightness change (WMI code $($result.ReturnValue))"
+        }
+    }
+
+    if ($controllableDisplays -eq 0) {
+        throw 'No WMI brightness-controllable display is available on this PC'
+    }
+}
+
 [Console]::Out.WriteLine('{"id":"ready","ok":true}')
 while ($true) {
     if ($script:deferredLines.Count -gt 0) {
@@ -714,6 +765,8 @@ while ($true) {
                 }
             } elseif ($opKind -eq 'wait') {
                 Wait-Cancelable ([int]$op.durationMs)
+            } elseif ($opKind -eq 'brightness') {
+                Set-DisplayBrightness ([string]$op.direction)
             } else {
                 throw "Unsupported native input operation: $opKind"
             }
@@ -1113,6 +1166,28 @@ function resolveApplicationPath(value, {
   return found;
 }
 
+function resolveApplicationShortcutPath(value, {
+  platform = process.platform,
+  fsModule = fs,
+} = {}) {
+  if (platform !== 'win32') {
+    throw new Error('Installed application shortcuts are only supported on Windows');
+  }
+
+  const raw = String(value || '').trim();
+  const pathApi = path.win32;
+  if (!raw) throw new Error('Application shortcut path is empty');
+  if (raw.length > 2048) throw new Error('Application shortcut path is too long');
+  if (/[\u0000-\u001f\u007f]/.test(raw)) {
+    throw new Error('Application shortcut path contains control characters');
+  }
+  if (!pathApi.isAbsolute(raw) || pathApi.extname(raw).toLowerCase() !== '.lnk') {
+    throw new Error('Application shortcut path must point to an absolute .lnk file');
+  }
+  if (!safePathExists(raw, fsModule)) throw new Error(`Application shortcut was not found: ${raw}`);
+  return pathApi.normalize(raw);
+}
+
 function validateUrl(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 4096) {
     throw new Error('URL is empty or too long');
@@ -1147,6 +1222,7 @@ function normalizePayload(payload) {
           type: definition.actionType || definition.type,
           value: definition.value,
           requiresConsent: definition.requiresConsent === true,
+          applicationShortcutPath: definition.applicationShortcutPath,
           arguments: definition.arguments,
           workingDirectory: definition.workingDirectory,
         };
@@ -1163,6 +1239,13 @@ function normalizePayload(payload) {
           : '';
 
     if (['Shortcut', 'Key', 'Basic input'].includes(type)) {
+      const brightnessDirection = displayBrightnessDirection(value);
+      if (brightnessDirection) {
+        return {
+          ok: true,
+          operations: [{ kind: 'brightness', direction: brightnessDirection, delayAfterMs: 0 }],
+        };
+      }
       const parsed = parseKeyCombo(value);
       if (!parsed.ok) return parsed;
       return { ok: true, operations: [createKeyOperation(parsed.keys)] };
@@ -1195,7 +1278,25 @@ function normalizePayload(payload) {
     }
 
     if (type === 'App') {
-      return { ok: true, smartAction: { type, value } };
+      let applicationShortcutPath;
+      if (payload.applicationShortcutPath !== undefined) {
+        if (
+          typeof payload.applicationShortcutPath !== 'string' ||
+          !payload.applicationShortcutPath.trim() ||
+          payload.applicationShortcutPath.length > 2048
+        ) {
+          return { ok: false, error: 'Application shortcut path is invalid' };
+        }
+        applicationShortcutPath = payload.applicationShortcutPath.trim();
+      }
+      return {
+        ok: true,
+        smartAction: {
+          type,
+          value,
+          ...(applicationShortcutPath ? { applicationShortcutPath } : {}),
+        },
+      };
     }
 
     if (type === 'Cmd') {
@@ -1218,6 +1319,7 @@ function createDesktopActionExecutor({
   spawnProcess = nodeSpawn,
   execFile = nodeExecFile,
   openExternal = null,
+  openApplicationShortcut = null,
   fsModule = fs,
   env = process.env,
 } = {}) {
@@ -1339,6 +1441,20 @@ function createDesktopActionExecutor({
     if (normalized.smartAction?.type === 'App') {
       try {
         requireCurrentSimulation(startedGeneration);
+        if (normalized.smartAction.applicationShortcutPath) {
+          const shortcutPath = resolveApplicationShortcutPath(
+            normalized.smartAction.applicationShortcutPath,
+            { platform, fsModule },
+          );
+          if (typeof openApplicationShortcut !== 'function') {
+            return { success: false, error: 'Installed application shortcuts cannot be opened in this desktop environment' };
+          }
+          const result = await openApplicationShortcut(shortcutPath);
+          requireCurrentSimulation(startedGeneration);
+          return result && typeof result.success === 'boolean'
+            ? result
+            : { success: false, error: 'The installed application shortcut could not be opened' };
+        }
         const executable = resolveApplicationPath(normalized.smartAction.value, { platform, env, fsModule });
         const args = Array.isArray(payload.arguments)
           ? payload.arguments.filter((argument) => typeof argument === 'string' && argument.length <= 2048)
@@ -1469,6 +1585,7 @@ module.exports = {
   parseSequenceSteps,
   normalizePayload,
   resolveApplicationPath,
+  resolveApplicationShortcutPath,
   validateUrl,
   POWERSHELL_WORKER_SCRIPT,
   MAX_SEQUENCE_DURATION_MS,

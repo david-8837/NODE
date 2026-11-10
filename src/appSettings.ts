@@ -48,6 +48,17 @@ export interface NativeSettingsResult {
   error?: string;
 }
 
+export interface InstalledApplication {
+  name: string;
+  shortcutPath: string;
+}
+
+export interface InstalledApplicationsResult {
+  ok: boolean;
+  apps: InstalledApplication[];
+  error?: string;
+}
+
 export interface AppOperationResult {
   ok: boolean;
   cancelled?: boolean;
@@ -79,6 +90,7 @@ export interface ElectronApi {
   isElectron?: boolean;
   platform?: string;
   getVersion?: () => Promise<string | null>;
+  getInstalledApplications?: () => Promise<InstalledApplicationsResult>;
   getAppSettings?: () => Promise<NativeSettingsResult>;
   setAppSetting?: (key: AppSettingKey, value: boolean) => Promise<NativeSettingsResult>;
   openExternal?: (url: string) => Promise<AppOperationResult>;

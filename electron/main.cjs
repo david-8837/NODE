@@ -5,9 +5,20 @@ const path = require('path');
 const { fileURLToPath, pathToFileURL } = require('url');
 const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
 const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
+const { listInstalledApplications } = require('./installedApplications.cjs');
 
 const desktopActionExecutor = createDesktopActionExecutor({
   openExternal: (url) => shell.openExternal(url),
+  openApplicationShortcut: async (shortcutPath) => {
+    try {
+      const error = await shell.openPath(shortcutPath);
+      return error
+        ? { success: false, error }
+        : { success: true, message: `Started ${path.basename(shortcutPath, path.extname(shortcutPath))}` };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  },
 });
 let mainWindow = null;
 let visualSmokeCaptureStarted = false;
@@ -625,6 +636,28 @@ ipcMain.handle('window-is-maximized', (event) => {
 
 ipcMain.handle('get-app-version', (event) => {
   return isTrustedRenderer(event) ? app.getVersion() : null;
+});
+
+ipcMain.handle('list-installed-applications', (event) => {
+  if (!isTrustedRenderer(event)) {
+    return { ok: false, apps: [], error: 'Untrusted renderer' };
+  }
+
+  try {
+    return listInstalledApplications({
+      platform: process.platform,
+      env: process.env,
+      fsModule: fs,
+      readShortcutLink: (shortcutPath) => shell.readShortcutLink(shortcutPath),
+      excludedExecutables: [app.getPath('exe')],
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      apps: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 });
 
 ipcMain.handle('get-app-settings', (event) => {

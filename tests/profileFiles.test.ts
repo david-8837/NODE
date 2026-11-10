@@ -225,6 +225,38 @@ describe('profile file import and export', () => {
     expect(merged.customItems['Smart-A']).toHaveLength(1);
   });
 
+  it('persists an installed-app shortcut target and rejects invalid shortcut paths', () => {
+    const applicationShortcutPath = 'C:\\Users\\tester\\Start Menu\\Programs\\Code.lnk';
+    const appAction = {
+      id: 'smart-open-code',
+      main: 'Open Visual Studio Code',
+      listLabel: 'Open Visual Studio Code (App: Visual Studio Code)',
+      execution: {
+        kind: 'smart',
+        actionType: 'App',
+        value: 'Visual Studio Code',
+        applicationShortcutPath,
+      },
+    };
+    const exported = createProfileExport(profile, {
+      Action: [],
+      'Multi-A': [],
+      'Smart-A': [appAction],
+    });
+    const parsed = parseProfileFile(exported);
+    expect((parsed.customItems['Smart-A'][0].execution as Record<string, unknown>))
+      .toMatchObject({ applicationShortcutPath });
+
+    expect(() => parseProfileFile(createProfileExport(profile, {
+      Action: [],
+      'Multi-A': [],
+      'Smart-A': [{
+        ...appAction,
+        execution: { ...appAction.execution, applicationShortcutPath: 'relative\\Code.lnk' },
+      }],
+    }))).toThrow(/absolute \.lnk path/i);
+  });
+
   it('requires explicit confirmation for terminal commands imported in profiles and custom actions', async () => {
     const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://node-studio.test/' });
     vi.spyOn(dom.window.HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);

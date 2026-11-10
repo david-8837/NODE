@@ -89,6 +89,34 @@ describe('simulation actions', () => {
     });
   });
 
+  it('forwards the chosen installed-app shortcut to the native executor', () => {
+    const executeSmartAction = vi.fn().mockResolvedValue({ success: true });
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: { executeSmartAction },
+    });
+    const shortcutPath = 'C:\\Users\\tester\\Start Menu\\Code.lnk';
+
+    triggerSimulationAction({
+      execution: {
+        kind: 'smart',
+        actionType: 'App',
+        value: 'Visual Studio Code',
+        applicationShortcutPath: shortcutPath,
+      },
+    }, vi.fn(), vi.fn(), window);
+
+    expect(executeSmartAction).toHaveBeenCalledWith({
+      execution: {
+        kind: 'smart',
+        actionType: 'App',
+        value: 'Visual Studio Code',
+        requiresConsent: false,
+        applicationShortcutPath: shortcutPath,
+      },
+    });
+  });
+
   it('runs shortcuts through Electron when available and changes layers locally', () => {
     const executeSmartAction = vi.fn().mockResolvedValue({ ok: true });
     Object.defineProperty(window, 'electronAPI', {
@@ -114,6 +142,20 @@ describe('simulation actions', () => {
     );
     expect(changeLayer).toHaveBeenCalledWith(1);
     expect(showToast).toHaveBeenLastCalledWith('Switched to Layer 2');
+  });
+
+  it('forwards Bright Up/Down bindings unchanged to the shared native executor', () => {
+    const executeSmartAction = vi.fn().mockResolvedValue({ success: true });
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: { executeSmartAction },
+    });
+
+    triggerSimulationAction({ binding: 'bright up' }, vi.fn(), vi.fn(), window);
+    triggerSimulationAction({ binding: 'bright down' }, vi.fn(), vi.fn(), window);
+
+    expect(executeSmartAction).toHaveBeenNthCalledWith(1, { type: 'Shortcut', value: 'bright up' });
+    expect(executeSmartAction).toHaveBeenNthCalledWith(2, { type: 'Shortcut', value: 'bright down' });
   });
 
   it('routes multi-actions through one shared Electron executor without duplicate HTTP dispatch', () => {

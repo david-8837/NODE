@@ -115,7 +115,11 @@ const MEDIA_ACTIONS: Record<string, string> = {
   'fast forward': 'FAST_FORWARD',
   rewind: 'REWIND',
   'bright up': 'BRIGHTNESS_INCREMENT',
+  'brightness up': 'BRIGHTNESS_INCREMENT',
+  'brightness +': 'BRIGHTNESS_INCREMENT',
   'bright down': 'BRIGHTNESS_DECREMENT',
+  'brightness down': 'BRIGHTNESS_DECREMENT',
+  'brightness -': 'BRIGHTNESS_DECREMENT',
 };
 
 const DEFAULT_ENCODER_ACTIONS: Record<'cw' | 'press' | 'ccw', BindingEntry> = {
