@@ -289,7 +289,15 @@ function writePersistenceSmokeDiagnostics(details) {
     fs.mkdirSync(path.dirname(diagnosticsPath), { recursive: true });
     fs.writeFileSync(
       diagnosticsPath,
-      JSON.stringify({ ...details, timestamp: new Date().toISOString() }, null, 2)
+      JSON.stringify({
+        appDataEnvironment: process.env.APPDATA || null,
+        localAppDataEnvironment: process.env.LOCALAPPDATA || null,
+        appDataPath: app.getPath('appData'),
+        userDataPath: app.getPath('userData'),
+        settingsFilePath: getAppSettingsPath(),
+        ...details,
+        timestamp: new Date().toISOString(),
+      }, null, 2)
     );
   } catch (error) {
     console.error('Could not write installed-app persistence diagnostics:', error);
@@ -359,15 +367,7 @@ async function runPersistenceSmokeTest() {
         return { settingSaved: true, profileSaved: true };
       })()`);
       await new Promise((resolve) => setTimeout(resolve, 750));
-      writePersistenceSmokeDiagnostics({
-        stage: 'write-complete',
-        ...result,
-        appDataEnvironment: process.env.APPDATA || null,
-        localAppDataEnvironment: process.env.LOCALAPPDATA || null,
-        appDataPath: app.getPath('appData'),
-        userDataPath: app.getPath('userData'),
-        settingsFilePath: getAppSettingsPath(),
-      });
+      writePersistenceSmokeDiagnostics({ stage: 'write-complete', ...result });
     } else if (phase === 'verify') {
       const result = await mainWindow.webContents.executeJavaScript(`(async () => {
         const expectedName = ${JSON.stringify(profileName)};

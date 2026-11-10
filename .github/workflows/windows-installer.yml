@@ -132,23 +132,43 @@ jobs:
               Write-Host "Installed-app persistence phase passed: $phase"
             }
 
+            $workflowStage = 'reading-app-storage-locations'
+            $smokeDetails = Get-Content -Path $diagnostics -Raw | ConvertFrom-Json
             $appDataRoots = @($env:APPDATA, $env:LOCALAPPDATA) |
               Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+            $userDataPath = [System.IO.Path]::GetFullPath([string]$smokeDetails.userDataPath)
+            $workflowStage = 'validating-isolated-user-data-path'
+            $dataRootMatch = $appDataRoots | Where-Object {
+              $normalizedRoot = [System.IO.Path]::GetFullPath($_).TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
+              $userDataPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $userDataPath.StartsWith(
+                  $normalizedRoot + [System.IO.Path]::DirectorySeparatorChar,
+                  [System.StringComparison]::OrdinalIgnoreCase
+                )
+            } | Select-Object -First 1
+            if (-not $dataRootMatch) {
+              throw "Installed app data path is outside the isolated APPDATA/LOCALAPPDATA roots: $userDataPath"
+            }
+
             $workflowStage = 'locating-native-settings'
-            $settingsFile = Get-ChildItem -Path $appDataRoots -Filter 'settings.v1.json' -File -Recurse |
-              Select-Object -First 1
-            if (-not $settingsFile) { throw 'Native Settings file was not created in the isolated app-data directory' }
+            $settingsFilePath = [string]$smokeDetails.settingsFilePath
+            if (-not $settingsFilePath -or -not (Test-Path -LiteralPath $settingsFilePath -PathType Leaf)) {
+              throw "Native Settings file was not created at the installed app path: $settingsFilePath"
+            }
+            $settingsFile = Get-Item -LiteralPath $settingsFilePath
 
             $workflowStage = 'validating-native-settings'
-            $settings = Get-Content -Path $settingsFile.FullName -Raw | ConvertFrom-Json
+            $settings = Get-Content -LiteralPath $settingsFile.FullName -Raw | ConvertFrom-Json
             if ($settings.allowTerminalSmartActions -ne $true) {
               throw 'Native terminal-action Settings did not persist across the packaged-app restart'
             }
 
             $workflowStage = 'locating-chromium-storage'
-            $localStorageDir = Get-ChildItem -Path $appDataRoots -Directory -Recurse -Filter 'Local Storage' |
-              Select-Object -First 1
-            if (-not $localStorageDir) { throw 'Chromium local profile storage was not created by the installed app' }
+            $localStoragePath = Join-Path $userDataPath 'Local Storage'
+            if (-not (Test-Path -LiteralPath $localStoragePath -PathType Container)) {
+              throw "Chromium local profile storage was not created at the installed app path: $localStoragePath"
+            }
+            $localStorageDir = Get-Item -LiteralPath $localStoragePath
 
             $workflowStage = 'locating-uninstaller'
             $uninstaller = Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe' -File | Select-Object -First 1
