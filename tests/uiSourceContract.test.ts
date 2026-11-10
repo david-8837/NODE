@@ -6,6 +6,62 @@ describe('Embedded app regression checks', () => {
   const htmlContent = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
   const bridgeSource = fs.readFileSync(path.join(process.cwd(), 'src/qmkViaBridge.ts'), 'utf-8');
   const backupSource = fs.readFileSync(path.join(process.cwd(), 'src/deviceKeymapFiles.ts'), 'utf-8');
+  const viteConfig = fs.readFileSync(path.join(process.cwd(), 'vite.config.ts'), 'utf-8');
+  const electronMain = fs.readFileSync(path.join(process.cwd(), 'electron/main.cjs'), 'utf-8');
+  const windowsWorkflow = fs.readFileSync(
+    path.join(process.cwd(), '.github/workflows/windows-installer.yml'),
+    'utf-8'
+  );
+  const packageConfig = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')
+  );
+
+  it('prepares relative packaged assets and Windows Electron titlebar interaction', () => {
+    expect(viteConfig).toContain("base: './'");
+    expect(htmlContent).toContain("desktopApi?.isElectron");
+    expect(htmlContent).toContain("desktopApi.platform === 'win32'");
+    expect(htmlContent).toContain('padding-right: 146px');
+    expect(htmlContent).toContain('-webkit-app-region: drag');
+    expect(htmlContent).toContain('-webkit-app-region: no-drag');
+    expect(htmlContent).toContain("document.documentElement.classList.add('grid-macro-ui')");
+  });
+
+  it('adapts the desktop geometry only at constrained window sizes', () => {
+    expect(htmlContent).toContain('@media (max-width: 1180px)');
+    expect(htmlContent).toContain('@media (max-height: 760px)');
+    expect(htmlContent).toContain('min-height: 360px');
+    expect(htmlContent).toContain('position: relative');
+    expect(electronMain).toContain('Math.min(1280');
+    expect(electronMain).toContain('Math.min(840');
+    expect(electronMain).toContain('minWidth: Math.min(900, width)');
+    expect(electronMain).toContain('minHeight: Math.min(600, height)');
+  });
+
+  it('checks and captures the responsive UI from an installed Windows package', () => {
+    expect(electronMain).toContain("hasSwitch('visual-smoke-test')");
+    expect(electronMain).toContain("capturePage()");
+    expect(electronMain).toContain('renderedUi.keyCount !== 9');
+    expect(windowsWorkflow).toContain('Install packaged app and capture responsive UI');
+    expect(windowsWorkflow).toContain('--visual-smoke-test');
+    expect(windowsWorkflow).toContain('packaged-ui-visual-smoke.png');
+  });
+
+  it('defines the Windows NSIS installer and ZIP package without discarding app data', () => {
+    expect(packageConfig.main).toBe('electron/main.cjs');
+    expect(packageConfig.scripts['desktop:dev']).toContain('electron .');
+    expect(packageConfig.scripts['build:win']).toContain('electron-builder --win');
+    expect(packageConfig.build.appId).toBe('com.node.gridmacro1');
+    expect(packageConfig.build.directories.output).toBe('dist_electron');
+    expect(packageConfig.build.files).toContain('electron/**/*');
+    expect(packageConfig.build.files).toContain('dist/**/*');
+    expect(packageConfig.build.win.icon).toBe('public/favicon.ico');
+    expect(packageConfig.build.win.target.map(({ target }: { target: string }) => target)).toEqual([
+      'nsis',
+      'zip',
+    ]);
+    expect(packageConfig.build.nsis.oneClick).toBe(false);
+    expect(packageConfig.build.nsis.deleteAppDataOnUninstall).toBe(false);
+  });
 
   it('should contain the complete Macropad 3x3 direct matrix DOM structure', () => {
     // Verifies 9 key matrix elements and grid containers exist in the markup

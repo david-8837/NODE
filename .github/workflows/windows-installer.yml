@@ -1,0 +1,123 @@
+name: Windows Desktop Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/windows-installer.yml'
+      - 'electron/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'public/favicon.ico'
+      - 'tests/**'
+      - 'vite.config.ts'
+
+permissions:
+  contents: write
+
+jobs:
+  package-windows:
+    name: Build Windows x64 installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build installer and ZIP
+        run: npm run build:win
+
+      - name: Install packaged app and capture responsive UI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem -Path 'dist_electron' -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'electron-builder did not produce a Windows installer' }
+
+          $installDir = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke'
+          $installArgs = @('/S', "/D=$installDir")
+          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList $installArgs -Wait -PassThru
+          if ($installProcess.ExitCode -ne 0) { throw "Silent installer exited with code $($installProcess.ExitCode)" }
+
+          $app = Get-ChildItem -Path $installDir -Filter '*.exe' | Where-Object { $_.Name -notlike 'Uninstall*' } | Select-Object -First 1
+          if (-not $app) { throw "Installed application executable was not found in $installDir" }
+
+          # The installer may offer to start the app on finish; close that copy so
+          # the smoke-test launch receives its own screenshot path and exit code.
+          Start-Sleep -Seconds 1
+          $appProcessName = [System.IO.Path]::GetFileNameWithoutExtension($app.Name)
+          Get-Process -Name $appProcessName -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+
+          $screenshot = Join-Path $env:RUNNER_TEMP 'packaged-ui-visual-smoke.png'
+          $env:NODE_GRID_VISUAL_SMOKE_SCREENSHOT = $screenshot
+          $appProcess = Start-Process -FilePath $app.FullName -ArgumentList '--visual-smoke-test' -PassThru
+          if (-not $appProcess.WaitForExit(90000)) {
+            Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
+            throw 'Packaged app did not finish its visual smoke test within 90 seconds'
+          }
+          $appProcess.Refresh()
+          if ($appProcess.ExitCode -ne 0) { throw "Packaged app visual smoke test exited with code $($appProcess.ExitCode)" }
+          if (-not (Test-Path $screenshot)) { throw 'Packaged app did not write its screenshot' }
+
+          $png = [System.IO.File]::ReadAllBytes($screenshot)
+          if ($png.Length -lt 10240 -or [System.BitConverter]::ToString($png[0..7]) -ne '89-50-4E-47-0D-0A-1A-0A') {
+            throw "Screenshot is missing, too small, or not a PNG ($($png.Length) bytes)"
+          }
+          $width = [System.Net.IPAddress]::NetworkToHostOrder([System.BitConverter]::ToInt32($png, 16))
+          $height = [System.Net.IPAddress]::NetworkToHostOrder([System.BitConverter]::ToInt32($png, 20))
+          if ($width -lt 640 -or $height -lt 520) { throw "Screenshot dimensions are unexpectedly small: ${width}x${height}" }
+          Write-Host "Packaged Windows UI screenshot validated: ${width}x${height}, $($png.Length) bytes"
+          Copy-Item $screenshot 'dist_electron/packaged-ui-visual-smoke.png' -Force
+
+      - name: Publish tagged Windows release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          $installer = Get-ChildItem -Path 'dist_electron' -Filter '*.exe' -File | Select-Object -First 1
+          $portableZip = Get-ChildItem -Path 'dist_electron' -Filter '*.zip' -File | Select-Object -First 1
+          if (-not $installer -or -not $portableZip) { throw 'Expected installer and ZIP assets before publishing' }
+          $assets = @($installer.FullName, $portableZip.FullName)
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @assets --clobber
+          } else {
+            gh release create $tag @assets --verify-tag --title "NØDE Grid Macro 1 Studio $tag" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Could not publish Windows release $tag" }
+
+      - name: Upload Windows packages and visual check
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-grid-macro-1-windows-x64
+          path: |
+            dist_electron/*.exe
+            dist_electron/*.zip
+            dist_electron/packaged-ui-visual-smoke.png
+          if-no-files-found: error
+          retention-days: 14

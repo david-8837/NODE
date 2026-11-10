@@ -1,6 +1,7 @@
 {
   "name": "grid-macro-1-configurator",
   "description": "Hardware keymap, layer, profile, and macro configuration studio for the NØDE Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
+  "author": "NØDE Studio",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -8,13 +9,16 @@
     "dev": "vite --port=5173",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "node -e \"for (const target of ['dist', 'server.js', 'dist_electron']) require('node:fs').rmSync(target, { recursive: true, force: true })\"",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:stress": "vitest run tests/stressTesting.test.ts",
     "audit:cpp": "npx tsx tests/cppcheck_audit.ts",
     "audit:mem": "npx tsx tests/memlab_audit.ts",
-    "test:all": "vitest run && npx tsx tests/cppcheck_audit.ts && npx tsx tests/memlab_audit.ts"
+    "test:all": "vitest run && npx tsx tests/cppcheck_audit.ts && npx tsx tests/memlab_audit.ts",
+    "desktop:dev": "concurrently --kill-others \"npm:dev\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "package:win:dir": "npm run build && electron-builder --win dir --publish never",
+    "build:win": "npm run build && electron-builder --win --publish never"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -37,12 +41,63 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^10.0.7",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.0",
     "jsdom": "^31.0.0",
     "serialport": "^13.0.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "wait-on": "^9.5.1"
+  },
+  "main": "electron/main.cjs",
+  "overrides": {
+    "minimatch": "^11.0.5"
+  },
+  "build": {
+    "appId": "com.node.gridmacro1",
+    "productName": "NØDE Grid Macro 1 Studio",
+    "asar": true,
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "public/favicon.ico",
+      "package.json",
+      "!**/*.map"
+    ],
+    "win": {
+      "icon": "public/favicon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "NØDE Grid Macro 1 Studio",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    },
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   }
 }

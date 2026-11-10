@@ -1,12 +1,141 @@
 // electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
-const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, screen, shell } = require('electron');
 const { spawn, execFile } = require('child_process');
+const fs = require('fs');
 const path = require('path');
+const { fileURLToPath, pathToFileURL } = require('url');
 
 let mainWindow = null;
 let psWorker = null;
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+// Unpackaged Electron is development. Never let a user-level NODE_ENV value make
+// an installed app load a local development server instead of its bundled UI.
+const isDev = !app.isPackaged;
+const DEFAULT_DEV_SERVER_URL = 'http://localhost:5173/';
+
+function getDevServerUrl() {
+  try {
+    const candidate = new URL(process.env.VITE_DEV_SERVER_URL || DEFAULT_DEV_SERVER_URL);
+    if (
+      candidate.protocol === 'http:' &&
+      (candidate.hostname === 'localhost' || candidate.hostname === '127.0.0.1')
+    ) {
+      return candidate.href;
+    }
+  } catch {}
+  return DEFAULT_DEV_SERVER_URL;
+}
+
+function getAppEntryUrl() {
+  return app.isPackaged
+    ? pathToFileURL(path.join(__dirname, '../dist/index.html')).href
+    : getDevServerUrl();
+}
+
+function isTrustedAppUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const entry = new URL(getAppEntryUrl());
+    if (app.isPackaged) {
+      return url.protocol === 'file:' &&
+        path.resolve(fileURLToPath(url)) === path.resolve(fileURLToPath(entry));
+    }
+    return url.origin === entry.origin && url.pathname === entry.pathname;
+  } catch {
+    return false;
+  }
+}
+
+function isTrustedRenderer(event) {
+  const frame = event.senderFrame;
+  return Boolean(
+    mainWindow &&
+    event.sender === mainWindow.webContents &&
+    frame?.isMainFrame &&
+    isTrustedAppUrl(frame.url)
+  );
+}
+
+function isAllowedHardwareOrigin(origin) {
+  if (typeof origin !== 'string') return false;
+  if (app.isPackaged) {
+    return origin === 'null' || origin === 'file://' || origin.startsWith('file:');
+  }
+  return origin === new URL(getDevServerUrl()).origin;
+}
+
+function getInitialWindowBounds() {
+  const workArea = screen.getPrimaryDisplay().workAreaSize;
+  const width = Math.min(1280, Math.max(640, workArea.width - 32));
+  const height = Math.min(840, Math.max(520, workArea.height - 32));
+  return {
+    width,
+    height,
+    minWidth: Math.min(900, width),
+    minHeight: Math.min(600, height),
+  };
+}
+
+function isVisualSmokeTest() {
+  return app.isPackaged && app.commandLine.hasSwitch('visual-smoke-test');
+}
+
+async function captureVisualSmokeScreenshot() {
+  const screenshotPath = process.env.NODE_GRID_VISUAL_SMOKE_SCREENSHOT;
+  try {
+    if (!screenshotPath) {
+      throw new Error('NODE_GRID_VISUAL_SMOKE_SCREENSHOT must name the PNG output path');
+    }
+
+    // Let the initial UI animation finish so the artifact shows the normal app,
+    // not its entry transition.
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      throw new Error('The packaged application window closed before capture');
+    }
+
+    const renderedUi = await mainWindow.webContents.executeJavaScript(`(() => {
+      const root = document.querySelector('#root');
+      const keySlots = Array.from(root?.querySelectorAll('[data-drop-slot]') || [])
+        .map((element) => element.getAttribute('data-drop-slot'))
+        .filter((slot) => /^r[1-3]c[1-3]$/.test(slot));
+      const navText = root?.querySelector('nav')?.textContent || '';
+      const centerPad = root?.querySelector('main > div.absolute.inset-0');
+      return {
+        title: document.title,
+        appMounted: Boolean(root?.firstElementChild),
+        keyCount: keySlots.length,
+        hasEncoder: Boolean(root?.querySelector('button[title^="Dial:"]')),
+        hasNavigation: ['Keymap', 'Preset', 'Settings'].every((label) => navText.includes(label)),
+        centerPadPosition: centerPad ? getComputedStyle(centerPad).position : null,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      };
+    })()`);
+
+    if (
+      !renderedUi.appMounted ||
+      renderedUi.keyCount !== 9 ||
+      !renderedUi.hasEncoder ||
+      !renderedUi.hasNavigation ||
+      renderedUi.centerPadPosition !== 'relative'
+    ) {
+      throw new Error(`Packaged UI did not pass its visual smoke checks: ${JSON.stringify(renderedUi)}`);
+    }
+
+    const image = await mainWindow.webContents.capturePage();
+    const png = image.toPNG();
+    if (png.length < 10 * 1024) {
+      throw new Error(`Screenshot is unexpectedly small (${png.length} bytes)`);
+    }
+    fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+    fs.writeFileSync(screenshotPath, png);
+    console.log(`Packaged UI visual smoke test passed: ${screenshotPath} (${png.length} bytes)`);
+    app.exit(0);
+  } catch (error) {
+    console.error('Packaged UI visual smoke test failed:', error);
+    app.exit(1);
+  }
+}
 
 // Safe Virtual Keycode Map for Native Keystroke Injection
 const VK_MAP = {
@@ -149,11 +278,18 @@ function injectWindowsKeystrokes(vkCodes) {
 }
 
 function createWindow() {
+  const bounds = getInitialWindowBounds();
+  if (isVisualSmokeTest()) {
+    const workArea = screen.getPrimaryDisplay().workAreaSize;
+    bounds.width = Math.min(1100, Math.max(640, workArea.width - 32));
+    bounds.height = Math.min(700, Math.max(520, workArea.height - 32));
+    bounds.minWidth = Math.min(900, bounds.width);
+    bounds.minHeight = Math.min(600, bounds.height);
+  }
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 1024,
-    minHeight: 700,
+    ...bounds,
+    center: true,
     backgroundColor: '#0a0a0a',
     title: 'NØDE — Grid Macro 1 Studio',
     titleBarStyle: 'hidden',
@@ -176,65 +312,69 @@ function createWindow() {
 
   const ses = mainWindow.webContents.session;
 
-  // Granular WebHID & Web Serial permission checking
+  // Limit device access to the expected VIA Raw HID keyboard and RP2040 serial
+  // interface, and only from the trusted app window/origin.
   ses.setDevicePermissionHandler((details) => {
-    // Only allow HID and Serial for USB devices
-    if (details.deviceType === 'hid' || details.deviceType === 'serial') {
-      return true;
+    if (!isAllowedHardwareOrigin(details.origin) || !details.device) return false;
+    if (details.deviceType === 'hid') {
+      return details.device.vendorId === 0xfeed && details.device.productId === 0x6001;
+    }
+    if (details.deviceType === 'serial') {
+      return details.device.vendorId?.toLowerCase() === '2e8a';
     }
     return false;
   });
 
-  // Strict permission handler: only allow 'serial' and 'hid' when originating from internal app
   ses.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    // Allow serial and hid permissions for local dev and packaged file protocols
-    if (permission === 'serial' || permission === 'hid') {
-      if (
-        requestingOrigin.startsWith('http://localhost:') ||
-        requestingOrigin.startsWith('http://127.0.0.1:') ||
-        requestingOrigin === 'null' ||
-        requestingOrigin.startsWith('file:')
-      ) {
-        return true;
-      }
+    if (
+      webContents !== mainWindow?.webContents ||
+      !isTrustedAppUrl(webContents.getURL()) ||
+      !isAllowedHardwareOrigin(requestingOrigin)
+    ) {
+      return false;
     }
-    // Block all other high-privilege permissions (camera, microphone, geolocation, etc.)
-    return false;
+    return permission === 'serial' || permission === 'hid';
   });
 
-  // Automatically select connected RP2040-Zero device when requested by web app
+  // Select only the supported RP2040 USB serial device; never fall back to an
+  // unrelated port that happened to be connected.
   ses.on('select-serial-port', (event, portList, webContents, callback) => {
     event.preventDefault();
-    if (portList && portList.length > 0) {
-      const rp2040Port = portList.find(
-        (p) =>
-          p.vendorId === '2e8a' ||
-          p.vendorId === '2E8A' ||
-          (p.displayName && p.displayName.includes('RP2040'))
-      );
-      callback(rp2040Port ? rp2040Port.portId : portList[0].portId);
-    } else {
+    if (webContents !== mainWindow?.webContents || !isTrustedAppUrl(webContents.getURL())) {
       callback('');
+      return;
     }
+    const rp2040Port = (portList || []).find(
+      (port) => port.vendorId?.toLowerCase() === '2e8a'
+    );
+    callback(rp2040Port?.portId || '');
   });
 
   ses.on('select-hid-device', (event, details, callback) => {
     event.preventDefault();
-    if (details.deviceList && details.deviceList.length > 0) {
-      const rp2040Hid = details.deviceList.find(
-        (d) => d.vendorId === 0x2e8a || d.vendorId === 0xfeed
-      );
-      callback(rp2040Hid ? rp2040Hid.deviceId : details.deviceList[0].deviceId);
-    } else {
-      callback('');
-    }
+    const viaDevice = (details.deviceList || []).find(
+      (device) => device.vendorId === 0xfeed && device.productId === 0x6001
+    );
+    callback(viaDevice?.deviceId || '');
   });
 
-  // Load URL
-  if (isDev && process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+  const handleUntrustedNavigation = (event, targetUrl) => {
+    if (isTrustedAppUrl(targetUrl)) return;
+    event.preventDefault();
+    try {
+      const parsedUrl = new URL(targetUrl);
+      if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+        shell.openExternal(parsedUrl.href);
+      }
+    } catch {}
+  };
+  mainWindow.webContents.on('will-navigate', handleUntrustedNavigation);
+  mainWindow.webContents.on('will-redirect', handleUntrustedNavigation);
+
+  // Packaged builds load the Vite output using file://; its relative asset base
+  // keeps the inline configurator and static public assets working inside asar.
+  if (isDev) {
+    mainWindow.loadURL(getAppEntryUrl());
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
@@ -243,6 +383,8 @@ function createWindow() {
     mainWindow.show();
     if (isDev) {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
+    } else if (isVisualSmokeTest()) {
+      void captureVisualSmokeScreenshot();
     }
   });
 
@@ -262,34 +404,36 @@ function createWindow() {
 }
 
 // IPC Handlers for Native Windows Control
-ipcMain.handle('window-minimize', () => {
-  if (mainWindow) mainWindow.minimize();
+ipcMain.handle('window-minimize', (event) => {
+  if (isTrustedRenderer(event) && mainWindow) mainWindow.minimize();
 });
 
-ipcMain.handle('window-maximize', () => {
-  if (mainWindow) {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow.maximize();
-    }
+ipcMain.handle('window-maximize', (event) => {
+  if (!isTrustedRenderer(event) || !mainWindow) return;
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
   }
 });
 
-ipcMain.handle('window-close', () => {
-  if (mainWindow) mainWindow.close();
+ipcMain.handle('window-close', (event) => {
+  if (isTrustedRenderer(event) && mainWindow) mainWindow.close();
 });
 
-ipcMain.handle('window-is-maximized', () => {
-  return mainWindow ? mainWindow.isMaximized() : false;
+ipcMain.handle('window-is-maximized', (event) => {
+  return isTrustedRenderer(event) && mainWindow ? mainWindow.isMaximized() : false;
 });
 
-ipcMain.handle('get-app-version', () => {
-  return app.getVersion();
+ipcMain.handle('get-app-version', (event) => {
+  return isTrustedRenderer(event) ? app.getVersion() : null;
 });
 
 // Sanitized & Safe Smart Action Execution (Open URL, Launch App, Safe Commands, Inject Keystrokes)
 ipcMain.handle('execute-smart-action', async (event, payload) => {
+  if (!isTrustedRenderer(event)) {
+    return { success: false, error: 'Untrusted renderer' };
+  }
   if (!payload || typeof payload !== 'object') {
     return { success: false, error: 'Invalid payload' };
   }
@@ -384,7 +528,12 @@ ipcMain.handle('execute-smart-action', async (event, payload) => {
 
 // App Lifecycle
 app.whenReady().then(() => {
-  initFastWindowsInjector();
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.node.gridmacro1');
+  }
+  if (!isVisualSmokeTest()) {
+    initFastWindowsInjector();
+  }
   createWindow();
 
   const template = [

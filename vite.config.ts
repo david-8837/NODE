@@ -84,6 +84,9 @@ function nativeExecutionPlugin(): Plugin {
 
 export default defineConfig(() => {
   return {
+    // Keep production asset URLs relative so dist/index.html can be loaded by
+    // Electron's file:// protocol as well as by a static web host.
+    base: './',
     plugins: [react(), tailwindcss(), nativeExecutionPlugin()],
     resolve: {
       alias: {

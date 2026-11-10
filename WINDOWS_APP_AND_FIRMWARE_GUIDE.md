@@ -78,30 +78,44 @@ repo/
 
 ## 4. Automated Testing & Verification Suite
 
-All tests run via `npm test` (powered by Vitest) and standalone runner `tsx test_firmware_and_keys.ts`:
+All automated checks run with `npm test` (Vitest). The latest local run passed **131 tests across 14 files**:
 
-- **19 Test Cases Passed**:
-  1. `ErrorBoundary.test.tsx`: Child UI rendering & unhandled exception recovery boundary.
-  2. `hardwareProtocol.test.ts`: 16-bit binary transcoding, modifiers, 64-byte Raw HID packets, and firmware source integrity.
-  3. `matrixSimulation.test.ts`: Complete 9 direct matrix keys + 3 dial actions across 4 layers.
-  4. `presets.test.ts`: Tool icon heuristics, preset builders, and profile application checks.
+- `tests/embeddedApp.test.ts`: shipped UI structure, interaction, profiles, device sync, and regression baseline.
+- `tests/downloadSite.test.ts`: download-page content, live release-asset resolution, first-release fallback, and publishing workflow contracts.
+- `tests/uiSourceContract.test.ts`: desktop packaging, responsive geometry, and packaged Windows screenshot smoke-test contracts.
+- Hardware and protocol suites cover VIA, USB serial, device layout, keymaps, and native-action safety.
 
 ---
 
 ## 5. Building & Packaging Commands
 
+Use Node.js 22 and npm. The Windows installer is an unsigned x64 NSIS setup executable; no signing certificate is configured yet.
+
 | Command | Purpose |
 | :--- | :--- |
-| `npm run dev` | Launch Vite development server on `0.0.0.0:3000` |
-| `npm run lint` | Execute TypeScript strict type check (`tsc --noEmit`) |
-| `npm test` | Execute complete Vitest automated unit & matrix test suites |
-| `npm run build` | Compile optimized production web assets with Rolldown code-splitting |
-| `npm run build:win` | Package native Windows executable (`.exe`) and portable distribution `.zip` |
+| `npm run desktop:dev` | Start Vite and open the Electron desktop shell together |
+| `npm run dev` | Launch the Vite development server on port `5173` |
+| `npm run lint` | Execute the TypeScript check (`tsc --noEmit`) |
+| `npm test` | Execute the Vitest unit and integration suites |
+| `npm run build` | Compile the production UI into `dist/` |
+| `npm run package:win:dir` | Create an unpacked Windows x64 app for smoke testing |
+| `npm run build:win` | Build the UI, NSIS installer, and ZIP distribution |
+
+`build:win` is intended to run on Windows x64 (or the manual Windows GitHub Actions workflow). The assisted installer offers per-user or per-machine installation, lets the user choose an install folder, creates Start Menu and desktop shortcuts, and preserves local app data on uninstall.
+
+The desktop window keeps its existing 1280×840 starting size when the display has room, and uses the available work area on smaller displays. At constrained widths/heights the same controls flow and scroll without changing the established colors or component styling. The Windows packaging workflow silently installs the generated NSIS app, launches it at a constrained size, checks the rendered nine-key/encoder/navigation UI, captures a PNG, and uploads that screenshot with the installer and ZIP.
+
+### Download website and public releases
+
+The static download site lives in `website/` and is deployed to GitHub Pages when changes reach `main` or the active publishing branch `arena/2eac011b-newww` (or by manually dispatching the **Publish download website** workflow after it is available on the default branch). Before its first deploy, enable Pages in repository **Settings → Pages** and set the source to **GitHub Actions**; the project site URL is `https://david-8837.github.io/NODE/`. Its download buttons resolve the latest `.exe` and `.zip` assets from the public GitHub Releases API. To publish a version, push a `v*` tag such as `v1.0.0`: the Windows workflow builds and smoke-tests the installed app, then attaches the installer and portable ZIP to that release. Until the first release exists, the site shows a clear “not published yet” state and links to the releases page.
 
 ---
 
 ## 6. Packaged Artifact Locations
 
-- **Windows Unpacked Executable**: `dist_electron/win-unpacked/NØDE Grid Macro 1 Studio.exe`
-- **Windows Portable Distribution Zip**: `dist_electron/NØDE Grid Macro 1 Studio-1.0.2-win.zip` (172 MB)
-- **QMK Native C Firmware Source**: `qmk_firmware/grid_macro_1/`
+`npm run build:win` writes the following x64 artifacts under the ignored `dist_electron/` directory:
+
+- **Windows NSIS installer**: `dist_electron/NØDE Grid Macro 1 Studio-1.0.0-x64.exe`
+- **ZIP distribution**: `dist_electron/NØDE Grid Macro 1 Studio-1.0.0-x64.zip`
+- **Unpacked smoke-test app** (from `npm run package:win:dir`): `dist_electron/win-unpacked/`
+- **QMK Native C Firmware Source**: `firmware/`
