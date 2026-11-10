@@ -1,39 +1,53 @@
 # Grid Macro 1 — QMK/VIA keyboard definition
 
-This directory is a **keyboard-definition fragment**, not a complete QMK checkout. It describes a 3×3 direct-pin key matrix, one encoder with a push switch, four dynamic-keymap layers, and an RP2040-Zero USB device (`VID 0xFEED`, `PID 0x6001`). The VIA keymap uses stock QMK/VIA commands; no Vial-only command or custom profile-storage protocol is enabled.
+This directory is a **keyboard-definition fragment**, not a complete QMK checkout. It describes a direct-pin key matrix with nine keys and one encoder push switch, one rotary encoder, four dynamic-keymap layers, and an RP2040-Zero USB target (`VID 0xFEED`, `PID 0x6001`). The VIA keymap uses stock QMK/VIA commands; no Vial-only command or custom profile-storage protocol is enabled.
 
-## Hosted build verification
+## Reproducible hosted build
 
-The VIA firmware compiled successfully in [GitHub Actions run 42660825626](https://github.com/david-8837/newww/actions/runs/42660825626), for source commit `2dab75256d7ac3585060162322e819e481e5aa67`. The workflow cloned QMK `master`, ran `qmk compile -kb grid_macro_1 -km via`, verified that `.build/grid_macro_1_via.uf2` was non-empty, and uploaded the artifact **`grid-macro-1-via-firmware`** with a seven-day retention period.
+`.github/workflows/qmk-build.yml` pins QMK firmware to commit `d194c077ed964195ec16d255c7a4b89a794cf03b`, QMK CLI to `1.2.0`, the GitHub Actions by commit SHA, and the runner release to Ubuntu 22.04. It compiles both the `via` and `default` keymaps, verifies that each expected UF2 is non-empty, then uploads the VIA UF2 with `SHA256SUMS.txt` and `BUILD-INFO.txt`. The provenance records the repository/QMK commits, run, compiler, installed apt/Python package versions, and binary checksum. Ubuntu's hosted image and apt package repository are still updated over time; capturing exact package versions makes each run traceable, but byte-for-byte reproducibility is not claimed until the compiler/toolchain packages are fully immutable.
 
-To download it, open the Actions run above, select the `grid-macro-1-via-firmware` artifact, and extract `grid_macro_1_via.uf2`. The compiled binary is not committed to this repository. The sandbox could not retrieve a local copy of the Actions artifact, so no UF2 is present in this checkout. Compilation and non-empty-file verification do not prove that the firmware has been flashed or tested on a physical board. The workflow follows the moving QMK `master` branch, so future builds may use a different QMK revision.
+The previously successful hosted build [run 42662058460](https://github.com/david-8837/newww/actions/runs/42662058460) used the earlier workflow that cloned the moving QMK `master` branch. It is historical compile/artifact evidence, not proof that this newly pinned workflow has run. The first successful run of the pinned workflow should be used as the current release artifact. Artifacts are retained for seven days; download the `grid-macro-1-via-firmware` artifact from that run and verify its SHA-256 before flashing. No UF2 is committed to this repository.
 
-## Build with QMK CLI
+## Build locally
 
-1. Install and initialize QMK using the [official QMK setup instructions](https://docs.qmk.fm/newbs_getting_started).
-2. Copy this keyboard fragment into the full checkout's `keyboards` directory:
+1. Install QMK CLI `1.2.0` in a virtual environment and initialize a full QMK checkout. To match the hosted source, check out the pinned firmware commit:
+
+   ```sh
+   python3 -m venv .venv
+   . .venv/bin/activate
+   python -m pip install qmk==1.2.0
+   git clone https://github.com/qmk/qmk_firmware.git ~/qmk_firmware
+   cd ~/qmk_firmware
+   git checkout --detach d194c077ed964195ec16d255c7a4b89a794cf03b
+   qmk setup
+   ```
+
+2. Install this keyboard fragment in the full checkout:
 
    ```sh
    cp -a /path/to/newww/qmk_firmware/grid_macro_1 ~/qmk_firmware/keyboards/
    ```
 
-3. Build from the QMK checkout:
+3. Build and record provenance from the QMK checkout:
 
    ```sh
    cd ~/qmk_firmware
-   qmk compile -kb grid_macro_1 -km via
+   /path/to/newww/qmk_firmware/grid_macro_1/build_uf2.sh via
+   /path/to/newww/qmk_firmware/grid_macro_1/build_uf2.sh default
    ```
 
-   Use `-km default` to build the static default keymap instead. The VIA keymap enables dynamic keymaps and `ENCODER_MAP_ENABLE`.
+   The script prints the QMK commit, CLI/compiler version, and SHA-256. Set `QMK_FIRMWARE_REF=d194c077ed964195ec16d255c7a4b89a794cf03b` to make it reject a different QMK checkout. Expected outputs are `.build/grid_macro_1_via.uf2` and `.build/grid_macro_1_default.uf2`.
 
-4. Check the build output for `.build/grid_macro_1_via.uf2`; before flashing, verify the target and follow the RP2040-Zero BOOT/`RPI-RP2` workflow.
+Compilation and a non-empty UF2 are not board validation. Confirm the intended target/revision and recovery procedure before flashing.
 
-## Browser configurator bridge
+## Browser configurator and data safety
 
-The shipped embedded configurator imports `src/qmkViaBridge.ts` and uses WebHID. Connect using the status button in a Chromium-based browser (Chrome or Edge) on HTTPS or `localhost`; the browser asks for device permission from that click. The adapter filters for the VID/PID above and the QMK Raw HID collection (usage page `0xFF60`, usage `0x61`), verifies VIA protocol `0x000D`, then uses standard VIA keycode and encoder-map commands.
+The shipped embedded configurator loads `src/qmkViaBridge.ts` and uses WebHID. Connect from a Chromium-based browser (Chrome or Edge) on HTTPS or `localhost`; permission is requested from the explicit Connect button. The adapter filters for VID/PID above and the QMK Raw HID collection (usage page `0xFF60`, usage `0x61`), then verifies VIA protocol `0x000D`.
 
-- The device stores only its dynamic keymap. Full configurator profiles, names, custom items, and unsupported actions stay in `localStorage` for the current browser origin/profile; they are not saved to the device and do not follow the keyboard to another browser.
-- Basic HID keys, supported modifier chords, media keycodes, `TO(layer)` / `MO(layer)` targets that exist in the firmware, and encoder directions can sync. Layer switches to unavailable firmware layers, multi-step/smart actions, and unsupported key sequences are skipped and reported as sync limitations.
-- The UI supports up to eight profile layers; this board declares four. Only configured layers supported by the firmware are written. Device layers outside the active profile are left unchanged, and unsupported actions are not used to erase an existing hardware mapping. An explicit blank mapping clears its key to `KC_NO`.
+- Complete profiles, profile names, custom items, and unsupported actions are stored in this browser's `localStorage`; they are not stored on the keyboard and do not follow the device to another browser/origin. Profile JSON Import/Export is a browser file operation.
+- Before any automatic profile-to-device write, the app reads the supported dynamic key and encoder maps with stock VIA GET commands and saves a pre-sync snapshot to a bounded browser-local history. If the read or local save fails, the app pauses the device write. Settings can download a backup JSON; restoring one requires a user confirmation and a connected device, then reads and saves the current keymap locally before issuing any restore writes. A failed read or local save blocks restore.
+- Device backups contain key and encoder mappings only. They use standard VIA keycode/encoder-map SET commands on restore; the bridge does not send custom firmware commands or persist profile JSON on-device.
+- Basic HID keys, supported modifier chords, media keycodes, `TO(layer)` / `MO(layer)` targets present in firmware, and encoder maps can sync. Smart/multistep actions, unsupported sequences, and unavailable layer targets are skipped with warnings. Explicit blank assignments clear to `KC_NO`.
+- The configurator supports up to eight profile layers; this board declares four. Higher device layers are left unchanged and are called out in warnings/backups.
 
-The bridge and fake-HID tests are source-level verification. The hosted build verifies the QMK compile and a non-empty UF2 artifact, but no firmware flash, physical USB test, or real-browser WebHID permission/device test has been performed.
+Fake-HID tests verify command framing, supported keycode translation, read-only snapshots, restore behavior, and failure gates. They are not a physical USB, firmware-flash, or real-browser permission test. No schematic or physical board was available for the current work; see `HARDWARE_PREPARATION_CHECKLIST.md` before flashing or claiming device operation.

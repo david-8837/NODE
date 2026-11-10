@@ -1,0 +1,152 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createProfileExport,
+  MAX_PROFILE_FILE_BYTES,
+  mergeImportedProfiles,
+  parseProfileFile,
+  type ParsedProfileFile,
+} from '../src/profileFiles';
+
+const profile = {
+  id: 'edit-profile',
+  name: 'Editor layout',
+  color: '#123456',
+  layers: [{
+    r1c1: { label: 'Save', binding: 'Ctrl+S', actionType: 'Shortcut', iconId: 'device-floppy' },
+    'dial-tl': {
+      label: 'Dial',
+      binding: 'Volume',
+      actionType: 'Basic input',
+      encoderActions: {
+        cw: { label: 'Vol+', binding: 'volume +' },
+        ccw: { label: 'Vol-', binding: 'volume -' },
+        press: { label: 'Mute', binding: 'mute' },
+      },
+    },
+  }],
+};
+
+const customItems = {
+  Action: [{ id: 'act-save', main: 'Save project', binding: 'Ctrl+S', macropadLabel: 'Save', iconId: 'device-floppy' }],
+  'Multi-A': [{ id: 'multi-build', main: 'Build and run', listLabel: 'Build' }],
+  'Smart-A': [{ id: 'smart-open', main: 'Open editor', top: 'Open' }],
+};
+
+describe('profile file import and export', () => {
+  it('exports a versioned profile with its custom actions and round-trips the complete profile', () => {
+    const text = createProfileExport(profile, customItems);
+    const parsed = parseProfileFile(text);
+
+    expect(JSON.parse(text)).toMatchObject({ format: 'node-studio-profile', version: 1 });
+    expect(parsed).toEqual({ profiles: [profile], activeProfileIndex: 0, customItems });
+  });
+
+  it('imports the legacy raw profile JSON format', () => {
+    const parsed = parseProfileFile(JSON.stringify(profile));
+    expect(parsed.profiles).toHaveLength(1);
+    expect(parsed.profiles[0]).toMatchObject({ name: 'Editor layout', layers: profile.layers });
+    expect(parsed.customItems).toEqual({ Action: [], 'Multi-A': [], 'Smart-A': [] });
+  });
+
+  it('imports a versioned browser-state backup containing multiple profiles', () => {
+    const parsed = parseProfileFile(JSON.stringify({
+      v: 1,
+      profiles: [profile, { ...profile, id: 'other', name: 'Other profile' }],
+      activeProfileIndex: 1,
+      customItems,
+    }));
+    expect(parsed.profiles.map(({ name }) => name)).toEqual(['Editor layout', 'Other profile']);
+    expect(parsed.activeProfileIndex).toBe(1);
+    expect(parsed.customItems).toEqual(customItems);
+  });
+
+  it('rejects malformed, oversized, unsupported, and structurally invalid files', () => {
+    expect(() => parseProfileFile('{broken')).toThrow('not valid JSON');
+    expect(() => parseProfileFile(' '.repeat(MAX_PROFILE_FILE_BYTES + 1))).toThrow('2 MB');
+    expect(() => parseProfileFile(JSON.stringify({ format: 'node-studio-profile', version: 9, profile })))
+      .toThrow('version is not supported');
+    expect(() => parseProfileFile(JSON.stringify({ ...profile, layers: [] })))
+      .toThrow('between 1 and 8 layers');
+    expect(() => parseProfileFile(JSON.stringify({ ...profile, layers: [null] })))
+      .toThrow('must be an object');
+    expect(() => parseProfileFile(JSON.stringify({ ...profile, name: ' ' })))
+      .toThrow('non-empty name');
+  });
+
+  it('merges imported profiles and remaps conflicting custom-action IDs and references', () => {
+    const incoming: ParsedProfileFile = {
+      profiles: [{
+        ...profile,
+        layers: [{
+          ...profile.layers[0],
+          r1c1: { label: 'Imported action', binding: 'Different', actionType: 'Custom Action', actionId: 'act-save' },
+        }],
+      }],
+      activeProfileIndex: 0,
+      customItems: {
+        Action: [{ id: 'act-save', main: 'Imported action', binding: 'Different' }],
+        'Multi-A': [],
+        'Smart-A': [],
+      },
+    };
+    const merged = mergeImportedProfiles({
+      profiles: [profile],
+      activeProfileIndex: 0,
+      customItems: { ...customItems, Action: [customItems.Action[0]] },
+    }, incoming);
+
+    expect(merged.profiles).toHaveLength(2);
+    expect(merged.profiles[1].id).not.toBe(profile.id);
+    expect(merged.activeProfileIndex).toBe(1);
+    const remappedId = merged.customItems.Action[1].id;
+    expect(remappedId).not.toBe('act-save');
+    const mergedLayers = merged.profiles[1].layers as Array<Record<string, Record<string, unknown>>>;
+    expect(mergedLayers[0].r1c1).toMatchObject({ actionId: remappedId });
+    expect(merged.customItems.Action[0]).toEqual(customItems.Action[0]);
+  });
+
+  it('selects the imported active profile when merging a full browser-state backup', () => {
+    const incoming = parseProfileFile(JSON.stringify({
+      v: 1,
+      profiles: [profile, { ...profile, id: 'imported-second', name: 'Second imported profile' }],
+      activeProfileIndex: 1,
+      customItems,
+    }));
+    const merged = mergeImportedProfiles({
+      profiles: [profile],
+      activeProfileIndex: 0,
+      customItems,
+    }, incoming);
+
+    expect(merged.profiles).toHaveLength(3);
+    expect(merged.activeProfileIndex).toBe(2);
+    expect(merged.profiles[merged.activeProfileIndex].name).toBe('Second imported profile');
+  });
+
+  it('reuses identical custom action entries when the same profile file is imported twice', () => {
+    const incoming = parseProfileFile(createProfileExport(profile, customItems));
+    const merged = mergeImportedProfiles({
+      profiles: [profile],
+      activeProfileIndex: 0,
+      customItems,
+    }, incoming);
+    expect(merged.profiles).toHaveLength(2);
+    expect(merged.customItems.Action).toHaveLength(1);
+    expect(merged.customItems['Multi-A']).toHaveLength(1);
+    expect(merged.customItems['Smart-A']).toHaveLength(1);
+  });
+
+  it('keeps imported text as data and discards prototype-pollution fields', () => {
+    const malicious = JSON.parse(JSON.stringify(profile));
+    malicious.layers[0].r1c1.label = '<img src=x onerror=alert(1)>';
+    Object.defineProperty(malicious.layers[0], '__proto__', {
+      value: { polluted: true },
+      enumerable: true,
+    });
+    const parsed = parseProfileFile(JSON.stringify(malicious));
+    const importedLayers = parsed.profiles[0].layers as Array<Record<string, Record<string, unknown>>>;
+    expect(importedLayers[0].r1c1.label).toBe('<img src=x onerror=alert(1)>');
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+    expect(Object.hasOwn(importedLayers[0], '__proto__')).toBe(false);
+  });
+});

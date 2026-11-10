@@ -4,6 +4,8 @@ import path from 'path';
 
 describe('Embedded app regression checks', () => {
   const htmlContent = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
+  const bridgeSource = fs.readFileSync(path.join(process.cwd(), 'src/qmkViaBridge.ts'), 'utf-8');
+  const backupSource = fs.readFileSync(path.join(process.cwd(), 'src/deviceKeymapFiles.ts'), 'utf-8');
 
   it('should contain the complete Macropad 3x3 direct matrix DOM structure', () => {
     // Verifies 9 key matrix elements and grid containers exist in the markup
@@ -55,11 +57,19 @@ describe('Embedded app regression checks', () => {
     expect(htmlContent).toContain('Simulation');
   });
 
-  it('installs the stock VIA WebHID adapter and exposes an explicit connect control', () => {
+  it('loads the stock VIA bridge, profile-file helpers, and local backup controls', () => {
     expect(htmlContent).toContain('src="/src/qmkViaBridge.ts"');
+    expect(htmlContent).toContain('src="/src/profileFiles.ts"');
+    expect(htmlContent).toContain('src="/src/deviceKeymapFiles.ts"');
     expect(htmlContent).toContain('Connect Grid Macro 1 via QMK/VIA');
     expect(htmlContent).toContain('Profile saved locally; keymap synced to device');
     expect(htmlContent).toContain('sync warning');
+    expect(htmlContent).toContain('Pre-sync device keymap backup');
+    expect(htmlContent).toContain('get_config');
+    expect(htmlContent).toContain('restoreFromFile');
+    expect(bridgeSource).toContain("cmd === 'restore_config'");
+    expect(backupSource).toContain('savePreSyncSnapshot');
+    expect(htmlContent).not.toContain('children:`Device connected:`');
   });
 
   it('should load the full 8,703 vector icon library via static public script', () => {
