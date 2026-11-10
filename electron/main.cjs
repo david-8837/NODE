@@ -8,6 +8,7 @@ const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
 
 let mainWindow = null;
 let psWorker = null;
+let visualSmokeCaptureStarted = false;
 
 // Unpackaged Electron is development. Never let a user-level NODE_ENV value make
 // an installed app load a local development server instead of its bundled UI.
@@ -174,7 +175,7 @@ async function captureVisualSmokeScreenshot() {
         .map((element) => element.getAttribute('data-drop-slot'))
         .filter((slot) => /^r[1-3]c[1-3]$/.test(slot));
       const navText = root?.querySelector('nav')?.textContent || '';
-      const centerPad = root?.querySelector('main > div.absolute.inset-0');
+      const centerPad = root?.querySelector('div.absolute.inset-0.flex.flex-col.items-center.justify-center.pointer-events-none.z-10');
       return {
         title: document.title,
         appMounted: Boolean(root?.firstElementChild),
@@ -351,6 +352,13 @@ function injectWindowsKeystrokes(vkCodes) {
   }
 }
 
+function startVisualSmokeCapture() {
+  if (!isVisualSmokeTest() || visualSmokeCaptureStarted || !mainWindow) return;
+  visualSmokeCaptureStarted = true;
+  mainWindow.show();
+  void captureVisualSmokeScreenshot();
+}
+
 function createWindow() {
   const bounds = getInitialWindowBounds();
   if (isVisualSmokeTest()) {
@@ -453,12 +461,36 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
+  if (isVisualSmokeTest()) {
+    // A packaged smoke-test window is initially hidden. Start from
+    // did-finish-load so the test cannot hang if ready-to-show is delayed by
+    // headless/virtualized Windows graphics; the capture function guards
+    // against this and ready-to-show racing each other.
+    mainWindow.webContents.once('did-finish-load', startVisualSmokeCapture);
+    mainWindow.webContents.on(
+      'did-fail-load',
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame) return;
+        console.error('Packaged UI failed to load:', {
+          errorCode,
+          errorDescription,
+          validatedURL,
+        });
+        app.exit(1);
+      }
+    );
+    mainWindow.webContents.on('render-process-gone', (_event, details) => {
+      console.error('Packaged UI renderer exited unexpectedly:', details);
+      app.exit(1);
+    });
+  }
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     if (isDev) {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
-    } else if (isVisualSmokeTest()) {
-      void captureVisualSmokeScreenshot();
+    } else {
+      startVisualSmokeCapture();
     }
   });
 

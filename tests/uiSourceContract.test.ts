@@ -178,6 +178,7 @@ describe('Production React source and legacy inline regression checks', () => {
 
   it('checks and captures the responsive UI from an installed Windows package', () => {
     expect(electronMain).toContain("hasSwitch('visual-smoke-test')");
+    expect(electronMain).toContain("once('did-finish-load', startVisualSmokeCapture)");
     expect(electronMain).toContain("capturePage()");
     expect(electronMain).toContain('renderedUi.keyCount !== 9');
     expect(windowsWorkflow).toContain('Install packaged app and capture responsive UI');
