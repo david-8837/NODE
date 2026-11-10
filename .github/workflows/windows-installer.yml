@@ -107,54 +107,89 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $installDir = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke'
-          $app = Get-ChildItem -Path $installDir -Filter '*.exe' -File |
-            Where-Object { $_.Name -notlike 'Uninstall*' } | Select-Object -First 1
-          if (-not $app) { throw "Installed application executable was not found in $installDir" }
-
           $diagnostics = Join-Path $env:RUNNER_TEMP 'installed-app-persistence-smoke.json'
-          $env:NODE_GRID_PERSISTENCE_SMOKE = '1'
-          $env:NODE_GRID_PERSISTENCE_SMOKE_DIAGNOSTICS = $diagnostics
-          foreach ($phase in @('write', 'verify')) {
-            $env:NODE_GRID_PERSISTENCE_PHASE = $phase
-            $smokeProcess = Start-Process -FilePath $app.FullName `
-              -ArgumentList @('--persistence-smoke-test') -PassThru
-            if (-not $smokeProcess.WaitForExit(90000)) {
-              Stop-Process -Id $smokeProcess.Id -Force -ErrorAction SilentlyContinue
-              throw "Installed-app persistence smoke phase '$phase' timed out"
-            }
-            $smokeProcess.Refresh()
-            if ($smokeProcess.ExitCode -ne 0) {
-              throw "Installed-app persistence smoke phase '$phase' exited with code $($smokeProcess.ExitCode)"
-            }
-            Write-Host "Installed-app persistence phase passed: $phase"
-          }
+          $workflowStage = 'locating-installed-app'
+          try {
+            $app = Get-ChildItem -Path $installDir -Filter '*.exe' -File |
+              Where-Object { $_.Name -notlike 'Uninstall*' } | Select-Object -First 1
+            if (-not $app) { throw "Installed application executable was not found in $installDir" }
 
-          $settingsFile = Get-ChildItem -Path $env:APPDATA -Filter 'settings.v1.json' -File -Recurse |
-            Select-Object -First 1
-          if (-not $settingsFile) { throw 'Native Settings file was not created in the isolated app-data directory' }
-          $settings = Get-Content -Path $settingsFile.FullName -Raw | ConvertFrom-Json
-          if ($settings.allowTerminalSmartActions -ne $true) {
-            throw 'Native terminal-action Settings did not persist across the packaged-app restart'
-          }
-          $localStorageDir = Get-ChildItem -Path $env:APPDATA -Directory -Recurse -Filter 'Local Storage' |
-            Select-Object -First 1
-          if (-not $localStorageDir) { throw 'Chromium local profile storage was not created by the installed app' }
+            $env:NODE_GRID_PERSISTENCE_SMOKE = '1'
+            $env:NODE_GRID_PERSISTENCE_SMOKE_DIAGNOSTICS = $diagnostics
+            foreach ($phase in @('write', 'verify')) {
+              $workflowStage = "persistence-phase-$phase"
+              $env:NODE_GRID_PERSISTENCE_PHASE = $phase
+              $smokeProcess = Start-Process -FilePath $app.FullName `
+                -ArgumentList @('--persistence-smoke-test') -PassThru
+              if (-not $smokeProcess.WaitForExit(90000)) {
+                Stop-Process -Id $smokeProcess.Id -Force -ErrorAction SilentlyContinue
+                throw "Installed-app persistence smoke phase '$phase' timed out"
+              }
+              $smokeProcess.Refresh()
+              if ($smokeProcess.ExitCode -ne 0) {
+                throw "Installed-app persistence smoke phase '$phase' exited with code $($smokeProcess.ExitCode)"
+              }
+              Write-Host "Installed-app persistence phase passed: $phase"
+            }
 
-          $uninstaller = Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe' -File | Select-Object -First 1
-          if (-not $uninstaller) { throw "NSIS uninstaller was not found in $installDir" }
-          $uninstallProcess = Start-Process -FilePath $uninstaller.FullName -ArgumentList @('/S') -Wait -PassThru
-          if ($uninstallProcess.ExitCode -ne 0) {
-            throw "Silent uninstaller exited with code $($uninstallProcess.ExitCode)"
+            $workflowStage = 'locating-native-settings'
+            $settingsFile = Get-ChildItem -Path $env:APPDATA -Filter 'settings.v1.json' -File -Recurse |
+              Select-Object -First 1
+            if (-not $settingsFile) { throw 'Native Settings file was not created in the isolated app-data directory' }
+
+            $workflowStage = 'validating-native-settings'
+            $settings = Get-Content -Path $settingsFile.FullName -Raw | ConvertFrom-Json
+            if ($settings.allowTerminalSmartActions -ne $true) {
+              throw 'Native terminal-action Settings did not persist across the packaged-app restart'
+            }
+
+            $workflowStage = 'locating-chromium-storage'
+            $localStorageDir = Get-ChildItem -Path $env:APPDATA -Directory -Recurse -Filter 'Local Storage' |
+              Select-Object -First 1
+            if (-not $localStorageDir) { throw 'Chromium local profile storage was not created by the installed app' }
+
+            $workflowStage = 'locating-uninstaller'
+            $uninstaller = Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe' -File | Select-Object -First 1
+            if (-not $uninstaller) { throw "NSIS uninstaller was not found in $installDir" }
+
+            $workflowStage = 'running-uninstaller'
+            $uninstallProcess = Start-Process -FilePath $uninstaller.FullName -ArgumentList @('/S') -Wait -PassThru
+            if ($uninstallProcess.ExitCode -ne 0) {
+              throw "Silent uninstaller exited with code $($uninstallProcess.ExitCode)"
+            }
+
+            $workflowStage = 'checking-app-removal'
+            if (Test-Path $app.FullName) { throw 'The app executable remains after uninstall' }
+
+            $workflowStage = 'checking-settings-retention'
+            if (-not (Test-Path $settingsFile.FullName)) {
+              throw 'Uninstall unexpectedly deleted native Settings despite deleteAppDataOnUninstall=false'
+            }
+
+            $workflowStage = 'checking-profile-retention'
+            if (-not (Test-Path $localStorageDir.FullName)) {
+              throw 'Uninstall unexpectedly deleted local profile storage despite deleteAppDataOnUninstall=false'
+            }
+
+            $workflowStage = 'copying-smoke-diagnostics'
+            Copy-Item $diagnostics 'dist_electron/installed-app-persistence-smoke.json' -Force
+            $workflowStage = 'complete'
+            Write-Host 'Installed-app native Settings and structured profiles survived restart; uninstall preserved user data.'
+          } catch {
+            $failureMessage = $_.Exception.Message
+            $smokeDetails = $null
+            if (Test-Path $diagnostics) {
+              try { $smokeDetails = Get-Content -Path $diagnostics -Raw | ConvertFrom-Json } catch {}
+            }
+            $failureDetails = [ordered]@{
+              stage = 'persistence-workflow-failed'
+              workflowStage = $workflowStage
+              error = $failureMessage
+              smokeDiagnostics = $smokeDetails
+            }
+            $failureDetails | ConvertTo-Json -Depth 8 | Set-Content -Path $diagnostics -Encoding utf8
+            throw
           }
-          if (Test-Path $app.FullName) { throw 'The app executable remains after uninstall' }
-          if (-not (Test-Path $settingsFile.FullName)) {
-            throw 'Uninstall unexpectedly deleted native Settings despite deleteAppDataOnUninstall=false'
-          }
-          if (-not (Test-Path $localStorageDir.FullName)) {
-            throw 'Uninstall unexpectedly deleted local profile storage despite deleteAppDataOnUninstall=false'
-          }
-          Copy-Item $diagnostics 'dist_electron/installed-app-persistence-smoke.json' -Force
-          Write-Host 'Installed-app native Settings and structured profiles survived restart; uninstall preserved user data.'
 
       - name: Report Windows app smoke failure details
         if: failure()
