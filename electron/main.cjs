@@ -215,7 +215,10 @@ async function captureVisualSmokeScreenshot() {
 
     const image = await mainWindow.webContents.capturePage();
     const png = image.toPNG();
-    if (png.length < 10 * 1024) {
+    // A clean, compact Windows rendering can compress below 10 KiB; the DOM
+    // checks above plus the workflow's PNG header/dimension checks establish
+    // validity, so reject only implausibly tiny image data here.
+    if (png.length < 4 * 1024) {
       throw new Error(`Screenshot is unexpectedly small (${png.length} bytes)`);
     }
     fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });

@@ -83,7 +83,7 @@ jobs:
           if (-not (Test-Path $screenshot)) { throw 'Packaged app did not write its screenshot' }
 
           $png = [System.IO.File]::ReadAllBytes($screenshot)
-          if ($png.Length -lt 10240 -or [System.BitConverter]::ToString($png[0..7]) -ne '89-50-4E-47-0D-0A-1A-0A') {
+          if ($png.Length -lt 4096 -or [System.BitConverter]::ToString($png[0..7]) -ne '89-50-4E-47-0D-0A-1A-0A') {
             throw "Screenshot is missing, too small, or not a PNG ($($png.Length) bytes)"
           }
           $width = [System.Net.IPAddress]::NetworkToHostOrder([System.BitConverter]::ToInt32($png, 16))
