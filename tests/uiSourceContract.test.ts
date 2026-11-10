@@ -199,6 +199,9 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(electronMain).toContain("capturePage()");
     expect(electronMain).toContain('renderedUi.keyCount !== 9');
     expect(electronMain).toContain("hasSwitch('persistence-smoke-test')");
+    expect(electronMain).toContain("app.setPath('appData', process.env.APPDATA)");
+    expect(electronMain).toContain("app.setPath('userData', path.join(process.env.APPDATA, userDataDirectoryName))");
+    expect(electronMain).toContain('settingsFilePath: getAppSettingsPath()');
     expect(electronMain).toContain("setAppSetting('allowTerminalSmartActions', true)");
     expect(electronMain).toContain('structuredExecutionRestored: true');
     expect(windowsWorkflow).toContain('Install packaged app and capture responsive UI');

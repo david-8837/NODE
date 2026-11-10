@@ -18,6 +18,21 @@ let completingQuit = false;
 const isDev = !app.isPackaged;
 const DEFAULT_DEV_SERVER_URL = 'http://localhost:5173/';
 
+function isPersistenceSmokeTest() {
+  return app.isPackaged &&
+    app.commandLine.hasSwitch('persistence-smoke-test') &&
+    process.env.NODE_GRID_PERSISTENCE_SMOKE === '1';
+}
+
+// Electron resolves Windows userData through the OS Known Folder API rather
+// than APPDATA alone. Point only the packaged persistence smoke test at its
+// isolated runner directories before Chromium initializes its profile.
+if (isPersistenceSmokeTest() && process.env.APPDATA && path.isAbsolute(process.env.APPDATA)) {
+  const userDataDirectoryName = path.basename(app.getPath('userData'));
+  app.setPath('appData', process.env.APPDATA);
+  app.setPath('userData', path.join(process.env.APPDATA, userDataDirectoryName));
+}
+
 function getDevServerUrl() {
   try {
     const candidate = new URL(process.env.VITE_DEV_SERVER_URL || DEFAULT_DEV_SERVER_URL);
@@ -272,12 +287,6 @@ function startVisualSmokeCapture() {
   writeVisualSmokeDiagnostics({ stage: 'capture-started', pageUrl: mainWindow.webContents.getURL() });
   mainWindow.show();
   void captureVisualSmokeScreenshot();
-}
-
-function isPersistenceSmokeTest() {
-  return app.isPackaged &&
-    app.commandLine.hasSwitch('persistence-smoke-test') &&
-    process.env.NODE_GRID_PERSISTENCE_SMOKE === '1';
 }
 
 let persistenceSmokeTestStarted = false;
