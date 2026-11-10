@@ -4,10 +4,17 @@ export const MAX_PROFILE_FILE_BYTES = 2 * 1024 * 1024;
 export const PROFILE_FILE_STORAGE_KEY = 'cm2.state.v2';
 
 const PROFILE_LAYER_LIMIT = 8;
-const PROFILE_LIMIT = 100;
+export const MAX_PROFILE_COUNT = 100;
+const PROFILE_LIMIT = MAX_PROFILE_COUNT;
 const CUSTOM_ITEM_LIMIT = 1000;
 const CUSTOM_TABS = ['Action', 'Multi-A', 'Smart-A'] as const;
 const RESERVED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const EXECUTION_TEXT_LIMIT = 32 * 1024;
+const EXECUTION_DELAY_LIMIT_MS = 60_000;
+const EXECUTION_DURATION_LIMIT_MS = 120_000;
+const EXECUTION_SEQUENCE_LIMIT = 256;
+const SMART_ACTION_TYPES = new Set(['Text', 'Cmd', 'Web', 'App']);
+const MULTI_GESTURES = new Set(['onTap', 'doubleTap', 'onHold', 'tapHold']);
 
 type CustomTab = (typeof CUSTOM_TABS)[number];
 type JsonRecord = Record<string, unknown>;
@@ -75,6 +82,144 @@ function copyJson(value: unknown, depth = 0, budget = { nodes: 0 }): unknown {
   return clean;
 }
 
+function boundedExecutionNumber(
+  value: unknown,
+  field: string,
+  maximum: number,
+  context: string,
+): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > maximum) {
+    throw makeError(`${context} ${field} must be an integer between 0 and ${maximum}`);
+  }
+  return value;
+}
+
+function normalizeExecutionDefinition(value: unknown, context: string): JsonRecord {
+  if (!isRecord(value)) throw makeError(`${context} execution must be an object`);
+  const execution = copyJson(value) as JsonRecord;
+  const kind = execution.kind;
+  if (kind === 'shortcut') {
+    if (typeof execution.value !== 'string' || !execution.value.trim() || execution.value.length > 256) {
+      throw makeError(`${context} shortcut execution needs a key binding of 1 to 256 characters`);
+    }
+    return execution;
+  }
+
+  if (kind === 'text') {
+    if (typeof execution.value !== 'string' || !execution.value.length || execution.value.length > EXECUTION_TEXT_LIMIT) {
+      throw makeError(`${context} text execution must contain 1 to ${EXECUTION_TEXT_LIMIT} characters`);
+    }
+    return execution;
+  }
+
+  if (kind === 'smart') {
+    if (typeof execution.actionType !== 'string' || !SMART_ACTION_TYPES.has(execution.actionType)) {
+      throw makeError(`${context} Smart Action type must be Text, Cmd, Web, or App`);
+    }
+    const valueLimit = execution.actionType === 'Text' ? EXECUTION_TEXT_LIMIT :
+      execution.actionType === 'App' ? 2048 : 4096;
+    if (typeof execution.value !== 'string' || !execution.value.trim() || execution.value.length > valueLimit) {
+      throw makeError(`${context} Smart Action value must contain 1 to ${valueLimit} characters`);
+    }
+    if (execution.requiresConsent !== undefined && typeof execution.requiresConsent !== 'boolean') {
+      throw makeError(`${context} Smart Action consent flag must be a boolean`);
+    }
+    return execution;
+  }
+
+  if (kind === 'multi') {
+    if (!isRecord(execution.gestures)) throw makeError(`${context} multiaction gestures must be an object`);
+    const gestures: JsonRecord = {};
+    let hasGesture = false;
+    for (const [gesture, binding] of Object.entries(execution.gestures)) {
+      if (!MULTI_GESTURES.has(gesture)) throw makeError(`${context} has an unsupported multiaction gesture: ${gesture}`);
+      if (typeof binding !== 'string' || binding.length > 256) {
+        throw makeError(`${context} multiaction ${gesture} must be a key binding of at most 256 characters`);
+      }
+      gestures[gesture] = binding;
+      if (binding.trim()) hasGesture = true;
+    }
+    if (!hasGesture) throw makeError(`${context} multiaction needs at least one assigned gesture`);
+    execution.gestures = gestures;
+    if (execution.tappingTermMs !== undefined) {
+      execution.tappingTermMs = boundedExecutionNumber(
+        execution.tappingTermMs,
+        'tappingTermMs',
+        EXECUTION_DELAY_LIMIT_MS,
+        context,
+      );
+    }
+    return execution;
+  }
+
+  if (kind === 'sequence') {
+    if (!Array.isArray(execution.steps) || execution.steps.length < 1 || execution.steps.length > EXECUTION_SEQUENCE_LIMIT) {
+      throw makeError(`${context} sequence must contain between 1 and ${EXECUTION_SEQUENCE_LIMIT} steps`);
+    }
+    let estimatedDurationMs = 0;
+    let totalTextLength = 0;
+    const steps = execution.steps.map((rawStep, index) => {
+      const stepContext = `${context} sequence step ${index + 1}`;
+      if (!isRecord(rawStep)) throw makeError(`${stepContext} must be an object`);
+      const step = copyJson(rawStep) as JsonRecord;
+      if (step.kind === 'key') {
+        const key = step.key ?? step.keyLabel ?? step.value ?? step.binding;
+        if (typeof key !== 'string' || !key.trim() || key.length > 256) {
+          throw makeError(`${stepContext} key must be 1 to 256 characters`);
+        }
+        step.key = key;
+        if (step.mode !== undefined) {
+          if (typeof step.mode !== 'string' || !['press-release', 'press', 'release', 'down', 'key-down', 'up', 'key-up', 'tap'].includes(step.mode.toLowerCase())) {
+            throw makeError(`${stepContext} has an invalid key mode`);
+          }
+          step.mode = step.mode.toLowerCase();
+        }
+        if (step.delayAfterMs !== undefined) {
+          step.delayAfterMs = boundedExecutionNumber(step.delayAfterMs, 'delayAfterMs', EXECUTION_DELAY_LIMIT_MS, stepContext);
+          estimatedDurationMs += step.delayAfterMs as number;
+        }
+        return step;
+      }
+      if (step.kind === 'text') {
+        const text = step.text ?? step.value;
+        if (typeof text !== 'string' || text.length > EXECUTION_TEXT_LIMIT) {
+          throw makeError(`${stepContext} text must be at most ${EXECUTION_TEXT_LIMIT} characters`);
+        }
+        step.text = text;
+        totalTextLength += text.length;
+        if (totalTextLength > EXECUTION_TEXT_LIMIT) {
+          throw makeError(`${context} sequence cannot contain more than ${EXECUTION_TEXT_LIMIT} total text characters`);
+        }
+        for (const field of ['interKeyDelayMs', 'delayAfterMs']) {
+          if (step[field] !== undefined) {
+            step[field] = boundedExecutionNumber(step[field], field, EXECUTION_DELAY_LIMIT_MS, stepContext);
+          }
+        }
+        estimatedDurationMs += Array.from(text).length * Number(step.interKeyDelayMs || 0);
+        estimatedDurationMs += Number(step.delayAfterMs || 0);
+        return step;
+      }
+      if (step.kind === 'wait') {
+        const duration = step.durationMs ?? step.value;
+        step.durationMs = boundedExecutionNumber(duration, 'durationMs', EXECUTION_DELAY_LIMIT_MS, stepContext);
+        estimatedDurationMs += step.durationMs as number;
+        return step;
+      }
+      throw makeError(`${stepContext} kind must be key, text, or wait`);
+    });
+    if (steps.every((step) => step.kind === 'text' && !String(step.text || '').length)) {
+      throw makeError(`${context} sequence must contain an executable step`);
+    }
+    if (estimatedDurationMs > EXECUTION_DURATION_LIMIT_MS) {
+      throw makeError(`${context} sequence cannot exceed ${EXECUTION_DURATION_LIMIT_MS} milliseconds`);
+    }
+    execution.steps = steps;
+    return execution;
+  }
+
+  throw makeError(`${context} execution has an unsupported kind`);
+}
+
 function normalizeProfile(input: unknown): JsonRecord {
   if (!isRecord(input)) throw makeError('Profile must be a JSON object');
   if (typeof input.name !== 'string' || !input.name.trim()) {
@@ -97,6 +242,12 @@ function normalizeProfile(input: unknown): JsonRecord {
           throw makeError(`Profile layer ${index + 1} has an invalid ${slot} ${field}`);
         }
       }
+      if (assignment.execution !== undefined) {
+        assignment.execution = normalizeExecutionDefinition(
+          assignment.execution,
+          `Profile layer ${index + 1} ${slot}`,
+        );
+      }
       if (assignment.encoderActions !== undefined) {
         if (!isRecord(assignment.encoderActions)) {
           throw makeError(`Profile layer ${index + 1} has invalid ${slot} encoder actions`);
@@ -111,6 +262,12 @@ function normalizeProfile(input: unknown): JsonRecord {
             if (encoderAction[field] !== undefined && typeof encoderAction[field] !== 'string') {
               throw makeError(`Profile layer ${index + 1} has an invalid ${slot} encoder ${direction} ${field}`);
             }
+          }
+          if (encoderAction.execution !== undefined) {
+            encoderAction.execution = normalizeExecutionDefinition(
+              encoderAction.execution,
+              `Profile layer ${index + 1} ${slot} encoder ${direction}`,
+            );
           }
         }
       }
@@ -161,6 +318,12 @@ function normalizeCustomItems(value: unknown): Record<CustomTab, JsonRecord[]> {
           throw makeError(`Custom ${tab} item ${index + 1} has an invalid ${field}`);
         }
       }
+      if (safeItem.execution !== undefined) {
+        safeItem.execution = normalizeExecutionDefinition(
+          safeItem.execution,
+          `Custom ${tab} item ${index + 1}`,
+        );
+      }
       return safeItem;
     });
   }
@@ -172,6 +335,50 @@ function normalizeImportedProfiles(value: unknown): JsonRecord[] {
     throw makeError(`Import must contain between 1 and ${PROFILE_LIMIT} profiles`);
   }
   return value.map(normalizeProfile);
+}
+
+function requireConsentForImportedCommands(parsed: ParsedProfileFile): void {
+  const markEntry = (entry: JsonRecord, isSmartAction = false) => {
+    const execution = isRecord(entry.execution) ? entry.execution : null;
+    if (execution?.kind === 'smart' && execution.actionType === 'Cmd') {
+      entry.execution = { ...execution, requiresConsent: true };
+      return;
+    }
+    if (execution || !isSmartAction) return;
+
+    const summary = [entry.binding, entry.listLabel]
+      .find((candidate) => typeof candidate === 'string' && /\(\s*Cmd:\s*.+\)$/i.test(candidate as string));
+    if (typeof summary !== 'string') return;
+    const command = summary.match(/\(\s*Cmd:\s*([\s\S]+)\)$/i)?.[1]?.trim();
+    if (!command) return;
+    entry.execution = {
+      kind: 'smart',
+      actionType: 'Cmd',
+      value: command,
+      requiresConsent: true,
+    };
+  };
+
+  for (const profile of parsed.profiles) {
+    if (!Array.isArray(profile.layers)) continue;
+    for (const layer of profile.layers) {
+      if (!isRecord(layer)) continue;
+      for (const candidate of Object.values(layer)) {
+        if (!isRecord(candidate)) continue;
+        markEntry(candidate, candidate.actionType === 'Smart Action');
+        if (!isRecord(candidate.encoderActions)) continue;
+        for (const subAction of Object.values(candidate.encoderActions)) {
+          if (isRecord(subAction)) markEntry(subAction, true);
+        }
+      }
+    }
+  }
+
+  for (const tab of CUSTOM_TABS) {
+    for (const item of parsed.customItems[tab]) {
+      markEntry(item, tab === 'Smart-A');
+    }
+  }
 }
 
 function normalizeActiveIndex(index: unknown, profileCount: number): number {
@@ -421,7 +628,9 @@ export function createProfileFileTools(host?: Window & typeof globalThis): Profi
             if (file.size > MAX_PROFILE_FILE_BYTES) {
               throw makeError(`Profile files must be no larger than ${MAX_PROFILE_FILE_BYTES / 1024 / 1024} MB`);
             }
-            finish(parseProfileFile(await readFileText(browser, file)));
+            const parsed = parseProfileFile(await readFileText(browser, file));
+            requireConsentForImportedCommands(parsed);
+            finish(parsed);
           } catch (error) {
             finish(null, error);
           }

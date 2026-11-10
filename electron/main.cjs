@@ -1,14 +1,17 @@
 // electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
 const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = require('electron');
-const { spawn, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath, pathToFileURL } = require('url');
 const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
+const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 
+const desktopActionExecutor = createDesktopActionExecutor({
+  openExternal: (url) => shell.openExternal(url),
+});
 let mainWindow = null;
-let psWorker = null;
 let visualSmokeCaptureStarted = false;
+let completingQuit = false;
 
 // Unpackaged Electron is development. Never let a user-level NODE_ENV value make
 // an installed app load a local development server instead of its bundled UI.
@@ -239,152 +242,151 @@ async function captureVisualSmokeScreenshot() {
   }
 }
 
-// Safe Virtual Keycode Map for Native Keystroke Injection
-const VK_MAP = {
-  win: 0x5b,
-  lwin: 0x5b,
-  rwin: 0x5c,
-  gui: 0x5b,
-  cmd: 0x5b,
-  meta: 0x5b,
-  ctrl: 0x11,
-  control: 0x11,
-  lctrl: 0x11,
-  rctrl: 0x11,
-  alt: 0x12,
-  lalt: 0x12,
-  ralt: 0x12,
-  opt: 0x12,
-  option: 0x12,
-  shift: 0x10,
-  lshift: 0x10,
-  rshift: 0x10,
-  enter: 0x0d,
-  return: 0x0d,
-  esc: 0x1b,
-  escape: 0x1b,
-  tab: 0x09,
-  space: 0x20,
-  backspace: 0x08,
-  delete: 0x2e,
-  del: 0x2e,
-  insert: 0x2d,
-  ins: 0x2d,
-  home: 0x24,
-  end: 0x23,
-  pageup: 0x21,
-  pagedown: 0x22,
-  up: 0x26,
-  down: 0x28,
-  left: 0x25,
-  right: 0x27,
-  f1: 0x70,
-  f2: 0x71,
-  f3: 0x72,
-  f4: 0x73,
-  f5: 0x74,
-  f6: 0x75,
-  f7: 0x76,
-  f8: 0x77,
-  f9: 0x78,
-  f10: 0x79,
-  f11: 0x7a,
-  f12: 0x7b,
-  prtscr: 0x2c,
-  printscreen: 0x2c,
-  volup: 0xaf,
-  'volume+': 0xaf,
-  volume: 0xaf,
-  voldown: 0xae,
-  'volume-': 0xae,
-  mute: 0xad,
-  play: 0xb3,
-  'play/pause': 0xb3,
-  next: 0xb0,
-  prev: 0xb1,
-};
-
-function parseShortcutToVK(rawStr) {
-  const clean = (rawStr || '').toLowerCase().replace(/[\(\)]/g, ' ').trim();
-  if (
-    clean.includes('volume +') ||
-    clean.includes('vol+') ||
-    clean.includes('volume up')
-  )
-    return [0xaf];
-  if (
-    clean.includes('volume -') ||
-    clean.includes('vol-') ||
-    clean.includes('volume down')
-  )
-    return [0xae];
-  if (clean.includes('mute')) return [0xad];
-  if (clean.includes('play') || clean.includes('pause')) return [0xb3];
-  if (clean.includes('next')) return [0xb0];
-  if (clean.includes('prev')) return [0xb1];
-
-  const parts = clean
-    .split(/[+\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const codes = [];
-  for (const part of parts) {
-    if (VK_MAP[part]) {
-      codes.push(VK_MAP[part]);
-    } else if (part.length === 1) {
-      codes.push(part.toUpperCase().charCodeAt(0));
-    }
-  }
-  return codes;
-}
-
-function initFastWindowsInjector() {
-  if (process.platform !== 'win32') return;
-  try {
-    psWorker = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', '-'],
-      { stdio: ['pipe', 'ignore', 'ignore'] }
-    );
-
-    const initScript = `
-$w = Add-Type -MemberDefinition '[DllImport("user32.dll")]public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);' -Name FastWin32Keybd -PassThru
-function Press-Keys([byte[]]$codes) {
-  foreach ($c in $codes) { [FastWin32Keybd]::keybd_event($c, 0, 0, 0) }
-  [System.Threading.Thread]::Sleep(15)
-  for ($i = $codes.Length - 1; $i -ge 0; $i--) { [FastWin32Keybd]::keybd_event($codes[$i], 0, 2, 0) }
-}
-`;
-    psWorker.stdin.write(initScript + '\n');
-    psWorker.on('error', () => {
-      psWorker = null;
-    });
-    psWorker.on('exit', () => {
-      psWorker = null;
-    });
-  } catch (e) {
-    psWorker = null;
-  }
-}
-
-function injectWindowsKeystrokes(vkCodes) {
-  if (!vkCodes || vkCodes.length === 0) return;
-  if (psWorker && psWorker.stdin && !psWorker.stdin.destroyed) {
-    psWorker.stdin.write(`Press-Keys @(${vkCodes.join(',')})\n`);
-  } else {
-    initFastWindowsInjector();
-    if (psWorker && psWorker.stdin) {
-      psWorker.stdin.write(`Press-Keys @(${vkCodes.join(',')})\n`);
-    }
-  }
-}
-
 function startVisualSmokeCapture() {
   if (!isVisualSmokeTest() || visualSmokeCaptureStarted || !mainWindow) return;
   visualSmokeCaptureStarted = true;
   writeVisualSmokeDiagnostics({ stage: 'capture-started', pageUrl: mainWindow.webContents.getURL() });
   mainWindow.show();
   void captureVisualSmokeScreenshot();
+}
+
+function isPersistenceSmokeTest() {
+  return app.isPackaged &&
+    app.commandLine.hasSwitch('persistence-smoke-test') &&
+    process.env.NODE_GRID_PERSISTENCE_SMOKE === '1';
+}
+
+let persistenceSmokeTestStarted = false;
+
+function writePersistenceSmokeDiagnostics(details) {
+  const diagnosticsPath = process.env.NODE_GRID_PERSISTENCE_SMOKE_DIAGNOSTICS;
+  if (!diagnosticsPath) return;
+  try {
+    fs.mkdirSync(path.dirname(diagnosticsPath), { recursive: true });
+    fs.writeFileSync(
+      diagnosticsPath,
+      JSON.stringify({ ...details, timestamp: new Date().toISOString() }, null, 2)
+    );
+  } catch (error) {
+    console.error('Could not write installed-app persistence diagnostics:', error);
+  }
+}
+
+async function runPersistenceSmokeTest() {
+  const phase = process.env.NODE_GRID_PERSISTENCE_PHASE;
+  const profileName = 'Installed persistence smoke profile';
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) throw new Error('Persistence smoke window is unavailable');
+    if (phase === 'write') {
+      const ready = await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+        const deadline = Date.now() + 25000;
+        const check = () => {
+          if (document.querySelector('#root')?.firstElementChild) return resolve(true);
+          if (Date.now() >= deadline) return reject(new Error('Renderer did not mount before the persistence write'));
+          setTimeout(check, 100);
+        };
+        check();
+      })`);
+      if (!ready) throw new Error('Renderer was not ready to persist test data');
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const state = {
+        v: 1,
+        profiles: [{
+          id: 'installed-persistence-smoke-profile',
+          name: profileName,
+          color: '#0051ff',
+          layers: [{
+            r1c1: {
+              label: 'Smoke shortcut',
+              binding: 'Smoke shortcut (Ctrl + Shift + S)',
+              actionType: 'Shortcut',
+              execution: { kind: 'shortcut', value: 'Ctrl + Shift + S' },
+            },
+          }],
+        }],
+        activeProfileIndex: 0,
+        customItems: {
+          Action: [{
+            id: 'installed-persistence-smoke-action',
+            main: 'Smoke sequence',
+            listLabel: 'Smoke sequence (Ctrl + S)',
+            macropadLabel: 'Smoke',
+            execution: {
+              kind: 'sequence',
+              steps: [{ kind: 'key', key: 'Ctrl + S', mode: 'press-release' }],
+            },
+          }],
+          'Multi-A': [],
+          'Smart-A': [],
+        },
+      };
+      const serializedState = JSON.stringify(state);
+      const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+        const setting = await window.electronAPI?.setAppSetting('allowTerminalSmartActions', true);
+        if (!setting?.ok || setting.settings?.allowTerminalSmartActions !== true) {
+          throw new Error(setting?.error || 'Native Settings did not save the terminal-action preference');
+        }
+        window.localStorage.setItem('cm2.state.v2', ${JSON.stringify(serializedState)});
+        const savedState = JSON.parse(window.localStorage.getItem('cm2.state.v2') || 'null');
+        if (savedState?.profiles?.[0]?.name !== ${JSON.stringify(profileName)}) {
+          throw new Error('The profile state was not written to the installed app storage');
+        }
+        return { settingSaved: true, profileSaved: true };
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      writePersistenceSmokeDiagnostics({ stage: 'write-complete', ...result });
+    } else if (phase === 'verify') {
+      const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+        const expectedName = ${JSON.stringify(profileName)};
+        const deadline = Date.now() + 30000;
+        while (Date.now() < deadline) {
+          const profileVisible = Array.from(document.querySelectorAll('[title]')).some((element) =>
+            element.getAttribute('title') === expectedName && element.textContent?.trim() === expectedName
+          );
+          if (profileVisible) {
+            const native = await window.electronAPI?.getAppSettings();
+            const rawState = window.localStorage.getItem('cm2.state.v2');
+            const state = rawState ? JSON.parse(rawState) : null;
+            const shortcut = state?.profiles?.[0]?.layers?.[0]?.r1c1?.execution;
+            const custom = state?.customItems?.Action?.[0]?.execution;
+            if (native?.ok && native.settings?.allowTerminalSmartActions === true &&
+                shortcut?.kind === 'shortcut' && shortcut?.value === 'Ctrl + Shift + S' &&
+                custom?.kind === 'sequence' && custom?.steps?.[0]?.key === 'Ctrl + S') {
+              return {
+                settingRestored: true,
+                profileLoaded: true,
+                structuredExecutionRestored: true,
+                profileName: expectedName,
+              };
+            }
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        throw new Error('Native Settings or structured profile data did not survive the app restart');
+      })()`);
+      writePersistenceSmokeDiagnostics({ stage: 'verify-complete', ...result });
+    } else {
+      throw new Error('NODE_GRID_PERSISTENCE_PHASE must be write or verify');
+    }
+    console.log(`Installed-app persistence smoke test passed (${phase})`);
+    app.quit();
+  } catch (error) {
+    const details = {
+      stage: 'persistence-smoke-failed',
+      phase,
+      error: error instanceof Error ? error.message : String(error),
+      pageUrl: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getURL() : null,
+    };
+    writePersistenceSmokeDiagnostics(details);
+    console.error('Installed-app persistence smoke test failed:', JSON.stringify(details));
+    app.exit(1);
+  }
+}
+
+function startPersistenceSmokeTest() {
+  if (!isPersistenceSmokeTest() || persistenceSmokeTestStarted || !mainWindow) return;
+  persistenceSmokeTestStarted = true;
+  void runPersistenceSmokeTest();
 }
 
 function createWindow() {
@@ -481,6 +483,20 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', handleUntrustedNavigation);
   mainWindow.webContents.on('will-redirect', handleUntrustedNavigation);
 
+  if (isPersistenceSmokeTest()) {
+    mainWindow.webContents.once('did-finish-load', startPersistenceSmokeTest);
+    mainWindow.webContents.on(
+      'did-fail-load',
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        if (!isMainFrame) return;
+        const details = { stage: 'persistence-load-failed', errorCode, errorDescription, validatedURL };
+        writePersistenceSmokeDiagnostics(details);
+        console.error('Installed-app persistence smoke could not load:', JSON.stringify(details));
+        app.exit(1);
+      }
+    );
+  }
+
   // Packaged builds load the Vite output using file://; its relative asset base
   // keeps the inline configurator and static public assets working inside asar.
   if (isDev) {
@@ -519,7 +535,7 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    if (!isPersistenceSmokeTest()) mainWindow.show();
     if (isDev) {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
@@ -539,6 +555,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    void desktopActionExecutor.setSimulationEnabled(false);
   });
 }
 
@@ -677,107 +694,42 @@ ipcMain.handle('flash-uf2', async (event) => {
   }
 });
 
-// Sanitized & Safe Smart Action Execution (Open URL, Launch App, Safe Commands, Inject Keystrokes)
-ipcMain.handle('execute-smart-action', async (event, payload) => {
+ipcMain.handle('set-simulation-enabled', async (event, enabled) => {
   if (!isTrustedRenderer(event)) {
-    return { success: false, error: 'Untrusted renderer' };
+    return { ok: false, enabled: false, error: 'Untrusted renderer' };
   }
-  if (!payload || typeof payload !== 'object') {
-    return { success: false, error: 'Invalid payload' };
-  }
-  const { type, value } = payload;
-  if (!value || typeof value !== 'string') {
-    return { success: false, error: 'Invalid action value' };
+  if (typeof enabled !== 'boolean') {
+    return { ok: false, enabled: false, error: 'Simulation state must be a boolean' };
   }
 
   try {
-    if (type === 'Web') {
-      let urlStr = value.trim();
-      if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
-        urlStr = 'https://' + urlStr;
-      }
-      const parsedUrl = new URL(urlStr);
-      if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
-        await shell.openExternal(parsedUrl.href);
-        return { success: true, message: `Opened URL: ${parsedUrl.href}` };
-      }
-      return { success: false, error: 'Unsupported URL protocol' };
-    } else if (type === 'App') {
-      const appTarget = value.trim();
-      // Safe execution using shell.openPath or direct sanitized execFile
-      if (path.isAbsolute(appTarget)) {
-        await shell.openPath(appTarget);
-        return { success: true, message: `Opened Path: ${appTarget}` };
-      }
-      // Common Windows app aliases allowlist
-      const SAFE_WIN_APPS = {
-        calc: 'calc.exe',
-        calculator: 'calc.exe',
-        notepad: 'notepad.exe',
-        explorer: 'explorer.exe',
-        cmd: 'cmd.exe',
-        powershell: 'powershell.exe',
-        taskmgr: 'taskmgr.exe',
-        spotify: 'spotify.exe',
-        code: 'code.cmd',
-      };
-      const cleanKey = appTarget.toLowerCase().replace(/\.exe$/i, '');
-      const binaryName = SAFE_WIN_APPS[cleanKey] || appTarget;
-
-      if (process.platform === 'win32') {
-        execFile('cmd.exe', ['/c', 'start', '', binaryName], { windowsHide: true }, (err) => {
-          if (err) console.error('App launch error:', err);
-        });
-      } else {
-        execFile('open', ['-a', appTarget], (err) => {
-          if (err) console.error('App launch fallback error:', err);
-        });
-      }
-      return { success: true, message: `Launched App: ${appTarget}` };
-    } else if (type === 'Cmd') {
-      if (!readStoredAppSettings().allowTerminalSmartActions) {
-        return {
-          success: false,
-          error: 'Terminal commands are disabled in Settings. Enable them only for commands you trust.',
-        };
-      }
-      // Command sanitization & execution protection
-      const rawCmd = value.trim();
-      // Block dangerous chaining operators when untrusted
-      const containsDangerousPipes = /[;&|`$><]/.test(rawCmd);
-      if (containsDangerousPipes) {
-        return {
-          success: false,
-          error: 'Security Warning: Command contains restricted shell characters.',
-        };
-      }
-      // Execute command safely as an isolated argument
-      const parts = rawCmd.split(/\s+/).filter(Boolean);
-      if (parts.length > 0) {
-        const bin = parts[0];
-        const args = parts.slice(1);
-        execFile(bin, args, { windowsHide: true, timeout: 5000 }, (err) => {
-          if (err) console.error('Cmd execution error:', err);
-        });
-        return { success: true, message: `Executed Command: ${rawCmd}` };
-      }
-    } else if (type === 'Shortcut' || type === 'Key' || !type) {
-      if (process.platform === 'win32') {
-        const vkCodes = parseShortcutToVK(value);
-        if (vkCodes.length > 0) {
-          injectWindowsKeystrokes(vkCodes);
-          return { success: true, message: `Injected Keystroke: ${value}` };
-        }
-      }
-      return { success: true, message: `Shortcut: ${value}` };
-    } else if (type === 'Text') {
-      return { success: true, message: `Text: ${value}` };
-    }
-  } catch (err) {
-    console.error('Smart Action Error:', err);
-    return { success: false, error: err.message };
+    const result = await desktopActionExecutor.setSimulationEnabled(enabled);
+    return { ok: result.success, enabled: result.enabled, error: result.error };
+  } catch (error) {
+    return {
+      ok: false,
+      enabled: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
-  return { success: false };
+});
+
+ipcMain.handle('execute-smart-action', async (event, payload) => {
+  if (!isTrustedRenderer(event)) return { success: false, error: 'Untrusted renderer' };
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { success: false, error: 'Invalid action payload' };
+  }
+
+  try {
+    return await desktopActionExecutor.execute(payload, {
+      // Settings are read in the main process; the renderer cannot grant itself
+      // terminal-command permission by setting a request field.
+      allowTerminal: readStoredAppSettings().allowTerminalSmartActions === true,
+      commandConsent: payload.commandConsent === true,
+    });
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
 });
 
 // App Lifecycle
@@ -786,9 +738,6 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.node.gridmacro1');
   }
   writeVisualSmokeDiagnostics({ stage: 'app-ready', packaged: app.isPackaged });
-  if (!isVisualSmokeTest()) {
-    initFastWindowsInjector();
-  }
   createWindow();
 
   const template = [
@@ -857,13 +806,14 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', (event) => {
+  if (completingQuit) return;
+  event.preventDefault();
+  completingQuit = true;
+  void desktopActionExecutor.close().finally(() => app.quit());
+});
+
 app.on('window-all-closed', () => {
-  if (psWorker) {
-    try {
-      psWorker.kill();
-    } catch {}
-    psWorker = null;
-  }
   if (process.platform !== 'darwin') {
     app.quit();
   }

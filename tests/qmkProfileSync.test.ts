@@ -55,6 +55,55 @@ describe('QMK profile-to-VIA configuration', () => {
     expect(windows.warnings).toContain('Layer 1 R1C3: "Unmapped operation" has no key press the device can send yet');
   });
 
+  it('uses structured key actions and warns instead of flattening unsupported sequences and Smart Actions', () => {
+    const profile = oneLayer({
+      r1c1: {
+        label: 'A',
+        binding: 'stale display value',
+        actionType: 'Shortcut',
+        execution: { kind: 'shortcut', value: 'Ctrl + A' },
+      },
+      r1c2: {
+        label: 'Macro',
+        binding: 'Macro (Ctrl + A + Ctrl + B)',
+        actionType: 'Multi-step action',
+        execution: {
+          kind: 'sequence',
+          steps: [
+            { kind: 'key', key: 'Ctrl + A' },
+            { kind: 'key', key: 'Ctrl + B' },
+          ],
+        },
+      },
+      r1c3: {
+        label: 'Open app',
+        binding: 'Open app (App: Calculator)',
+        actionType: 'Smart Action',
+        execution: { kind: 'smart', actionType: 'App', value: 'Calculator' },
+      },
+      r2c1: {
+        label: 'Tap macro',
+        binding: 'Tap macro (onTap: Ctrl + C, doubleTap: Ctrl + V)',
+        actionType: 'Multi-step action',
+        execution: {
+          kind: 'multi',
+          gestures: { onTap: 'Ctrl + C', doubleTap: 'Ctrl + V' },
+        },
+      },
+    });
+
+    const { config, warnings } = buildViaConfiguration(profile, 'win');
+    expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'keys', k: ['CONTROL', 'A'] });
+    expect(config.layers[0]?.keys).not.toHaveProperty('r1c2');
+    expect(config.layers[0]?.keys).not.toHaveProperty('r1c3');
+    expect(config.layers[0]?.keys?.r2c1).toEqual({ t: 'keys', k: ['CONTROL', 'C'] });
+    expect(warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('Multi-step sequences cannot be represented'),
+      expect.stringContaining('Smart Actions run on the desktop'),
+      expect.stringContaining('doubleTap'),
+    ]));
+  });
+
   it('limits VIA writes to eight profile layers and maps layer shortcuts safely', () => {
     const profile = {
       layers: Array.from({ length: 10 }, (_, index) => ({

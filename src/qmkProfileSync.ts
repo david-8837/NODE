@@ -6,6 +6,7 @@ interface BindingEntry {
   binding?: string;
   label?: string;
   actionType?: string;
+  execution?: unknown;
 }
 
 interface EncoderBindingEntry extends BindingEntry {
@@ -238,6 +239,64 @@ function parseBinding(
   };
 }
 
+function parseStructuredExecution(
+  execution: unknown,
+  os: PresetOperatingSystem,
+): ParsedBinding | undefined {
+  if (!isRecord(execution) || typeof execution.kind !== 'string') {
+    return { action: null, warning: 'Structured execution data is invalid and cannot be sent to the device' };
+  }
+
+  if (execution.kind === 'shortcut') {
+    const value = typeof execution.value === 'string' ? execution.value : '';
+    return parseBinding(value, '', 'Shortcut', os);
+  }
+
+  if (execution.kind === 'sequence') {
+    if (
+      Array.isArray(execution.steps) &&
+      execution.steps.length === 1 &&
+      isRecord(execution.steps[0]) &&
+      execution.steps[0].kind === 'key' &&
+      (execution.steps[0].mode === undefined || execution.steps[0].mode === 'press-release') &&
+      (execution.steps[0].delayAfterMs === undefined || execution.steps[0].delayAfterMs === 0)
+    ) {
+      const step = execution.steps[0];
+      const value = typeof step.key === 'string' ? step.key : '';
+      return parseBinding(value, '', 'Shortcut', os);
+    }
+    return {
+      action: null,
+      warning: 'Multi-step sequences cannot be represented by stock VIA keycodes',
+    };
+  }
+
+  if (execution.kind === 'multi') {
+    const gestures = isRecord(execution.gestures) ? execution.gestures : {};
+    const onTap = typeof gestures.onTap === 'string' ? gestures.onTap : '';
+    const parsed = onTap
+      ? parseBinding(onTap, '', 'Shortcut', os)
+      : { action: null, warning: 'This multiaction has no onTap keycode for the device' };
+    const additionalGestures = ['doubleTap', 'onHold', 'tapHold']
+      .filter((gesture) => typeof gestures[gesture] === 'string' && (gestures[gesture] as string).trim());
+    if (additionalGestures.length) {
+      const suffix = `Stock VIA can send onTap only; ${additionalGestures.join(', ')} ${additionalGestures.length === 1 ? 'gesture is' : 'gestures are'} not available on the device`;
+      parsed.warning = parsed.warning ? `${parsed.warning}; ${suffix}` : suffix;
+    }
+    return parsed;
+  }
+
+  if (execution.kind === 'text') {
+    return { action: null, warning: 'Text actions cannot be represented by a stock VIA keycode' };
+  }
+
+  if (execution.kind === 'smart') {
+    return { action: null, warning: 'Smart Actions run on the desktop and are not executable by device firmware' };
+  }
+
+  return { action: null, warning: `Unsupported structured execution kind "${execution.kind}"` };
+}
+
 function readEntry(layer: unknown, slot: string): BindingEntry | undefined {
   if (!isRecord(layer)) return undefined;
   const value = layer[slot];
@@ -259,9 +318,11 @@ function applyBinding(
   location: string,
   warnings: string[]
 ): ViaAction | undefined {
-  const parsed = parseBinding(entry.binding ?? '', entry.label ?? '', entry.actionType ?? '', os);
-  if (parsed.action) return parsed.action;
+  const parsed = entry.execution === undefined
+    ? parseBinding(entry.binding ?? '', entry.label ?? '', entry.actionType ?? '', os)
+    : parseStructuredExecution(entry.execution, os)!;
   if (parsed.warning) warnings.push(`Layer ${layerNumber} ${location}: ${parsed.warning}`);
+  if (parsed.action) return parsed.action;
   return parsed.warning ? undefined : { t: 'none' };
 }
 

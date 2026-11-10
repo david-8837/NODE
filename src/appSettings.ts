@@ -55,6 +55,18 @@ export interface AppOperationResult {
   error?: string;
 }
 
+export interface NativeActionResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+export interface SimulationToggleResult {
+  ok: boolean;
+  enabled: boolean;
+  error?: string;
+}
+
 export interface FirmwareCheckResult {
   state: 'available' | 'none' | 'error';
   message: string;
@@ -71,7 +83,8 @@ export interface ElectronApi {
   setAppSetting?: (key: AppSettingKey, value: boolean) => Promise<NativeSettingsResult>;
   openExternal?: (url: string) => Promise<AppOperationResult>;
   flashFirmware?: () => Promise<AppOperationResult>;
-  executeSmartAction?: (payload: Record<string, unknown>) => Promise<AppOperationResult>;
+  setSimulationEnabled?: (enabled: boolean) => Promise<SimulationToggleResult>;
+  executeSmartAction?: (payload: Record<string, unknown>) => Promise<NativeActionResult>;
   minimize?: () => Promise<void>;
   maximize?: () => Promise<void>;
   close?: () => Promise<void>;

@@ -10,6 +10,8 @@ on:
     paths:
       - '.github/workflows/windows-installer.yml'
       - 'electron/**'
+      - 'src/**'
+      - 'native-executor.ts'
       - 'index.html'
       - 'package.json'
       - 'package-lock.json'
@@ -56,6 +58,13 @@ jobs:
           if (-not $installer) { throw 'electron-builder did not produce a Windows installer' }
 
           $installDir = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke'
+          $appDataRoot = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke-appdata'
+          $localAppDataRoot = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke-localappdata'
+          New-Item -ItemType Directory -Force -Path $appDataRoot, $localAppDataRoot | Out-Null
+          $env:APPDATA = $appDataRoot
+          $env:LOCALAPPDATA = $localAppDataRoot
+          "APPDATA=$appDataRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LOCALAPPDATA=$localAppDataRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $installArgs = @('/S', "/D=$installDir")
           $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList $installArgs -Wait -PassThru
           if ($installProcess.ExitCode -ne 0) { throw "Silent installer exited with code $($installProcess.ExitCode)" }
@@ -93,16 +102,70 @@ jobs:
           Write-Host "Packaged Windows UI screenshot validated: ${width}x${height}, $($png.Length) bytes"
           Copy-Item $screenshot 'dist_electron/packaged-ui-visual-smoke.png' -Force
 
-      - name: Report Windows UI smoke failure details
+      - name: Verify installed-app Settings/profile persistence and uninstall behavior
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installDir = Join-Path $env:RUNNER_TEMP 'node-grid-macro-1-smoke'
+          $app = Get-ChildItem -Path $installDir -Filter '*.exe' -File |
+            Where-Object { $_.Name -notlike 'Uninstall*' } | Select-Object -First 1
+          if (-not $app) { throw "Installed application executable was not found in $installDir" }
+
+          $diagnostics = Join-Path $env:RUNNER_TEMP 'installed-app-persistence-smoke.json'
+          $env:NODE_GRID_PERSISTENCE_SMOKE = '1'
+          $env:NODE_GRID_PERSISTENCE_SMOKE_DIAGNOSTICS = $diagnostics
+          foreach ($phase in @('write', 'verify')) {
+            $env:NODE_GRID_PERSISTENCE_PHASE = $phase
+            $smokeProcess = Start-Process -FilePath $app.FullName `
+              -ArgumentList @('--persistence-smoke-test') -PassThru
+            if (-not $smokeProcess.WaitForExit(90000)) {
+              Stop-Process -Id $smokeProcess.Id -Force -ErrorAction SilentlyContinue
+              throw "Installed-app persistence smoke phase '$phase' timed out"
+            }
+            $smokeProcess.Refresh()
+            if ($smokeProcess.ExitCode -ne 0) {
+              throw "Installed-app persistence smoke phase '$phase' exited with code $($smokeProcess.ExitCode)"
+            }
+            Write-Host "Installed-app persistence phase passed: $phase"
+          }
+
+          $settingsFile = Get-ChildItem -Path $env:APPDATA -Filter 'settings.v1.json' -File -Recurse |
+            Select-Object -First 1
+          if (-not $settingsFile) { throw 'Native Settings file was not created in the isolated app-data directory' }
+          $settings = Get-Content -Path $settingsFile.FullName -Raw | ConvertFrom-Json
+          if ($settings.allowTerminalSmartActions -ne $true) {
+            throw 'Native terminal-action Settings did not persist across the packaged-app restart'
+          }
+          $localStorageDir = Get-ChildItem -Path $env:APPDATA -Directory -Recurse -Filter 'Local Storage' |
+            Select-Object -First 1
+          if (-not $localStorageDir) { throw 'Chromium local profile storage was not created by the installed app' }
+
+          $uninstaller = Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe' -File | Select-Object -First 1
+          if (-not $uninstaller) { throw "NSIS uninstaller was not found in $installDir" }
+          $uninstallProcess = Start-Process -FilePath $uninstaller.FullName -ArgumentList @('/S') -Wait -PassThru
+          if ($uninstallProcess.ExitCode -ne 0) {
+            throw "Silent uninstaller exited with code $($uninstallProcess.ExitCode)"
+          }
+          if (Test-Path $app.FullName) { throw 'The app executable remains after uninstall' }
+          if (-not (Test-Path $settingsFile.FullName)) {
+            throw 'Uninstall unexpectedly deleted native Settings despite deleteAppDataOnUninstall=false'
+          }
+          if (-not (Test-Path $localStorageDir.FullName)) {
+            throw 'Uninstall unexpectedly deleted local profile storage despite deleteAppDataOnUninstall=false'
+          }
+          Copy-Item $diagnostics 'dist_electron/installed-app-persistence-smoke.json' -Force
+          Write-Host 'Installed-app native Settings and structured profiles survived restart; uninstall preserved user data.'
+
+      - name: Report Windows app smoke failure details
         if: failure()
         shell: pwsh
         run: |
-          $diagnostics = Join-Path $env:RUNNER_TEMP 'packaged-ui-visual-smoke-diagnostics.json'
-          if (Test-Path $diagnostics) {
-            $message = (Get-Content -Path $diagnostics -Raw).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-            Write-Output "::error title=Packaged UI smoke diagnostics::$message"
-          } else {
-            Write-Output '::error title=Packaged UI smoke diagnostics::No packaged UI diagnostics were written.'
+          foreach ($name in @('packaged-ui-visual-smoke-diagnostics.json', 'installed-app-persistence-smoke.json')) {
+            $diagnostics = Join-Path $env:RUNNER_TEMP $name
+            if (Test-Path $diagnostics) {
+              $message = (Get-Content -Path $diagnostics -Raw).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Output "::error title=$name::$message"
+            }
           }
 
       - name: Publish tagged Windows release
@@ -134,5 +197,6 @@ jobs:
             dist_electron/*.exe
             dist_electron/*.zip
             dist_electron/packaged-ui-visual-smoke.png
+            dist_electron/installed-app-persistence-smoke.json
           if-no-files-found: error
           retention-days: 14

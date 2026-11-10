@@ -32,6 +32,7 @@ describe('Production React source and legacy inline regression checks', () => {
   );
   const appSource = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf-8');
   const nativeExecutorSource = fs.readFileSync(path.join(process.cwd(), 'native-executor.ts'), 'utf-8');
+  const desktopExecutorSource = fs.readFileSync(path.join(process.cwd(), 'electron/desktopExecution.cjs'), 'utf-8');
   const entranceAnimations = fs.readFileSync(
     path.join(process.cwd(), 'src/entranceAnimations.ts'),
     'utf-8'
@@ -185,16 +186,25 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(electronMain).toContain('minHeight: Math.min(600, height)');
   });
 
-  it('checks and captures the responsive UI from an installed Windows package', () => {
+  it('smoke-tests the installed Windows UI, persists native/profile state, and verifies uninstall data retention', () => {
     expect(electronMain).toContain("hasSwitch('visual-smoke-test')");
     expect(electronMain).toContain("once('did-finish-load', startVisualSmokeCapture)");
     expect(electronMain).toContain("capturePage()");
     expect(electronMain).toContain('renderedUi.keyCount !== 9');
+    expect(electronMain).toContain("hasSwitch('persistence-smoke-test')");
+    expect(electronMain).toContain("setAppSetting('allowTerminalSmartActions', true)");
+    expect(electronMain).toContain('structuredExecutionRestored: true');
     expect(windowsWorkflow).toContain('Install packaged app and capture responsive UI');
     expect(windowsWorkflow).toContain('NODE_GRID_VISUAL_SMOKE_DIAGNOSTICS');
-    expect(windowsWorkflow).toContain('Report Windows UI smoke failure details');
+    expect(windowsWorkflow).toContain('Verify installed-app Settings/profile persistence and uninstall behavior');
+    expect(windowsWorkflow).toContain('NODE_GRID_PERSISTENCE_PHASE');
+    expect(windowsWorkflow).toContain('Uninstall*.exe');
+    expect(windowsWorkflow).toContain('deleteAppDataOnUninstall=false');
+    expect(windowsWorkflow).toContain('Report Windows app smoke failure details');
     expect(windowsWorkflow).toContain('--visual-smoke-test');
+    expect(windowsWorkflow).toContain('--persistence-smoke-test');
     expect(windowsWorkflow).toContain('packaged-ui-visual-smoke.png');
+    expect(windowsWorkflow).toContain('src/**');
   });
 
   it('defines the Windows NSIS installer and ZIP package without discarding app data', () => {
@@ -277,10 +287,15 @@ describe('Production React source and legacy inline regression checks', () => {
     }
   });
 
-  it('keeps simulation controls in the production React app and terminal execution gated', () => {
-    expect(appSource).toContain('setSimulationMode((current) => !current)');
+  it('keeps Simulation gated across the renderer, Electron IPC, and local development executor', () => {
+    expect(appSource).toContain('requestSimulationMode(enabled, window)');
     expect(appSource).toContain('Simulation on');
-    expect(nativeExecutorSource).toContain('options.allowTerminal !== true');
+    expect(nativeExecutorSource).toContain('createDesktopActionExecutor');
+    expect(desktopExecutorSource).toContain('Simulation is disabled; no desktop action was executed');
+    expect(desktopExecutorSource).toContain('options.allowTerminal !== true');
+    expect(electronMain).toContain("'set-simulation-enabled'");
+    expect(electronMain).toContain('readStoredAppSettings().allowTerminalSmartActions === true');
+    expect(viteConfig).toContain('/api/simulation');
     expect(viteConfig).toContain('/api/execute-action');
   });
 

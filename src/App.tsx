@@ -13,8 +13,16 @@ import {
 } from './deviceLayout';
 import { clampMacropadOffsetToArea } from './macropadMovement';
 import { deviceKeymapFileTools } from './deviceKeymapFiles';
-import { triggerSimulationAction } from './actionExecution';
-import { PROFILE_FILE_STORAGE_KEY, profileFileTools } from './profileFiles';
+import {
+  requestSimulationMode,
+  triggerSimulationAction,
+  type DesktopExecutionDefinition,
+  type DesktopExecutionStep,
+  type MultiGestureKey,
+  type SimulationAction,
+  type SmartActionSubTab,
+} from './actionExecution';
+import { MAX_PROFILE_COUNT, PROFILE_FILE_STORAGE_KEY, profileFileTools } from './profileFiles';
 import {
   APP_VERSION_FALLBACK,
   createAppSettingsTools,
@@ -55,6 +63,7 @@ type EncoderSubActionId = 'cw' | 'press' | 'ccw';
 interface EncoderSubBinding {
   label: string;
   binding: string;
+  execution?: DesktopExecutionDefinition;
 }
 
 interface KeyAssignment {
@@ -69,6 +78,7 @@ interface KeyAssignment {
   iconId?: string;
   actionId?: string;
   color?: string;
+  execution?: DesktopExecutionDefinition;
   encoderActions?: Record<EncoderSubActionId, EncoderSubBinding>;
 }
 
@@ -121,6 +131,7 @@ interface BasicTileItem {
   arrowDir?: 'right' | 'left' | 'down' | 'up';
   iconId?: string;
   emoji?: string;
+  execution?: DesktopExecutionDefinition;
 }
 
 type CustomItemsByTab = Record<Exclude<MappingTabId, 'Basic'>, BasicTileItem[]>;
@@ -167,8 +178,6 @@ interface PersistedAppProfileState {
   customItems: CustomItemsByTab;
 }
 
-type MultiGestureKey = 'onTap' | 'doubleTap' | 'onHold' | 'tapHold';
-type SmartActionSubTab = 'Text' | 'Cmd' | 'Web' | 'App';
 
 function formatCustomTileText(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -534,11 +543,44 @@ function isPresetShortcut(sequence: string): boolean {
   return clean.includes('+') || clean.includes(' ') || clean.toLowerCase().includes('mod+');
 }
 
+function isPresetSingleKey(value: string): boolean {
+  const clean = value.trim().toLowerCase();
+  const singleSymbols = new Set([
+    '`', '~', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '-', '=',
+    '[', ']', '{', '}', '\\', '|', ';', ':', "'", '"', ',', '.', '<', '>', '/', '?',
+  ]);
+  return Boolean(
+    PRESET_SINGLE_MODIFIERS.has(clean) ||
+      /^(?:[a-z0-9]|f(?:[1-9]|1[0-2])|numpad (?:[0-9]|\.))$/.test(clean) ||
+      /^(?:enter|return|tab|space|space bar|esc|escape|backspace|delete|del|insert|home|end|page up|page down|up|down|left|right|caps lock|num lock|scroll lock|volume up|volume down|media mute|media play \/ pause)$/.test(clean) ||
+      (value.trim().length === 1 && singleSymbols.has(value.trim()))
+  );
+}
+
+function getPresetExecution(sequence: string, os: 'mac' | 'win'): DesktopExecutionDefinition {
+  const formatted = formatPresetSequence(sequence, os).trim();
+  const keys = formatted.split('+').map((key) => key.trim()).filter(Boolean);
+  if (keys.length > 1) {
+    const nonModifiers = keys.filter((key) => !PRESET_SINGLE_MODIFIERS.has(key.toLowerCase()));
+    if (nonModifiers.length > 1) {
+      return {
+        kind: 'sequence',
+        steps: keys.map((key) => ({ kind: 'key', key, mode: 'press-release' })),
+      };
+    }
+    return { kind: 'shortcut', value: formatted };
+  }
+  return isPresetSingleKey(sequence)
+    ? { kind: 'shortcut', value: formatted }
+    : { kind: 'text', value: sequence };
+}
+
 function makePresetActionItem(
   id: string,
   name: string,
   binding: string,
-  iconId: string
+  iconId: string,
+  execution?: DesktopExecutionDefinition
 ): BasicTileItem {
   return {
     id,
@@ -546,6 +588,7 @@ function makePresetActionItem(
     listLabel: binding,
     macropadLabel: PRESET_MACROPAD_LABELS[name] ?? name,
     iconId,
+    execution,
   };
 }
 
@@ -568,6 +611,7 @@ export function buildPresetLibrary(os: 'mac' | 'win'): PresetItem[] {
       let actionType: KeyAssignment['actionType'];
       let label: string;
       let binding: string;
+      let execution: DesktopExecutionDefinition;
 
       if (action.multi) {
         actionType = 'Multi-step action';
@@ -577,25 +621,37 @@ export function buildPresetLibrary(os: 'mac' | 'win'): PresetItem[] {
           ? formatPresetSequence(action.multi.doubleTap, os)
           : '';
         binding = `${action.name} (onTap: ${onTap}${doubleTap ? `, doubleTap: ${doubleTap}` : ''})`;
-        actionItems['Multi-A'].push(makePresetActionItem(itemId, action.name, binding, iconId));
-      } else if (isPresetShortcut(action.keys)) {
-        const lowerName = action.name.toLowerCase();
-        const isSmartAction =
-          lowerName.includes('prompt') ||
-          lowerName.includes('ai') ||
-          lowerName.includes('smart') ||
-          lowerName.includes('auto') ||
-          lowerName.includes('instruction');
-        actionType = isSmartAction ? 'Smart Action' : 'Shortcut';
-        label = shortName;
-        binding = `${action.name} (${formatPresetSequence(action.keys, os)})`;
-        actionItems[isSmartAction ? 'Smart-A' : 'Action'].push(
-          makePresetActionItem(itemId, action.name, binding, iconId)
+        execution = {
+          kind: 'multi',
+          gestures: {
+            onTap,
+            ...(doubleTap ? { doubleTap } : {}),
+          },
+        };
+        actionItems['Multi-A'].push(
+          makePresetActionItem(itemId, action.name, binding, iconId, execution)
         );
       } else {
-        actionType = 'Basic input';
-        label = action.keys.length <= 3 ? action.keys.toUpperCase() : action.keys;
-        binding = `${action.name} (${action.keys})`;
+        execution = getPresetExecution(action.keys, os);
+        if (isPresetShortcut(action.keys)) {
+          const lowerName = action.name.toLowerCase();
+          const isSmartAction =
+            lowerName.includes('prompt') ||
+            lowerName.includes('ai') ||
+            lowerName.includes('smart') ||
+            lowerName.includes('auto') ||
+            lowerName.includes('instruction');
+          actionType = isSmartAction ? 'Smart Action' : 'Shortcut';
+          label = shortName;
+          binding = `${action.name} (${formatPresetSequence(action.keys, os)})`;
+          actionItems[isSmartAction ? 'Smart-A' : 'Action'].push(
+            makePresetActionItem(itemId, action.name, binding, iconId, execution)
+          );
+        } else {
+          actionType = 'Basic input';
+          label = action.keys.length <= 3 ? action.keys.toUpperCase() : action.keys;
+          binding = `${action.name} (${action.keys})`;
+        }
       }
 
       keyAssignments[slot] = {
@@ -605,6 +661,7 @@ export function buildPresetLibrary(os: 'mac' | 'win'): PresetItem[] {
         iconId,
         actionId: itemId,
         color: preset.color,
+        execution,
       };
     });
 
@@ -614,6 +671,7 @@ export function buildPresetLibrary(os: 'mac' | 'win'): PresetItem[] {
         return [direction, {
           label: PRESET_DIAL_LABELS[action.name] ?? formatEncoderShortLabel(action.name),
           binding: `${action.name} (${formatPresetSequence(action.keys, os)})`,
+          execution: getPresetExecution(action.keys, os),
         }];
       })
     ) as Record<EncoderSubActionId, EncoderSubBinding>;
@@ -1163,9 +1221,18 @@ export default function App() {
     }
   }, [profiles, activeProfileIndex, customItemsByTab]);
 
-  // Hardware layout and demonstration mode
+  // Hardware layout and desktop execution mode
   const [encoderAngle, setEncoderAngle] = useState(45);
   const [simulationMode, setSimulationMode] = useState(false);
+  const [simulationTransition, setSimulationTransition] = useState(false);
+
+  useEffect(() => {
+    const disableSimulationOnPageHide = () => {
+      void requestSimulationMode(false, window);
+    };
+    window.addEventListener('pagehide', disableSimulationOnPageHide);
+    return () => window.removeEventListener('pagehide', disableSimulationOnPageHide);
+  }, []);
 
   // Profiles & Layers extended toolbar / lighting / delete confirmation states
   const [deletingProfileId, setDeletingProfileId] = useState<string | null>(null);
@@ -1218,6 +1285,28 @@ export default function App() {
     setTimeout(() => {
       setToastMessage((current) => (current === msg ? null : current));
     }, 2200);
+  };
+
+  const toggleSimulationMode = async () => {
+    if (simulationTransition) return;
+    const enabled = !simulationMode;
+    setSimulationTransition(true);
+    if (!enabled) setSimulationMode(false);
+    try {
+      const result = await requestSimulationMode(enabled, window);
+      if (result.ok && result.enabled === enabled) {
+        setSimulationMode(enabled);
+        showToast(enabled ? 'Simulation enabled — actions affect your desktop' : 'Simulation disabled');
+      } else {
+        setSimulationMode(false);
+        showToast(result.error || 'Could not update Simulation mode');
+      }
+    } catch (error) {
+      setSimulationMode(false);
+      showToast(error instanceof Error ? error.message : 'Could not update Simulation mode');
+    } finally {
+      setSimulationTransition(false);
+    }
   };
 
   useEffect(() => {
@@ -1588,6 +1677,7 @@ export default function App() {
         [subTarget]: {
           label: item.isClearIcon ? '—' : formatEncoderShortLabel(displayBinding),
           binding: item.isClearIcon ? 'blank' : displayBinding,
+          execution: item.isClearIcon ? undefined : item.execution,
         },
       };
       handleUpdateKeyAssignment(targetSlot, {
@@ -1604,6 +1694,7 @@ export default function App() {
       actionType: actionTypeMap[effectiveTab],
       iconId: item.isClearIcon ? undefined : item.iconId,
       actionId: item.isClearIcon ? undefined : item.id,
+      execution: item.isClearIcon ? undefined : item.execution,
     });
     showToast(`Assigned "${displayBinding}" to ${targetSlot.toUpperCase()}`);
   };
@@ -2349,6 +2440,7 @@ export default function App() {
 
     let displayLabel = assignment?.label || slotId.toUpperCase();
     let displayBinding = assignment?.binding || displayLabel;
+    let displayExecution = assignment?.execution;
 
     if (subAction && slotId === GRID_MACRO_ENCODER_SLOT) {
       const actions = getEncoderActions(assignment);
@@ -2358,6 +2450,7 @@ export default function App() {
       }
       displayLabel = subEntry.label || subAction.toUpperCase();
       displayBinding = subEntry.binding || displayLabel;
+      displayExecution = subEntry.execution;
     }
 
     const previewItem: BasicTileItem = {
@@ -2366,6 +2459,7 @@ export default function App() {
       macropadLabel: displayLabel,
       listLabel: displayBinding,
       iconId: subAction ? undefined : assignment?.iconId,
+      execution: displayExecution,
     };
 
     dragSessionRef.current = {
@@ -2381,13 +2475,12 @@ export default function App() {
     };
   };
 
-  const runSimulationAction = (assignment: {
-    label: string;
-    binding: string;
-    actionId?: string;
-  }) => {
+  const runSimulationAction = (
+    assignment: SimulationAction & { actionId?: string },
+    gesture?: MultiGestureKey
+  ) => {
     triggerSimulationAction(
-      { ...assignment, id: assignment.actionId },
+      { ...assignment, id: assignment.actionId || assignment.id, gesture },
       (targetLayer) => {
         if (targetLayer >= currentProfile.layers.length) {
           showToast(`Layer ${targetLayer + 1} is not available on this profile`);
@@ -2531,29 +2624,91 @@ export default function App() {
       setSelectedIconId(existingItem.iconId);
       setSelectedEmoji(existingItem.emoji);
       setNewCustomBinding(existingItem.listLabel || '');
+
       if (tab === 'Action') {
-        setActionAdvanceMode(false);
+        const execution = existingItem.execution;
         const rawSeq = existingItem.listLabel || '';
         const match = rawSeq.match(/\((.+)\)$/);
-        const seqStr = match ? match[1] : '';
-        if (seqStr) {
-          const parts = seqStr.split(' + ').map((s) => s.trim()).filter(Boolean);
+        const displaySequence = match ? match[1] : '';
+        if (
+          execution?.kind === 'sequence' &&
+          execution.steps.length > 0 &&
+          execution.steps.every((step) => step.kind === 'key')
+        ) {
+          const sequenceSteps = execution.steps as Extract<DesktopExecutionStep, { kind: 'key' }>[];
+          setActionAdvanceMode(true);
+          setActionTokens([]);
+          setActionRecordingStatus('idle');
+          setActionAdvanceSteps(sequenceSteps.map((step, index) => ({
+            id: `adv-edit-${index}-${Date.now()}`,
+            keyLabel: step.key,
+            mode: step.mode === 'press' ? 'press' : 'press-release',
+            delayAfterActive: Number(step.delayAfterMs || 0) > 0,
+            delayAfterMs: String(step.delayAfterMs ?? '200'),
+          })));
+        } else {
+          const shortcut = execution?.kind === 'shortcut'
+            ? execution.value
+            : displaySequence;
+          const parts = shortcut.split(' + ').map((part) => part.trim()).filter(Boolean);
+          setActionAdvanceMode(false);
+          setActionAdvanceSteps([{
+            id: 'adv-edit-1',
+            keyLabel: '',
+            mode: 'press-release',
+            delayAfterActive: false,
+            delayAfterMs: '200',
+          }]);
           setActionTokens(
             parts.map((lbl, idx) => ({
               id: `tok-init-${idx}`,
               label: lbl,
-              kind: ['ctrl', 'control', 'win', 'shift', 'alt', 'cmd'].includes(
+              kind: ['ctrl', 'control', 'win', 'windows', 'shift', 'alt', 'cmd', 'option'].includes(
                 lbl.toLowerCase()
               )
                 ? 'modifier'
                 : 'text',
             }))
           );
-          setActionRecordingStatus('confirmed');
-        } else {
-          setActionTokens([]);
-          setActionRecordingStatus('idle');
+          setActionRecordingStatus(parts.length > 0 ? 'confirmed' : 'idle');
         }
+      } else if (tab === 'Multi-A') {
+        const execution = existingItem.execution;
+        const rawSummary = existingItem.listLabel || '';
+        const gestureSummary = rawSummary.match(/\((.*)\)$/)?.[1] || '';
+        const fromDisplay = (key: MultiGestureKey) => {
+          const match = gestureSummary.match(new RegExp(`(?:^|,\\s*)${key}:\\s*([^,]*)`, 'i'));
+          return match?.[1]?.trim() || '';
+        };
+        setMultiGestures(execution?.kind === 'multi'
+          ? {
+              onTap: execution.gestures.onTap || '',
+              doubleTap: execution.gestures.doubleTap || '',
+              onHold: execution.gestures.onHold || '',
+              tapHold: execution.gestures.tapHold || '',
+            }
+          : {
+              onTap: fromDisplay('onTap'),
+              doubleTap: fromDisplay('doubleTap'),
+              onHold: fromDisplay('onHold'),
+              tapHold: fromDisplay('tapHold'),
+            });
+        setTappingTermMs(String(execution?.kind === 'multi' ? execution.tappingTermMs ?? 250 : 250));
+      } else if (tab === 'Smart-A') {
+        const execution = existingItem.execution;
+        const displaySmart = (existingItem.listLabel || '').match(/\((Text|Cmd|Web|App):\s*([\s\S]*)\)$/i);
+        const actionType = execution?.kind === 'smart'
+          ? execution.actionType
+          : displaySmart?.[1] as SmartActionSubTab | undefined;
+        const value = execution?.kind === 'smart'
+          ? execution.value
+          : displaySmart?.[2]?.trim() || (execution?.kind === 'text' ? execution.value : '');
+        const safeTab: SmartActionSubTab = actionType || 'Text';
+        setSmartSubTab(safeTab);
+        setSmartTextValue(safeTab === 'Text' ? value : '');
+        setSmartCmdValue(safeTab === 'Cmd' ? value : '');
+        setSmartWebValue(safeTab === 'Web' ? value : '');
+        setSmartAppValue(safeTab === 'App' ? value : '');
       }
     } else {
       setEditingCustomItemId(null);
@@ -2625,12 +2780,21 @@ export default function App() {
     const finalName = newCustomName.trim() || defaultName;
 
     let summaryBinding = finalName;
+    let execution: DesktopExecutionDefinition | undefined;
     if (creatorModalTab === 'Multi-A') {
       const parts = Object.entries(multiGestures)
-        .filter(([, v]) => v)
-        .map(([k, v]) => `${k}: ${v}`);
-      summaryBinding =
-        parts.length > 0 ? `${finalName} (${parts.join(', ')})` : finalName;
+        .filter(([, value]) => value.trim())
+        .map(([gesture, value]) => `${gesture}: ${value.trim()}`);
+      summaryBinding = parts.length > 0 ? `${finalName} (${parts.join(', ')})` : finalName;
+      execution = {
+        kind: 'multi',
+        gestures: Object.fromEntries(
+          Object.entries(multiGestures)
+            .filter(([, value]) => value.trim())
+            .map(([gesture, value]) => [gesture, value.trim()])
+        ) as Partial<Record<MultiGestureKey, string>>,
+        tappingTermMs: Math.max(0, Number.parseInt(tappingTermMs, 10) || 250),
+      };
     } else if (creatorModalTab === 'Smart-A') {
       const val =
         smartSubTab === 'Text'
@@ -2643,30 +2807,40 @@ export default function App() {
       summaryBinding = val.trim()
         ? `${finalName} (${smartSubTab}: ${val.trim()})`
         : finalName;
+      execution = {
+        kind: 'smart',
+        actionType: smartSubTab,
+        value: val.trim(),
+      };
     } else if (creatorModalTab === 'Action') {
       if (actionAdvanceMode) {
         const advParts: string[] = [];
-        actionAdvanceSteps.forEach((s, idx) => {
-          if (s.keyLabel.trim()) {
-            advParts.push(s.keyLabel.trim());
-          }
-          if (
-            idx < actionAdvanceSteps.length - 1 &&
-            s.delayAfterActive &&
-            s.delayAfterMs?.trim()
-          ) {
-            advParts.push(`${s.delayAfterMs.trim()}ms`);
-          }
+        const steps: DesktopExecutionStep[] = [];
+        actionAdvanceSteps.forEach((step, index) => {
+          const key = step.keyLabel.trim();
+          if (!key) return;
+          advParts.push(key);
+          const hasDelay =
+            index < actionAdvanceSteps.length - 1 &&
+            step.delayAfterActive &&
+            Boolean(step.delayAfterMs?.trim());
+          if (hasDelay) advParts.push(`${step.delayAfterMs!.trim()}ms`);
+          steps.push({
+            kind: 'key',
+            key,
+            mode: step.mode,
+            ...(hasDelay ? { delayAfterMs: Number.parseInt(step.delayAfterMs!, 10) } : {}),
+          });
         });
-        summaryBinding =
-          advParts.length > 0
-            ? `${finalName} (${advParts.join(' + ')})`
-            : finalName;
+        summaryBinding = advParts.length > 0 ? `${finalName} (${advParts.join(' + ')})` : finalName;
+        if (steps.length > 0) execution = { kind: 'sequence', steps };
       } else if (actionTokens.length > 0) {
-        const tokenCombo = actionTokens.map((t) => t.label).join(' + ');
+        const tokenCombo = actionTokens.map((token) => token.label).join(' + ');
         summaryBinding = `${finalName} (${tokenCombo})`;
+        execution = { kind: 'shortcut', value: tokenCombo };
       } else if (newCustomBinding.trim()) {
         summaryBinding = `${finalName} (${newCustomBinding.trim()})`;
+        execution = { kind: 'shortcut', value: newCustomBinding.trim() };
       }
     }
 
@@ -2677,6 +2851,7 @@ export default function App() {
       macropadLabel: selectedEmoji ? selectedEmoji : finalName,
       iconId: selectedIconId,
       emoji: selectedEmoji,
+      execution,
     };
 
     setCustomItemsByTab((prev) => {
@@ -2853,7 +3028,12 @@ export default function App() {
   );
 
   const handleDuplicateProfile = (idx: number) => {
+    if (profiles.length >= MAX_PROFILE_COUNT) {
+      showToast(`A browser can store up to ${MAX_PROFILE_COUNT} profiles. Delete one first.`);
+      return;
+    }
     const source = profiles[idx];
+    if (!source) return;
     const duplicated: ProfileData = {
       id: `prof-${Date.now()}`,
       name: `${source.name} Copy`,
@@ -2884,6 +3064,10 @@ export default function App() {
   };
 
   const handleAddProfile = () => {
+    if (profiles.length >= MAX_PROFILE_COUNT) {
+      showToast(`A browser can store up to ${MAX_PROFILE_COUNT} profiles. Delete one first.`);
+      return;
+    }
     const nextProf: ProfileData = {
       id: `prof-${Date.now()}`,
       name: '',
@@ -4281,7 +4465,8 @@ export default function App() {
                   offsetY: 8,
                   initialScale: 0.99,
                 })}
-                onClick={() => setSimulationMode((current) => !current)}
+                onClick={() => void toggleSimulationMode()}
+                disabled={simulationTransition}
                 className="mt-[15px] h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
               >
                 <span

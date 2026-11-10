@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
 import {
   createProfileExport,
+  createProfileFileTools,
   MAX_PROFILE_FILE_BYTES,
   mergeImportedProfiles,
   parseProfileFile,
@@ -12,13 +14,23 @@ const profile = {
   name: 'Editor layout',
   color: '#123456',
   layers: [{
-    r1c1: { label: 'Save', binding: 'Ctrl+S', actionType: 'Shortcut', iconId: 'device-floppy' },
+    r1c1: {
+      label: 'Save',
+      binding: 'Ctrl+S',
+      actionType: 'Shortcut',
+      iconId: 'device-floppy',
+      execution: { kind: 'shortcut', value: 'Ctrl + S' },
+    },
     'dial-tl': {
       label: 'Dial',
       binding: 'Volume',
       actionType: 'Basic input',
       encoderActions: {
-        cw: { label: 'Vol+', binding: 'volume +' },
+        cw: {
+          label: 'Vol+',
+          binding: 'volume +',
+          execution: { kind: 'shortcut', value: 'volume +' },
+        },
         ccw: { label: 'Vol-', binding: 'volume -' },
         press: { label: 'Mute', binding: 'mute' },
       },
@@ -27,7 +39,21 @@ const profile = {
 };
 
 const customItems = {
-  Action: [{ id: 'act-save', main: 'Save project', binding: 'Ctrl+S', macropadLabel: 'Save', iconId: 'device-floppy' }],
+  Action: [{
+    id: 'act-save',
+    main: 'Save project',
+    binding: 'Ctrl+S',
+    macropadLabel: 'Save',
+    iconId: 'device-floppy',
+    execution: {
+      kind: 'sequence',
+      steps: [
+        { kind: 'key', key: 'Ctrl + S', mode: 'press-release', delayAfterMs: 10 },
+        { kind: 'text', text: 'done', interKeyDelayMs: 1 },
+        { kind: 'wait', durationMs: 20 },
+      ],
+    },
+  }],
   'Multi-A': [{ id: 'multi-build', main: 'Build and run', listLabel: 'Build' }],
   'Smart-A': [{ id: 'smart-open', main: 'Open editor', top: 'Open' }],
 };
@@ -75,9 +101,45 @@ describe('profile file import and export', () => {
       ...profile,
       layers: [{ r1c1: { label: 'A', binding: { key: 'A' } } }],
     }))).toThrow('invalid r1c1 binding');
+    expect(() => parseProfileFile(JSON.stringify({
+      ...profile,
+      layers: [{ r1c1: {
+        label: 'Broken macro',
+        binding: 'Broken',
+        execution: { kind: 'multi', gestures: null },
+      } }],
+    }))).toThrow('multiaction gestures must be an object');
+    expect(() => parseProfileFile(JSON.stringify({
+      ...profile,
+      layers: [{ 'dial-tl': {
+        label: 'Dial',
+        binding: 'Macro',
+        encoderActions: { cw: { label: 'Bad', binding: 'Bad', execution: { kind: 'future' } } },
+      } }],
+    }))).toThrow('unsupported kind');
     expect(() => createProfileExport(profile, {
       Action: [{ id: 'invalid-action', main: { text: 'not a name' } }],
     })).toThrow('non-empty name');
+    expect(() => createProfileExport(profile, {
+      Action: [{
+        id: 'invalid-execution',
+        main: 'Bad action',
+        execution: { kind: 'sequence', steps: [{ kind: 'key', key: 'Ctrl+C', delayAfterMs: -1 }] },
+      }],
+    })).toThrow('delayAfterMs must be an integer');
+    expect(() => createProfileExport(profile, {
+      Action: [{
+        id: 'oversized-sequence',
+        main: 'Oversized sequence',
+        execution: {
+          kind: 'sequence',
+          steps: [
+            { kind: 'text', text: 'a'.repeat(16 * 1024) },
+            { kind: 'text', text: 'b'.repeat(16 * 1024 + 1) },
+          ],
+        },
+      }],
+    })).toThrow('total text characters');
   });
 
   it('merges imported profiles and remaps conflicting custom-action IDs and references', () => {
@@ -161,6 +223,80 @@ describe('profile file import and export', () => {
     expect(merged.customItems.Action).toHaveLength(1);
     expect(merged.customItems['Multi-A']).toHaveLength(1);
     expect(merged.customItems['Smart-A']).toHaveLength(1);
+  });
+
+  it('requires explicit confirmation for terminal commands imported in profiles and custom actions', async () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://node-studio.test/' });
+    vi.spyOn(dom.window.HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    const tools = createProfileFileTools(dom.window as unknown as Window & typeof globalThis);
+    const importing = tools.pickFile();
+    const input = dom.window.document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const importedProfile = {
+      ...profile,
+      layers: [{
+        ...profile.layers[0],
+        r1c1: {
+          label: 'Imported command',
+          binding: 'Imported command (Cmd: echo imported)',
+          actionType: 'Smart Action',
+          execution: {
+            kind: 'smart',
+            actionType: 'Cmd',
+            value: 'echo imported',
+            requiresConsent: false,
+          },
+        },
+        'dial-tl': {
+          label: 'Dial',
+          binding: 'Volume',
+          encoderActions: {
+            cw: { label: 'Legacy command', binding: 'Legacy command (Cmd: echo legacy)' },
+          },
+        },
+        r1c2: {
+          label: 'Old command',
+          binding: 'Old command (Cmd: echo old)',
+          actionType: 'Smart Action',
+        },
+      }],
+    };
+    const fileText = JSON.stringify({
+      format: 'node-studio-profile',
+      version: 1,
+      profile: importedProfile,
+      customItems: {
+        Action: [],
+        'Multi-A': [],
+        'Smart-A': [
+          {
+            id: 'imported-cmd',
+            main: 'Imported command',
+            listLabel: 'Imported command (Cmd: echo custom)',
+            execution: { kind: 'smart', actionType: 'Cmd', value: 'echo custom', requiresConsent: false },
+          },
+          {
+            id: 'legacy-cmd',
+            main: 'Legacy command',
+            listLabel: 'Legacy command (Cmd: echo legacy custom)',
+          },
+        ],
+      },
+    });
+    const file = new dom.window.File([fileText], 'import.json', { type: 'application/json' });
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    const imported = await importing;
+    const importedLayers = imported!.profiles[0].layers as Array<Record<string, unknown>>;
+    const layer = importedLayers[0];
+    const encoderActions = layer['dial-tl'] as Record<string, unknown>;
+    const encoder = encoderActions.encoderActions as Record<string, Record<string, unknown>>;
+
+    expect((((layer.r1c1 as Record<string, unknown>).execution) as Record<string, unknown>).requiresConsent).toBe(true);
+    expect((((layer.r1c2 as Record<string, unknown>).execution) as Record<string, unknown>).requiresConsent).toBe(true);
+    expect((encoder.cw.execution as Record<string, unknown>).requiresConsent).toBe(true);
+    expect((imported!.customItems['Smart-A'][0].execution as Record<string, unknown>).requiresConsent).toBe(true);
+    expect((imported!.customItems['Smart-A'][1].execution as Record<string, unknown>).requiresConsent).toBe(true);
+    dom.window.close();
   });
 
   it('keeps imported text as data and discards prototype-pollution fields', () => {
