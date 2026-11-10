@@ -182,6 +182,8 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(electronMain).toContain("capturePage()");
     expect(electronMain).toContain('renderedUi.keyCount !== 9');
     expect(windowsWorkflow).toContain('Install packaged app and capture responsive UI');
+    expect(windowsWorkflow).toContain('NODE_GRID_VISUAL_SMOKE_DIAGNOSTICS');
+    expect(windowsWorkflow).toContain('Report Windows UI smoke failure details');
     expect(windowsWorkflow).toContain('--visual-smoke-test');
     expect(windowsWorkflow).toContain('packaged-ui-visual-smoke.png');
   });

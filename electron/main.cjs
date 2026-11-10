@@ -155,8 +155,24 @@ function isVisualSmokeTest() {
   return app.isPackaged && app.commandLine.hasSwitch('visual-smoke-test');
 }
 
+function writeVisualSmokeDiagnostics(details) {
+  if (!isVisualSmokeTest()) return;
+  const diagnosticsPath = process.env.NODE_GRID_VISUAL_SMOKE_DIAGNOSTICS;
+  if (!diagnosticsPath) return;
+  try {
+    fs.mkdirSync(path.dirname(diagnosticsPath), { recursive: true });
+    fs.writeFileSync(
+      diagnosticsPath,
+      JSON.stringify({ ...details, timestamp: new Date().toISOString() }, null, 2)
+    );
+  } catch (error) {
+    console.error('Could not write packaged UI smoke diagnostics:', error);
+  }
+}
+
 async function captureVisualSmokeScreenshot() {
   const screenshotPath = process.env.NODE_GRID_VISUAL_SMOKE_SCREENSHOT;
+  let renderedUi = null;
   try {
     if (!screenshotPath) {
       throw new Error('NODE_GRID_VISUAL_SMOKE_SCREENSHOT must name the PNG output path');
@@ -169,7 +185,7 @@ async function captureVisualSmokeScreenshot() {
       throw new Error('The packaged application window closed before capture');
     }
 
-    const renderedUi = await mainWindow.webContents.executeJavaScript(`(() => {
+    renderedUi = await mainWindow.webContents.executeJavaScript(`(() => {
       const root = document.querySelector('#root');
       const keySlots = Array.from(root?.querySelectorAll('[data-drop-slot]') || [])
         .map((element) => element.getAttribute('data-drop-slot'))
@@ -207,7 +223,15 @@ async function captureVisualSmokeScreenshot() {
     console.log(`Packaged UI visual smoke test passed: ${screenshotPath} (${png.length} bytes)`);
     app.exit(0);
   } catch (error) {
-    console.error('Packaged UI visual smoke test failed:', error);
+    const diagnostics = {
+      stage: 'capture-failed',
+      error: error instanceof Error ? error.message : String(error),
+      renderedUi,
+      windowBounds: mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null,
+      pageUrl: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getURL() : null,
+    };
+    writeVisualSmokeDiagnostics(diagnostics);
+    console.error('Packaged UI visual smoke test failed:', JSON.stringify(diagnostics));
     app.exit(1);
   }
 }
@@ -355,6 +379,7 @@ function injectWindowsKeystrokes(vkCodes) {
 function startVisualSmokeCapture() {
   if (!isVisualSmokeTest() || visualSmokeCaptureStarted || !mainWindow) return;
   visualSmokeCaptureStarted = true;
+  writeVisualSmokeDiagnostics({ stage: 'capture-started', pageUrl: mainWindow.webContents.getURL() });
   mainWindow.show();
   void captureVisualSmokeScreenshot();
 }
@@ -471,16 +496,21 @@ function createWindow() {
       'did-fail-load',
       (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
         if (!isMainFrame) return;
-        console.error('Packaged UI failed to load:', {
+        const diagnostics = {
+          stage: 'main-frame-load-failed',
           errorCode,
           errorDescription,
           validatedURL,
-        });
+        };
+        writeVisualSmokeDiagnostics(diagnostics);
+        console.error('Packaged UI failed to load:', diagnostics);
         app.exit(1);
       }
     );
     mainWindow.webContents.on('render-process-gone', (_event, details) => {
-      console.error('Packaged UI renderer exited unexpectedly:', details);
+      const diagnostics = { stage: 'renderer-process-gone', ...details };
+      writeVisualSmokeDiagnostics(diagnostics);
+      console.error('Packaged UI renderer exited unexpectedly:', diagnostics);
       app.exit(1);
     });
   }
@@ -752,6 +782,7 @@ app.whenReady().then(() => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.node.gridmacro1');
   }
+  writeVisualSmokeDiagnostics({ stage: 'app-ready', packaged: app.isPackaged });
   if (!isVisualSmokeTest()) {
     initFastWindowsInjector();
   }

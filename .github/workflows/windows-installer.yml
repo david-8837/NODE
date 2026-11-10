@@ -70,7 +70,9 @@ jobs:
             Stop-Process -Force -ErrorAction SilentlyContinue
 
           $screenshot = Join-Path $env:RUNNER_TEMP 'packaged-ui-visual-smoke.png'
+          $diagnostics = Join-Path $env:RUNNER_TEMP 'packaged-ui-visual-smoke-diagnostics.json'
           $env:NODE_GRID_VISUAL_SMOKE_SCREENSHOT = $screenshot
+          $env:NODE_GRID_VISUAL_SMOKE_DIAGNOSTICS = $diagnostics
           $appProcess = Start-Process -FilePath $app.FullName -ArgumentList '--visual-smoke-test' -PassThru
           if (-not $appProcess.WaitForExit(90000)) {
             Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
@@ -89,6 +91,18 @@ jobs:
           if ($width -lt 640 -or $height -lt 520) { throw "Screenshot dimensions are unexpectedly small: ${width}x${height}" }
           Write-Host "Packaged Windows UI screenshot validated: ${width}x${height}, $($png.Length) bytes"
           Copy-Item $screenshot 'dist_electron/packaged-ui-visual-smoke.png' -Force
+
+      - name: Report Windows UI smoke failure details
+        if: failure()
+        shell: pwsh
+        run: |
+          $diagnostics = Join-Path $env:RUNNER_TEMP 'packaged-ui-visual-smoke-diagnostics.json'
+          if (Test-Path $diagnostics) {
+            $message = (Get-Content -Path $diagnostics -Raw).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Packaged UI smoke diagnostics::$message"
+          } else {
+            Write-Output '::error title=Packaged UI smoke diagnostics::No packaged UI diagnostics were written.'
+          }
 
       - name: Publish tagged Windows release
         if: startsWith(github.ref, 'refs/tags/')
