@@ -6,10 +6,6 @@ on:
     paths:
       - '.github/workflows/download-site.yml'
       - 'website/**'
-      - 'src/SplashCursor.*'
-      - 'vite.website.config.ts'
-      - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
@@ -32,25 +28,13 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install build dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - name: Build static website
-        run: npm run build:website
-
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
       - name: Upload static website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist-website
+          path: website
 
       - name: Deploy to GitHub Pages
         id: deployment

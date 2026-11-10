@@ -5,9 +5,6 @@ import { JSDOM } from 'jsdom';
 
 const siteHtml = readFileSync(join(process.cwd(), 'website/index.html'), 'utf8');
 const downloadsScript = readFileSync(join(process.cwd(), 'website/downloads.js'), 'utf8');
-const splashMountSource = readFileSync(join(process.cwd(), 'website/splashCursorMount.jsx'), 'utf8');
-const splashCursorSource = readFileSync(join(process.cwd(), 'src/SplashCursor.jsx'), 'utf8');
-const splashCursorStyles = readFileSync(join(process.cwd(), 'src/SplashCursor.css'), 'utf8');
 const productScreenshot = readFileSync(join(process.cwd(), 'website/assets/grid-macro-studio-current.png'));
 const brandIcon = readFileSync(join(process.cwd(), 'website/assets/node-studio-icon.png'));
 const pagesWorkflow = readFileSync(
@@ -29,8 +26,8 @@ describe('Public download website', () => {
     expect(siteHtml).toContain('id="how-it-works"');
     expect(siteHtml).toContain('./styles.css');
     expect(siteHtml).toContain('./downloads.js');
-    expect(siteHtml).toContain('./splashCursorMount.jsx');
-    expect(siteHtml).toContain('id="splash-cursor-root"');
+    expect(siteHtml).not.toContain('splashCursorMount');
+    expect(siteHtml).not.toContain('splash-cursor-root');
     expect(siteHtml).toContain('./assets/grid-macro-studio-current.png');
     expect(siteHtml).toContain('./assets/node-studio-icon.png');
     expect(brandIcon.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
@@ -40,14 +37,6 @@ describe('Public download website', () => {
     expect(productScreenshot.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
     expect(productScreenshot.readUInt32BE(16)).toBe(1350);
     expect(productScreenshot.readUInt32BE(20)).toBe(942);
-  });
-
-  it('mounts the React Bits fluid cursor on the standalone download website', () => {
-    expect(splashMountSource).toContain("import('../src/SplashCursor.jsx')");
-    expect(splashMountSource).toContain('quality="medium"');
-    expect(splashMountSource).toContain('clickSplash');
-    expect(splashCursorSource).toContain("getContext('webgl2'");
-    expect(splashCursorStyles).toContain('pointer-events: none');
   });
 
   it('resolves current download assets from GitHub Releases and has a no-release fallback', () => {
@@ -60,8 +49,8 @@ describe('Public download website', () => {
 
   it('deploys the site on Pages and publishes Windows assets for version tags', () => {
     expect(pagesWorkflow).toContain('actions/deploy-pages@v4');
-    expect(pagesWorkflow).toContain('npm run build:website');
-    expect(pagesWorkflow).toContain('path: dist-website');
+    expect(pagesWorkflow).toContain('path: website');
+    expect(pagesWorkflow).not.toContain('build:website');
     expect(windowsWorkflow).toContain("- 'v*'");
     expect(windowsWorkflow).toContain('gh release create');
     expect(windowsWorkflow).toContain('gh release upload');
