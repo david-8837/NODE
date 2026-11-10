@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "vite --port=5173",
     "build": "vite build",
+    "dev:website": "vite --config vite.website.config.ts",
+    "build:website": "vite build --config vite.website.config.ts",
     "preview": "vite preview",
     "clean": "node -e \"for (const target of ['dist', 'server.js', 'dist_electron']) require('node:fs').rmSync(target, { recursive: true, force: true })\"",
     "lint": "tsc --noEmit",

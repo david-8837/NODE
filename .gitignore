@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+dist-website/
 dist_electron/
 coverage/
 .DS_Store
