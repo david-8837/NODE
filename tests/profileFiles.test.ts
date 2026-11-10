@@ -71,6 +71,13 @@ describe('profile file import and export', () => {
       .toThrow('must be an object');
     expect(() => parseProfileFile(JSON.stringify({ ...profile, name: ' ' })))
       .toThrow('non-empty name');
+    expect(() => parseProfileFile(JSON.stringify({
+      ...profile,
+      layers: [{ r1c1: { label: 'A', binding: { key: 'A' } } }],
+    }))).toThrow('invalid r1c1 binding');
+    expect(() => createProfileExport(profile, {
+      Action: [{ id: 'invalid-action', main: { text: 'not a name' } }],
+    })).toThrow('non-empty name');
   });
 
   it('merges imported profiles and remaps conflicting custom-action IDs and references', () => {
@@ -121,6 +128,26 @@ describe('profile file import and export', () => {
     expect(merged.profiles).toHaveLength(3);
     expect(merged.activeProfileIndex).toBe(2);
     expect(merged.profiles[merged.activeProfileIndex].name).toBe('Second imported profile');
+  });
+
+  it('imports into an app that contains a newly added, still-unnamed profile', () => {
+    const currentUnnamedProfile = {
+      id: 'draft-profile',
+      name: '',
+      color: '#0051ff',
+      layers: [{ r1c1: { label: '', binding: 'blank', actionType: 'Basic input' } }],
+    };
+    const incoming = parseProfileFile(createProfileExport(profile, customItems));
+    const merged = mergeImportedProfiles({
+      profiles: [currentUnnamedProfile],
+      activeProfileIndex: 0,
+      customItems: { Action: [], 'Multi-A': [], 'Smart-A': [] },
+    }, incoming);
+
+    expect(merged.profiles).toHaveLength(2);
+    expect(merged.profiles[0].name).toBe('');
+    expect(merged.profiles[1].name).toBe('Editor layout');
+    expect(merged.activeProfileIndex).toBe(1);
   });
 
   it('reuses identical custom action entries when the same profile file is imported twice', () => {

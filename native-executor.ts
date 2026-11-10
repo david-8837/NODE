@@ -173,7 +173,10 @@ const SAFE_WIN_APPS: Record<string, string> = {
   code: 'code.cmd'
 };
 
-export function executeNativeAction(payload: any): Promise<{ success: boolean; message?: string; error?: string }> {
+export function executeNativeAction(
+  payload: any,
+  options: { allowTerminal?: boolean } = {}
+): Promise<{ success: boolean; message?: string; error?: string }> {
   return new Promise((resolve) => {
     try {
       if (!payload || typeof payload !== 'object') {
@@ -230,6 +233,12 @@ export function executeNativeAction(payload: any): Promise<{ success: boolean; m
       }
 
       if (type === 'Cmd') {
+        if (options.allowTerminal !== true) {
+          return resolve({
+            success: false,
+            error: 'Terminal commands are disabled in Settings. Enable them only for commands you trust.'
+          });
+        }
         // Strictly prevent shell injection metacharacters
         const containsForbiddenChars = /[;&|`$><"'\n\r]/.test(value);
         if (containsForbiddenChars) {

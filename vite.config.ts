@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig, Plugin } from 'vite';
@@ -8,6 +9,9 @@ import { isTrustedLocalNativeOrigin } from './src/nativeActionSecurity.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const packageVersion = (JSON.parse(
+  readFileSync(path.join(__dirname, 'package.json'), 'utf8')
+) as { version: string }).version;
 const previewAllowedHosts = process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS ?? '';
 const isArenaPreview =
   process.env.ARENA_PREVIEW === 'true' ||
@@ -65,7 +69,9 @@ function nativeExecutionPlugin(): Plugin {
           try {
             const body = Buffer.concat(chunks).toString('utf8');
             const payload = JSON.parse(body || '{}');
-            const result = await executeNativeAction(payload);
+            const result = await executeNativeAction(payload, {
+              allowTerminal: payload?.allowTerminal === true,
+            });
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('X-Content-Type-Options', 'nosniff');
             res.statusCode = 200;
@@ -87,6 +93,9 @@ export default defineConfig(() => {
     // Keep production asset URLs relative so dist/index.html can be loaded by
     // Electron's file:// protocol as well as by a static web host.
     base: './',
+    define: {
+      __APP_VERSION__: JSON.stringify(packageVersion),
+    },
     plugins: [react(), tailwindcss(), nativeExecutionPlugin()],
     resolve: {
       alias: {

@@ -92,6 +92,28 @@ function normalizeProfile(input: unknown): JsonRecord {
     for (const [slot, assignment] of Object.entries(safeLayer)) {
       if (RESERVED_KEYS.has(slot)) continue;
       if (!isRecord(assignment)) throw makeError(`Profile layer ${index + 1} has an invalid ${slot} assignment`);
+      for (const field of ['label', 'binding', 'actionType', 'actionId', 'iconId', 'emoji']) {
+        if (assignment[field] !== undefined && typeof assignment[field] !== 'string') {
+          throw makeError(`Profile layer ${index + 1} has an invalid ${slot} ${field}`);
+        }
+      }
+      if (assignment.encoderActions !== undefined) {
+        if (!isRecord(assignment.encoderActions)) {
+          throw makeError(`Profile layer ${index + 1} has invalid ${slot} encoder actions`);
+        }
+        for (const direction of ['cw', 'press', 'ccw'] as const) {
+          const encoderAction = assignment.encoderActions[direction];
+          if (encoderAction === undefined) continue;
+          if (!isRecord(encoderAction)) {
+            throw makeError(`Profile layer ${index + 1} has an invalid ${slot} encoder ${direction} action`);
+          }
+          for (const field of ['label', 'binding']) {
+            if (encoderAction[field] !== undefined && typeof encoderAction[field] !== 'string') {
+              throw makeError(`Profile layer ${index + 1} has an invalid ${slot} encoder ${direction} ${field}`);
+            }
+          }
+        }
+      }
     }
     return safeLayer;
   });
@@ -130,7 +152,16 @@ function normalizeCustomItems(value: unknown): Record<CustomTab, JsonRecord[]> {
       if (item.id.length > 256) throw makeError(`Custom ${tab} item ${index + 1} has an id that is too long`);
       if (seen.has(item.id)) throw makeError(`Custom ${tab} items contain duplicate id "${item.id}"`);
       seen.add(item.id);
-      return copyJson(item) as JsonRecord;
+      const safeItem = copyJson(item) as JsonRecord;
+      if (typeof safeItem.main !== 'string' || !safeItem.main.trim()) {
+        throw makeError(`Custom ${tab} item ${index + 1} needs a non-empty name`);
+      }
+      for (const field of ['top', 'listLabel', 'macropadLabel', 'iconId', 'emoji', 'binding']) {
+        if (safeItem[field] !== undefined && typeof safeItem[field] !== 'string') {
+          throw makeError(`Custom ${tab} item ${index + 1} has an invalid ${field}`);
+        }
+      }
+      return safeItem;
     });
   }
   return result;
@@ -268,7 +299,19 @@ export function mergeImportedProfiles(
   current: Partial<ProfileFileState>,
   imported: ParsedProfileFile,
 ): ProfileFileState {
-  const currentProfiles = Array.isArray(current.profiles) ? current.profiles.map(normalizeProfile) : [];
+  const currentProfiles = Array.isArray(current.profiles)
+    ? current.profiles.map((profile) => {
+        // The editor allows a newly added profile to remain unnamed until the
+        // user edits its capsule. Keep that valid in-app state mergeable while
+        // still requiring imported profile files to have a name.
+        if (isRecord(profile) && typeof profile.name === 'string' && !profile.name.trim()) {
+          const normalized = normalizeProfile({ ...profile, name: 'Untitled Profile' });
+          normalized.name = profile.name;
+          return normalized;
+        }
+        return normalizeProfile(profile);
+      })
+    : [];
   const existingIndex = normalizeActiveIndex(current.activeProfileIndex, Math.max(currentProfiles.length, 1));
   const baseCustom = normalizeCustomItems(current.customItems);
   const importedCustom = normalizeCustomItems(imported.customItems);

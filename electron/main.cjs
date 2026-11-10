@@ -1,9 +1,10 @@
 // electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
-const { app, BrowserWindow, ipcMain, Menu, screen, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = require('electron');
 const { spawn, execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath, pathToFileURL } = require('url');
+const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
 
 let mainWindow = null;
 let psWorker = null;
@@ -54,6 +55,79 @@ function isTrustedRenderer(event) {
     frame?.isMainFrame &&
     isTrustedAppUrl(frame.url)
   );
+}
+
+const DEFAULT_APP_SETTINGS = Object.freeze({
+  allowAnalytics: false,
+  launchAtStartup: false,
+  allowTerminalSmartActions: false,
+  allowDeviceNotifications: false,
+});
+const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
+
+function getAppSettingsPath() {
+  return path.join(app.getPath('userData'), 'settings.v1.json');
+}
+
+function readStoredAppSettings() {
+  const settings = { ...DEFAULT_APP_SETTINGS };
+  try {
+    const stored = JSON.parse(fs.readFileSync(getAppSettingsPath(), 'utf8'));
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+      for (const key of ['allowAnalytics', 'allowTerminalSmartActions', 'allowDeviceNotifications']) {
+        if (typeof stored[key] === 'boolean') settings[key] = stored[key];
+      }
+    }
+  } catch {}
+  return settings;
+}
+
+function getSettingsCapabilities() {
+  return {
+    launchAtStartup: Boolean(
+      app.isPackaged &&
+      (process.platform === 'win32' || process.platform === 'darwin') &&
+      typeof app.setLoginItemSettings === 'function' &&
+      typeof app.getLoginItemSettings === 'function'
+    ),
+    firmwareFlash: typeof dialog.showOpenDialog === 'function',
+    externalLinks: typeof shell.openExternal === 'function',
+  };
+}
+
+function getNativeAppSettings() {
+  const capabilities = getSettingsCapabilities();
+  let launchAtStartup = false;
+  if (capabilities.launchAtStartup) {
+    try {
+      launchAtStartup = Boolean(app.getLoginItemSettings().openAtLogin);
+    } catch {}
+  }
+  return {
+    ok: true,
+    settings: { ...readStoredAppSettings(), launchAtStartup },
+    capabilities,
+  };
+}
+
+function writeStoredAppSettings(settings) {
+  const pathToSettings = getAppSettingsPath();
+  fs.mkdirSync(path.dirname(pathToSettings), { recursive: true });
+  fs.writeFileSync(pathToSettings, JSON.stringify(settings, null, 2), { mode: 0o600 });
+}
+
+function isAllowedExternalUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      url.hostname.toLowerCase() === 'github.com'
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isAllowedHardwareOrigin(origin) {
@@ -429,6 +503,115 @@ ipcMain.handle('get-app-version', (event) => {
   return isTrustedRenderer(event) ? app.getVersion() : null;
 });
 
+ipcMain.handle('get-app-settings', (event) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  try {
+    return getNativeAppSettings();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('set-app-setting', (event, key, value) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  if (!APP_SETTING_KEYS.has(key) || typeof value !== 'boolean') {
+    return { ok: false, error: 'Invalid app setting' };
+  }
+
+  try {
+    if (key === 'launchAtStartup') {
+      if (!getSettingsCapabilities().launchAtStartup) {
+        return { ok: false, error: 'Launch at startup is only supported by an installed Windows or macOS app' };
+      }
+      app.setLoginItemSettings({ openAtLogin: value, path: process.execPath });
+      return getNativeAppSettings();
+    }
+
+    const settings = { ...readStoredAppSettings(), [key]: value };
+    writeStoredAppSettings(settings);
+    return getNativeAppSettings();
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('open-external-url', async (event, rawUrl) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  if (!isAllowedExternalUrl(rawUrl)) {
+    return { ok: false, error: 'Only trusted HTTPS GitHub links can be opened from Settings' };
+  }
+  try {
+    await shell.openExternal(new URL(rawUrl).href);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('flash-uf2', async (event) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  if (!mainWindow || !getSettingsCapabilities().firmwareFlash) {
+    return { ok: false, error: 'Firmware flashing is unavailable in this desktop environment' };
+  }
+
+  try {
+    const firmwareSelection = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose Grid Macro 1 RP2040 firmware',
+      properties: ['openFile'],
+      filters: [{ name: 'RP2040 UF2 firmware', extensions: ['uf2'] }],
+    });
+    if (firmwareSelection.canceled || firmwareSelection.filePaths.length !== 1) {
+      return { ok: false, cancelled: true };
+    }
+
+    const firmwarePath = firmwareSelection.filePaths[0];
+    if (path.extname(firmwarePath).toLowerCase() !== '.uf2') {
+      return { ok: false, error: 'Choose a .uf2 firmware file' };
+    }
+    const firmware = await fs.promises.readFile(firmwarePath);
+    const validation = validateRp2040Uf2(firmware);
+    if (!validation.ok) return validation;
+
+    const bootloaderSelection = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose INFO_UF2.TXT on the mounted RPI-RP2 bootloader drive',
+      properties: ['openFile'],
+      filters: [{ name: 'RP2040 bootloader marker', extensions: ['txt'] }],
+    });
+    if (bootloaderSelection.canceled || bootloaderSelection.filePaths.length !== 1) {
+      return { ok: false, cancelled: true };
+    }
+
+    const markerPath = bootloaderSelection.filePaths[0];
+    if (path.basename(markerPath).toLowerCase() !== 'info_uf2.txt') {
+      return { ok: false, error: 'Select INFO_UF2.TXT from the mounted RPI-RP2 drive' };
+    }
+    const marker = await fs.promises.readFile(markerPath, 'utf8');
+    if (!/\bRPI-RP2\b/i.test(marker)) {
+      return { ok: false, error: 'That bootloader marker does not identify the RPI-RP2 drive' };
+    }
+
+    const destination = path.join(path.dirname(markerPath), 'firmware.uf2');
+    try {
+      await fs.promises.writeFile(destination, firmware, { flag: 'wx' });
+    } catch (error) {
+      if (error && error.code === 'EEXIST') {
+        return {
+          ok: false,
+          error: 'A firmware.uf2 file is already on that drive. Eject it, re-enter BOOTSEL mode, and try again.',
+        };
+      }
+      throw error;
+    }
+
+    return {
+      ok: true,
+      message: 'Firmware copied to the RPI-RP2 bootloader drive. The board should flash and reboot automatically; reconnect it after it returns to normal mode.',
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 // Sanitized & Safe Smart Action Execution (Open URL, Launch App, Safe Commands, Inject Keystrokes)
 ipcMain.handle('execute-smart-action', async (event, payload) => {
   if (!isTrustedRenderer(event)) {
@@ -487,6 +670,12 @@ ipcMain.handle('execute-smart-action', async (event, payload) => {
       }
       return { success: true, message: `Launched App: ${appTarget}` };
     } else if (type === 'Cmd') {
+      if (!readStoredAppSettings().allowTerminalSmartActions) {
+        return {
+          success: false,
+          error: 'Terminal commands are disabled in Settings. Enable them only for commands you trust.',
+        };
+      }
       // Command sanitization & execution protection
       const rawCmd = value.trim();
       // Block dangerous chaining operators when untrusted

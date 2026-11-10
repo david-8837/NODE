@@ -1,10 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AnimatePresence, motion, useMotionValue, useSpring } from 'motion/react';
+import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
+import {
+  APP_READY_EVENT,
+  getEntranceMotionProps,
+  getKeycapEntranceOptions,
+  type EntrancePhase,
+} from './entranceAnimations';
 import {
   GRID_MACRO_ENCODER_SLOT,
   GRID_MACRO_KEY_SLOTS,
   type GridMacroSlotId,
 } from './deviceLayout';
+import { clampMacropadOffsetToArea } from './macropadMovement';
+import { deviceKeymapFileTools } from './deviceKeymapFiles';
+import { PROFILE_FILE_STORAGE_KEY, profileFileTools } from './profileFiles';
+import {
+  APP_VERSION_FALLBACK,
+  createAppSettingsTools,
+  readAppSettings,
+  saveAppSettings,
+  type AppSettingKey,
+  type AppSettings,
+  type SettingsCapabilities,
+  type SupportLinkKey,
+} from './appSettings';
+import type { QmkViaStatus } from './qmkViaBridge';
 import {
   ChevronDown,
   ChevronUp,
@@ -13,6 +33,8 @@ import {
   X,
   Search,
 } from 'lucide-react';
+
+declare const __APP_VERSION__: string;
 
 type KeySlotId = GridMacroSlotId;
 
@@ -89,6 +111,14 @@ interface BasicTileItem {
   arrowDir?: 'right' | 'left' | 'down' | 'up';
   iconId?: string;
   emoji?: string;
+}
+
+type CustomItemsByTab = Record<Exclude<MappingTabId, 'Basic'>, BasicTileItem[]>;
+
+interface PersistedAppProfileState {
+  profiles: ProfileData[];
+  activeProfileIndex: number;
+  customItems: CustomItemsByTab;
 }
 
 type MultiGestureKey = 'onTap' | 'doubleTap' | 'onHold' | 'tapHold';
@@ -708,6 +738,110 @@ const INITIAL_PROFILES: ProfileData[] = [
   },
 ];
 
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeProfileForEditor(profile: ProfileData): ProfileData {
+  const defaultEncoder = INITIAL_LAYER_1[GRID_MACRO_ENCODER_SLOT];
+  const layers = profile.layers.map((layer) => {
+    const normalized = { ...INITIAL_LAYER_1, ...layer } as LayerKeymap;
+    for (const slot of GRID_MACRO_KEY_SLOTS) {
+      const incoming = layer[slot] as unknown;
+      normalized[slot] = {
+        ...INITIAL_LAYER_1[slot],
+        ...(isRecordValue(incoming) ? incoming : {}),
+      } as KeyAssignment;
+    }
+
+    const incomingEncoder = layer[GRID_MACRO_ENCODER_SLOT] as unknown;
+    const encoder = isRecordValue(incomingEncoder) ? incomingEncoder : {};
+    const incomingActions = encoder.encoderActions;
+    const encoderActions = isRecordValue(incomingActions) ? incomingActions : {};
+    const mergeEncoderAction = (direction: EncoderSubActionId): EncoderSubBinding => {
+      const fallback = defaultEncoder.encoderActions![direction];
+      const incoming = encoderActions[direction];
+      return {
+        ...fallback,
+        ...(isRecordValue(incoming) ? incoming : {}),
+      } as EncoderSubBinding;
+    };
+    normalized[GRID_MACRO_ENCODER_SLOT] = {
+      ...defaultEncoder,
+      ...encoder,
+      encoderActions: {
+        cw: mergeEncoderAction('cw'),
+        press: mergeEncoderAction('press'),
+        ccw: mergeEncoderAction('ccw'),
+      },
+    } as KeyAssignment;
+    return normalized;
+  });
+
+  return { ...profile, layers };
+}
+
+function normalizeCustomItemsForEditor(items: CustomItemsByTab): CustomItemsByTab {
+  const normalizeTab = (tab: Exclude<MappingTabId, 'Basic'>) =>
+    items[tab].map((item) => ({
+      ...item,
+      macropadLabel: item.macropadLabel?.trim() ? item.macropadLabel : item.main,
+    }));
+
+  return {
+    Action: normalizeTab('Action'),
+    'Multi-A': normalizeTab('Multi-A'),
+    'Smart-A': normalizeTab('Smart-A'),
+  };
+}
+
+function loadSavedProfileState(): PersistedAppProfileState | null {
+  if (typeof window === 'undefined' || !profileFileTools) return null;
+
+  try {
+    const text = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+    if (!text) return null;
+
+    const saved = JSON.parse(text) as Record<string, unknown>;
+    if (!saved || typeof saved !== 'object' || !Array.isArray(saved.profiles)) return null;
+    const savedProfiles = saved.profiles;
+
+    // New profiles may be saved before the user types a name. Validate the
+    // stored state with the same schema as imports, using a temporary display
+    // name and restoring the intentional blank name after validation.
+    const profilesForValidation = savedProfiles.map((profile) => {
+      if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return profile;
+      const candidate = profile as Record<string, unknown>;
+      return typeof candidate.name === 'string' && candidate.name.trim()
+        ? candidate
+        : { ...candidate, name: 'Untitled Profile' };
+    });
+    const parsed = profileFileTools.parse(JSON.stringify({
+      ...saved,
+      profiles: profilesForValidation,
+    }));
+
+    parsed.profiles.forEach((profile, index) => {
+      const original = savedProfiles[index];
+      if (!original || typeof original !== 'object' || Array.isArray(original)) return;
+      const originalName = (original as Record<string, unknown>).name;
+      if (typeof originalName === 'string' && !originalName.trim()) {
+        profile.name = originalName;
+      }
+    });
+
+    return {
+      profiles: (parsed.profiles as unknown as ProfileData[]).map(normalizeProfileForEditor),
+      activeProfileIndex: parsed.activeProfileIndex,
+      customItems: normalizeCustomItemsForEditor(
+        parsed.customItems as unknown as CustomItemsByTab
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
 const TIPS = [
   {
     lines: ['Actions can contain other', 'actions or smart-actions'],
@@ -740,9 +874,59 @@ const TIPS = [
 ];
 
 export default function App() {
+  const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotionRef = useRef(Boolean(prefersReducedMotion));
+  prefersReducedMotionRef.current = Boolean(prefersReducedMotion);
+  const [entrancePhase, setEntrancePhase] = useState<EntrancePhase>(() =>
+    typeof document !== 'undefined' &&
+    document.getElementById('root')?.classList.contains('is-ready')
+      ? 'complete'
+      : 'waiting'
+  );
+
+  useEffect(() => {
+    const beginEntrance = () => {
+      setEntrancePhase((phase) => {
+        if (phase !== 'waiting') return phase;
+        return prefersReducedMotionRef.current ? 'complete' : 'entering';
+      });
+    };
+
+    window.addEventListener(APP_READY_EVENT, beginEntrance);
+    if (document.getElementById('root')?.classList.contains('is-ready')) {
+      beginEntrance();
+    }
+    return () => window.removeEventListener(APP_READY_EVENT, beginEntrance);
+  }, []);
+
+  useEffect(() => {
+    if (entrancePhase !== 'entering') return;
+    const completionTimer = window.setTimeout(() => {
+      setEntrancePhase('complete');
+    }, 1900);
+    return () => window.clearTimeout(completionTimer);
+  }, [entrancePhase]);
+
+  useEffect(() => {
+    if (prefersReducedMotion && entrancePhase === 'entering') {
+      setEntrancePhase('complete');
+    }
+  }, [entrancePhase, prefersReducedMotion]);
+
   const [activeNav, setActiveNav] = useState<'Keymap' | 'Preset' | 'Settings'>('Keymap');
-  const [profiles, setProfiles] = useState<ProfileData[]>(INITIAL_PROFILES);
-  const [activeProfileIndex, setActiveProfileIndex] = useState(0);
+
+  useEffect(() => {
+    if (activeNav !== 'Keymap' && entrancePhase === 'entering') {
+      setEntrancePhase('complete');
+    }
+  }, [activeNav, entrancePhase]);
+  const [savedProfileState] = useState(loadSavedProfileState);
+  const [profiles, setProfiles] = useState<ProfileData[]>(
+    () => savedProfileState?.profiles ?? INITIAL_PROFILES
+  );
+  const [activeProfileIndex, setActiveProfileIndex] = useState(
+    () => savedProfileState?.activeProfileIndex ?? 0
+  );
   const [activeLayerIndex, setActiveLayerIndex] = useState(0);
   const [selectedKey, setSelectedKey] = useState<KeySlotId | null>(null);
   const [selectedEncoderSub, setSelectedEncoderSub] =
@@ -761,13 +945,9 @@ export default function App() {
   const [expandedListSections, setExpandedListSections] = useState<Record<string, boolean>>({});
 
   // Custom created items for Action, Multi-A, Smart-A
-  const [customItemsByTab, setCustomItemsByTab] = useState<
-    Record<Exclude<MappingTabId, 'Basic'>, BasicTileItem[]>
-  >({
-    Action: [],
-    'Multi-A': [],
-    'Smart-A': [],
-  });
+  const [customItemsByTab, setCustomItemsByTab] = useState<CustomItemsByTab>(
+    () => savedProfileState?.customItems ?? { Action: [], 'Multi-A': [], 'Smart-A': [] }
+  );
   const [creatorModalTab, setCreatorModalTab] = useState<
     Exclude<MappingTabId, 'Basic'> | null
   >(null);
@@ -917,6 +1097,7 @@ export default function App() {
     y: 0,
   });
   const [isDraggingMacropad, setIsDraggingMacropad] = useState(false);
+  const macropadMoveUnitRef = useRef<HTMLDivElement | null>(null);
   const macropadDragRef = useRef<{
     startX: number;
     startY: number;
@@ -939,14 +1120,115 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Settings view state
-  const [allowAnalytics, setAllowAnalytics] = useState(false);
-  const [launchAtStartup, setLaunchAtStartup] = useState(false);
-  const [allowTerminalSmartActions, setAllowTerminalSmartActions] = useState(true);
-  const [allowDeviceNotifications, setAllowDeviceNotifications] = useState(true);
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+    const saved = readAppSettings();
+    return window.electronAPI?.setAppSetting
+      ? saved
+      : { ...saved, launchAtStartup: false };
+  });
+  const { allowAnalytics, launchAtStartup, allowTerminalSmartActions, allowDeviceNotifications } = appSettings;
+  const [settingsCapabilities, setSettingsCapabilities] = useState<SettingsCapabilities>({
+    launchAtStartup: false,
+    firmwareFlash: false,
+    externalLinks: true,
+  });
+  const [appVersion, setAppVersion] = useState(
+    typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : APP_VERSION_FALLBACK
+  );
+  const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
+  const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
+  const [deviceBackupSummary, setDeviceBackupSummary] = useState(
+    () => deviceKeymapFileTools?.latestSummary() ?? 'Device backup tools are unavailable'
+  );
+
+  useEffect(() => {
+    const bridge = window.macropad;
+    if (!bridge) {
+      setDeviceStatus({ state: 'unavailable', error: 'QMK/VIA device bridge is unavailable' });
+      return;
+    }
+
+    let active = true;
+    const unsubscribe = bridge.onStatus((status) => {
+      if (active) setDeviceStatus(status);
+    });
+    void bridge.getStatus().then((status) => {
+      if (active) setDeviceStatus(status);
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const settingsTools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+    void settingsTools.getDesktop().then((result) => {
+      if (!active || !result?.ok) return;
+      if (result.settings) setAppSettings(result.settings);
+      if (result.capabilities) setSettingsCapabilities(result.capabilities);
+    });
+    const getVersion = window.electronAPI?.getVersion;
+    if (getVersion) {
+      void getVersion().then((version) => {
+        if (active && typeof version === 'string' && version.trim()) setAppVersion(version);
+      }).catch(() => undefined);
+    }
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    saveAppSettings(appSettings);
+  }, [appSettings]);
+
+  useEffect(() => {
+    const bridge = window.macropad;
+    if (
+      !bridge ||
+      !allowDeviceNotifications ||
+      typeof window.Notification === 'undefined' ||
+      window.Notification.permission !== 'granted'
+    ) return;
+
+    return bridge.onEvent((event) => {
+      if (!isRecordValue(event)) return;
+      const type = event.type;
+      if (type !== 'connect' && type !== 'disconnect') return;
+      const title = type === 'connect' ? 'Device connected' : 'Device disconnected';
+      const body = type === 'connect'
+        ? `${typeof event.device === 'string' ? event.device : 'Grid Macro 1'} is ready`
+        : 'The Grid Macro 1 was disconnected';
+      try {
+        new window.Notification(title, { body });
+      } catch {
+        // Notification permission may be revoked by the OS after the setting is enabled.
+      }
+    });
+  }, [allowDeviceNotifications]);
 
   // Undo / Redo stacks
   const [history, setHistory] = useState<ProfileData[][]>([]);
   const [redoStack, setRedoStack] = useState<ProfileData[][]>([]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        PROFILE_FILE_STORAGE_KEY,
+        JSON.stringify({
+          v: 1,
+          profiles,
+          activeProfileIndex,
+          customItems: customItemsByTab,
+        })
+      );
+    } catch {
+      // Keep in-memory profile editing usable if browser storage is unavailable.
+    }
+  }, [profiles, activeProfileIndex, customItemsByTab]);
 
   // Hardware layout and demonstration mode
   const [encoderAngle, setEncoderAngle] = useState(45);
@@ -1005,10 +1287,161 @@ export default function App() {
     }, 2200);
   };
 
+  const refreshDeviceBackupSummary = () => {
+    setDeviceBackupSummary(
+      deviceKeymapFileTools?.latestSummary() ?? 'Device backup tools are unavailable'
+    );
+  };
+
+  const handleAppSettingChange = async (key: AppSettingKey, value: boolean) => {
+    const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+    const result = await tools.set(key, value);
+    if (!result.ok || !result.settings) {
+      showToast(result.error || 'Could not save this setting');
+      return;
+    }
+    setAppSettings(result.settings);
+    if (result.capabilities) setSettingsCapabilities(result.capabilities);
+    if (key === 'allowAnalytics' && value) {
+      showToast('Preference saved; this build does not send analytics');
+    } else if (key === 'allowTerminalSmartActions') {
+      showToast(value
+        ? 'Terminal commands enabled. Only run commands you trust.'
+        : 'Terminal command execution disabled');
+    }
+  };
+
+  const handleOpenSupportLink = async (key: SupportLinkKey, label: string) => {
+    const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+    const result = await tools.openSupport(key);
+    showToast(result.ok ? `Opening ${label}` : result.error || `Could not open ${label}`);
+  };
+
+  const handleCheckFirmwareUpdate = async () => {
+    setFirmwareCheckPending(true);
+    try {
+      const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+      const result = await tools.checkFirmware();
+      const installedVersion = deviceStatus.state === 'connected'
+        ? ` Connected device reports ${deviceStatus.fw || 'an unknown firmware version'}.`
+        : '';
+      showToast(`${result.message}${installedVersion}`);
+    } catch (error) {
+      showToast(`Firmware check failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setFirmwareCheckPending(false);
+    }
+  };
+
+  const handleAdvanceFlash = async () => {
+    const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+    const result = await tools.flashFirmware();
+    if (result.cancelled) return;
+    showToast(result.ok ? result.message || 'Firmware operation completed' : result.error || 'Firmware flashing failed');
+  };
+
+  const handleToggleDeviceConnection = async () => {
+    const bridge = window.macropad;
+    if (!bridge) {
+      showToast('QMK/VIA device bridge is unavailable');
+      return;
+    }
+
+    if (deviceStatus.state === 'connected') {
+      await bridge.disconnect();
+      setDeviceStatus({ state: 'disconnected' });
+      return;
+    }
+
+    try {
+      const nextStatus = await bridge.connect();
+      setDeviceStatus(nextStatus);
+      if (nextStatus.state !== 'connected' && nextStatus.error) {
+        showToast(nextStatus.error);
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleSaveDeviceBackup = async () => {
+    const bridge = window.macropad;
+    if (!bridge || deviceStatus.state !== 'connected' || !deviceKeymapFileTools) {
+      showToast('Connect a device before saving a keymap backup');
+      return;
+    }
+
+    try {
+      const current = await bridge.request({ cmd: 'get_config' });
+      if (!current.ok || !current.snapshot) {
+        showToast(`Device backup failed: ${current.error || 'no keymap snapshot returned'}`);
+        return;
+      }
+      const saved = deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot, {
+        device: deviceStatus.device,
+        firmware: deviceStatus.fw,
+      });
+      refreshDeviceBackupSummary();
+      showToast(
+        saved.ok
+          ? 'Saved device keymap backup locally'
+          : `Device backup failed: ${saved.error || 'storage failed'}`
+      );
+    } catch (error) {
+      showToast(`Device backup failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const handleDownloadDeviceBackup = () => {
+    if (!deviceKeymapFileTools) {
+      showToast('Device backup tools are unavailable');
+      return;
+    }
+    const result = deviceKeymapFileTools.downloadLatestBackup();
+    showToast(result.ok ? 'Downloaded device keymap backup' : result.error || 'No valid device backup is available');
+  };
+
+  const handleRestoreDeviceBackup = async () => {
+    const bridge = window.macropad;
+    if (!deviceKeymapFileTools || !bridge) {
+      showToast('QMK/VIA device backup tools are unavailable');
+      return;
+    }
+
+    const result = await deviceKeymapFileTools.restoreFromFile(bridge, {
+      device: deviceStatus.device,
+      firmware: deviceStatus.fw,
+    });
+    refreshDeviceBackupSummary();
+    showToast(
+      result.ok
+        ? `Restored ${result.changedMappings ?? 0} device mappings${
+            result.preRestoreBackupSaved ? '; pre-restore backup saved locally' : ''
+          }${result.warnings?.length ? `: ${result.warnings[0]}` : ''}`
+        : `${result.error || 'Device restore failed'}${
+            result.preRestoreBackupSaved ? '; current device keymap saved locally before restore' : ''
+          }`
+    );
+  };
+
   const pushState = (nextProfiles: ProfileData[]) => {
     setHistory((prev) => [...prev.slice(-19), profiles]);
     setRedoStack([]);
     setProfiles(nextProfiles);
+  };
+
+  const handleResetLocalConfig = () => {
+    if (!window.confirm('Reset all saved profiles and custom actions? This does not reset the physical device keymap.')) {
+      return;
+    }
+    setProfiles(JSON.parse(JSON.stringify(INITIAL_PROFILES)) as ProfileData[]);
+    setActiveProfileIndex(0);
+    setActiveLayerIndex(0);
+    setCustomItemsByTab({ Action: [], 'Multi-A': [], 'Smart-A': [] });
+    setHistory([]);
+    setRedoStack([]);
+    setLayerNames({});
+    showToast('Local profiles and custom actions reset; the physical device keymap was not changed');
   };
 
   const handleUndo = () => {
@@ -1226,87 +1659,80 @@ export default function App() {
     rawOffsetY: number
   ): { x: number; y: number } => {
     const container = keymapMainRef.current;
-    if (!container) return { x: rawOffsetX, y: rawOffsetY };
+    const moveUnit = macropadMoveUnitRef.current;
+    if (!container || !moveUnit) return { x: rawOffsetX, y: rawOffsetY };
 
     const rect = container.getBoundingClientRect();
-    const W = rect.width;
-    const H = rect.height;
-    if (W === 0 || H === 0) return { x: rawOffsetX, y: rawOffsetY };
-
-    // Reserve extra space on the right when the encoder's action capsule is open.
-    const encoderPopupOpen = selectedKey === GRID_MACRO_ENCODER_SLOT;
-    const halfPadLeft = 132;
-    const halfPadRight = encoderPopupOpen ? 300 : 132;
-    const halfPadTop = 100;
-    const halfPadBottom = 138; // includes "Edit layout" button underneath
-
-    // Safe blank-area bounds avoiding Top Bar (Profiles, Layers, Key Mapping) and Right Drawer
-    const topSafeY = layerToolbarOpen
-      ? layerLightingOpen
-        ? 152
-        : 148
-      : 112;
-    const bottomSafeY = H - 18;
-    const leftSafeX = 22;
-    const rightSafeX = mappingDrawerOpen ? W - 344 : W - 22;
-
-    const minOffsetX = leftSafeX + halfPadLeft - W / 2;
-    const maxOffsetX = Math.max(minOffsetX, rightSafeX - halfPadRight - W / 2);
-    const minOffsetY = topSafeY + halfPadTop - H / 2;
-    const maxOffsetY = Math.max(minOffsetY, bottomSafeY - halfPadBottom - H / 2);
-
-    let x = Math.min(maxOffsetX, Math.max(minOffsetX, rawOffsetX));
-    let y = Math.min(maxOffsetY, Math.max(minOffsetY, rawOffsetY));
-
-    // Avoid bottom-left "Tip:" text area (left: 0..275px, bottom: H-96..H)
-    const tipZoneRight = 275;
-    const tipZoneTop = H - 96;
-    const padLeftEdge = W / 2 + x - halfPadLeft;
-    const padBottomEdge = H / 2 + y + halfPadBottom;
-
-    if (padLeftEdge < tipZoneRight && padBottomEdge > tipZoneTop) {
-      const pushRightX = tipZoneRight + halfPadLeft - W / 2;
-      const pushUpY = tipZoneTop - halfPadBottom - H / 2;
-      const distRight = Math.abs(pushRightX - x);
-      const distUp = Math.abs(pushUpY - y);
-
-      if (distUp <= distRight && pushUpY >= minOffsetY) {
-        y = pushUpY;
-      } else if (pushRightX <= maxOffsetX) {
-        x = pushRightX;
-      } else {
-        y = Math.max(minOffsetY, pushUpY);
-      }
+    if (rect.width === 0 || rect.height === 0) {
+      return { x: rawOffsetX, y: rawOffsetY };
     }
 
-    // Avoid top-right "+" / stack button when drawer is closed (right: W-95..W, top: 0..115)
-    if (!mappingDrawerOpen) {
-      const plusZoneLeft = W - 96;
-      const plusZoneBottom = mappingStackExpanded ? 310 : 118;
-      const padRightEdge = W / 2 + x + halfPadRight;
-      const padTopEdge = H / 2 + y - halfPadTop;
-      if (padRightEdge > plusZoneLeft && padTopEdge < plusZoneBottom) {
-        const pushLeftX = plusZoneLeft - halfPadRight - W / 2;
-        const pushDownY = plusZoneBottom + halfPadTop - H / 2;
-        if (Math.abs(pushLeftX - x) < Math.abs(pushDownY - y)) {
-          x = Math.max(minOffsetX, pushLeftX);
-        } else {
-          y = Math.min(maxOffsetY, pushDownY);
-        }
-      }
+    const unitRect = moveUnit.getBoundingClientRect();
+    const unitWidth = moveUnit.offsetWidth || unitRect.width;
+    const unitHeight = moveUnit.offsetHeight || unitRect.height;
+    if (unitWidth === 0 || unitHeight === 0) {
+      return { x: rawOffsetX, y: rawOffsetY };
     }
 
-    return { x, y };
+    // Match the open canvas shown in the UI: below the toolbar, above the tip,
+    // and inside the side edges. Keep the drawer's occupied side out of bounds.
+    const movementArea = {
+      left: rect.left + 8,
+      right: rect.right - (mappingDrawerOpen ? 344 : 8),
+      top: rect.top + (layerToolbarOpen ? (layerLightingOpen ? 152 : 148) : 106),
+      bottom: rect.bottom - 132,
+    };
+
+    const halfUnitWidth = unitWidth / 2;
+    const halfUnitHeight = unitHeight / 2;
+    const isEncoderPopupOpen = selectedKey === GRID_MACRO_ENCODER_SLOT;
+
+    return clampMacropadOffsetToArea(
+      { x: rawOffsetX, y: rawOffsetY },
+      rect,
+      movementArea,
+      {
+        left: -Math.max(132, halfUnitWidth),
+        right: Math.max(isEncoderPopupOpen ? 300 : 132, halfUnitWidth),
+        top: -Math.max(100, halfUnitHeight),
+        bottom: Math.max(138, halfUnitHeight),
+      }
+    );
   };
 
-  // Re-clamp macropad position if drawer or toolbar opens/closes or window resizes
+  // Re-clamp against the visible canvas when its available space changes.
   useEffect(() => {
-    setMacropadOffset((prev) => clampMacropadOffset(prev.x, prev.y));
+    const container = keymapMainRef.current;
+    if (!container) return;
+
+    const reclampMacropad = () => {
+      setMacropadOffset((prev) => {
+        const next = clampMacropadOffset(prev.x, prev.y);
+        return next.x === prev.x && next.y === prev.y ? prev : next;
+      });
+    };
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(reclampMacropad);
+
+    resizeObserver?.observe(container);
+    if (macropadMoveUnitRef.current) {
+      resizeObserver?.observe(macropadMoveUnitRef.current);
+    }
+    window.addEventListener('resize', reclampMacropad);
+    reclampMacropad();
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', reclampMacropad);
+    };
   }, [
     mappingDrawerOpen,
     layerToolbarOpen,
     layerLightingOpen,
     selectedKey,
+    activeNav,
   ]);
 
   // Close Profile dropdown & Layer toolbar when tapping on any blank area outside them
@@ -1850,7 +2276,7 @@ export default function App() {
   const handleResetMacropadCenter = (e: React.MouseEvent) => {
     // Double-clicking on the black outer part returns the macropad to the center
     if ((e.target as HTMLElement).closest('button')) return;
-    setMacropadOffset({ x: 0, y: 0 });
+    setMacropadOffset(clampMacropadOffset(0, 0));
   };
 
   const handleStartMacropadKeyDrag = (
@@ -2243,19 +2669,18 @@ export default function App() {
 
   const handleExportProfile = (idx: number) => {
     const source = profiles[idx];
-    const dataStr =
-      'data:text/json;charset=utf-8,' +
-      encodeURIComponent(JSON.stringify(source, null, 2));
-    const a = document.createElement('a');
-    a.setAttribute('href', dataStr);
-    a.setAttribute(
-      'download',
-      `${source.name.toLowerCase().replace(/\s+/g, '-')}.json`
-    );
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    showToast(`Exported "${source.name}"`);
+    if (!source) return;
+    if (!profileFileTools) {
+      showToast('Profile export tools are unavailable');
+      return;
+    }
+
+    const result = profileFileTools.download(source, customItemsByTab);
+    if (!result.ok) {
+      showToast(`Profile export failed: ${result.error || 'unknown error'}`);
+      return;
+    }
+    showToast(`Exported "${source.name || 'Untitled Profile'}"`);
   };
 
   const handleAddProfile = () => {
@@ -2272,9 +2697,9 @@ export default function App() {
     setDeletingProfileId(null);
   };
 
-  const handleUpdateCurrentProfileName = (newName: string) => {
-    const next = profiles.map((p, idx) =>
-      idx === activeProfileIndex ? { ...p, name: newName } : p
+  const handleUpdateProfileName = (profileIndex: number, newName: string) => {
+    const next = profiles.map((profile, idx) =>
+      idx === profileIndex ? { ...profile, name: newName } : profile
     );
     setProfiles(next);
   };
@@ -2344,19 +2769,51 @@ export default function App() {
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   };
 
-  const handleImportProfile = () => {
-    const imported: ProfileData = {
-      id: `imported-${Date.now()}`,
-      name: 'Imported Profile',
-      color: '#0051ff',
-      layers: [JSON.parse(JSON.stringify(PRESET_LIBRARY[2].layerKeymap))],
-    };
-    const next = [...profiles, imported];
-    pushState(next);
-    setActiveProfileIndex(next.length - 1);
-    setActiveLayerIndex(0);
-    setProfileMenuOpen(false);
-    showToast('Imported profile configuration');
+  const handleImportProfile = async () => {
+    if (!profileFileTools) {
+      showToast('Profile import tools are unavailable');
+      return;
+    }
+
+    try {
+      const imported = await profileFileTools.pickFile();
+      if (!imported) return;
+
+      const merged = profileFileTools.merge(
+        {
+          profiles: profiles as unknown as Record<string, unknown>[],
+          activeProfileIndex,
+          customItems: customItemsByTab as unknown as Record<
+            'Action' | 'Multi-A' | 'Smart-A',
+            Record<string, unknown>[]
+          >,
+        },
+        imported
+      );
+      pushState(
+        (merged.profiles as unknown as ProfileData[]).map(normalizeProfileForEditor)
+      );
+      setCustomItemsByTab(
+        normalizeCustomItemsForEditor(
+          merged.customItems as unknown as CustomItemsByTab
+        )
+      );
+      setActiveProfileIndex(merged.activeProfileIndex);
+      setActiveLayerIndex(0);
+      setProfileMenuOpen(false);
+      setDeletingProfileId(null);
+      showToast(
+        `Imported ${imported.profiles.length} profile${
+          imported.profiles.length === 1 ? '' : 's'
+        } into this browser`
+      );
+    } catch (error) {
+      showToast(
+        `Profile import failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   };
 
   const filteredPresets = PRESET_LIBRARY.filter(
@@ -2379,9 +2836,17 @@ export default function App() {
   })).filter((sec) => sec.items.length > 0);
 
   return (
-    <div className="h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
+    <div className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
       {/* TOP NAVIGATION BAR */}
-      <header className="h-[38px] w-full bg-[#000000] flex items-center justify-between pl-[18px] pr-0 shrink-0 z-40">
+      <motion.header
+        {...getEntranceMotionProps(entrancePhase, {
+          delay: 0.03,
+          duration: 0.44,
+          offsetY: -12,
+          initialScale: 0.99,
+        })}
+        className="h-[38px] w-full bg-[#000000] flex items-center justify-between pl-[18px] pr-0 shrink-0 z-40"
+      >
         {/* Left Zone: Brand Logo + Undo/Redo */}
         <div className="flex items-center gap-[22px] shrink-0 min-w-[140px]">
           <button
@@ -2478,13 +2943,35 @@ export default function App() {
         </nav>
 
         {/* Right Zone: Device Connection Status */}
-        <div
-          className="h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 transition-colors bg-[#4a4a4a]"
-          title="Open the desktop app to connect a device"
+        <button
+          type="button"
+          onClick={handleToggleDeviceConnection}
+          disabled={deviceStatus.state === 'connecting'}
+          aria-label={
+            deviceStatus.state === 'connected'
+              ? 'Disconnect Grid Macro 1'
+              : 'Connect Grid Macro 1 via QMK/VIA'
+          }
+          title={
+            deviceStatus.state === 'connected'
+              ? `Firmware ${deviceStatus.fw ?? ''} on ${deviceStatus.path ?? 'USB'}`
+              : deviceStatus.state === 'unavailable'
+                ? 'WebHID unavailable; use Chrome or Edge over HTTPS or localhost'
+                : deviceStatus.error ?? 'Connect Grid Macro 1 using VIA Raw HID'
+          }
+          className={`h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 transition-colors cursor-pointer disabled:cursor-wait ${
+            deviceStatus.state === 'connected' ? 'bg-[#0051ff]' : 'bg-[#4a4a4a]'
+          }`}
         >
           <ChevronDown className="w-[13px] h-[13px] stroke-[2] text-white/95 shrink-0" />
           <span className="text-[12px] font-normal tracking-[0.01em] whitespace-nowrap">
-            Not connected
+            {deviceStatus.state === 'connected'
+              ? deviceStatus.device || 'Grid Macro 1'
+              : deviceStatus.state === 'searching'
+                ? 'Searching…'
+                : deviceStatus.state === 'connecting'
+                  ? 'Connecting…'
+                  : 'Not connected'}
           </span>
           <div className="h-[15px] w-[1px] bg-white/35" />
           <svg
@@ -2493,8 +2980,8 @@ export default function App() {
             viewBox="0 0 12 15"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            aria-label="USB Not connected"
-            className="opacity-50"
+            aria-label={`USB ${deviceStatus.state === 'connected' ? 'Connected' : 'Not connected'}`}
+            className={deviceStatus.state === 'connected' ? 'opacity-100' : 'opacity-50'}
           >
             <path
               d="M6 1.5V12M6 1.5L4.3 3.5H7.7L6 1.5ZM6 9.5L2.8 7.3V4.8M6 8.2L9.2 6V4.2"
@@ -2507,8 +2994,8 @@ export default function App() {
             <rect x="8.1" y="2.8" width="2.1" height="2.1" fill="white" />
             <circle cx="6" cy="12.5" r="1.5" fill="white" />
           </svg>
-        </div>
-      </header>
+        </button>
+      </motion.header>
 
       <AnimatePresence mode="wait">
         {/* ===================================================================== */}
@@ -2527,7 +3014,8 @@ export default function App() {
             {/* Sub-Header Controls Bar: Profiles (left), Layers (center), Key Mapping (right) */}
             <div className="w-full px-[27px] pt-[24px] grid grid-cols-3 items-start z-20 pointer-events-none">
             {/* LEFT: Profiles */}
-            <div
+            <motion.div
+              {...getEntranceMotionProps(entrancePhase, { delay: 0.12 })}
               ref={profileContainerRef}
               className="flex flex-col items-start relative pointer-events-auto w-fit"
             >
@@ -2585,15 +3073,12 @@ export default function App() {
                       fill={currentProfile.color}
                     />
                   </svg>
-                  <input
-                    type="text"
-                    value={currentProfile.name}
-                    onChange={(e) =>
-                      handleUpdateCurrentProfileName(e.target.value)
-                    }
-                    placeholder="Profile name..."
-                    className="w-full bg-transparent text-[#6a6a6a] placeholder:text-[#9c9c9c] text-[11.5px] font-medium truncate focus:outline-none"
-                  />
+                  <span
+                    title={currentProfile.name || 'Untitled Profile'}
+                    className="w-full text-[#6a6a6a] text-[11.5px] font-medium truncate"
+                  >
+                    {currentProfile.name || 'Untitled Profile'}
+                  </span>
                 </div>
 
                 <button
@@ -2691,13 +3176,13 @@ export default function App() {
                                   </button>
 
                                   {/* Profile Pill (Blue in our theme when active, White when inactive) */}
-                                  <button
+                                  <div
                                     onClick={() => {
                                       setActiveProfileIndex(idx);
                                       setActiveLayerIndex(0);
                                       setDeletingProfileId(null);
                                     }}
-                                    className={`flex-1 h-[27px] px-[10px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center gap-[6px] text-[11px] font-medium truncate transition-all cursor-pointer ${
+                                    className={`flex-1 h-[27px] min-w-0 px-[10px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center gap-[6px] text-[11px] font-medium transition-all cursor-text ${
                                       isSelected
                                         ? 'bg-[#0051ff] text-white'
                                         : 'bg-white text-[#444444] hover:bg-neutral-50'
@@ -2717,10 +3202,26 @@ export default function App() {
                                         />
                                       </svg>
                                     )}
-                                    <span className="truncate">
-                                      {prof.name || (isSelected ? '' : 'Untitled Profile')}
-                                    </span>
-                                  </button>
+                                    <input
+                                      type="text"
+                                      value={prof.name}
+                                      onChange={(event) =>
+                                        handleUpdateProfileName(idx, event.target.value)
+                                      }
+                                      onFocus={() => {
+                                        setActiveProfileIndex(idx);
+                                        setActiveLayerIndex(0);
+                                        setDeletingProfileId(null);
+                                      }}
+                                      aria-label={`Rename profile ${prof.name || idx + 1}`}
+                                      placeholder={isSelected ? 'Profile name...' : 'Untitled Profile'}
+                                      className={`min-w-0 flex-1 bg-transparent truncate focus:outline-none ${
+                                        isSelected
+                                          ? 'text-white placeholder:text-white/70'
+                                          : 'text-[#444444] placeholder:text-[#9c9c9c]'
+                                      }`}
+                                    />
+                                  </div>
 
                                   {/* Duplicate Profile */}
                                   <button
@@ -2820,10 +3321,11 @@ export default function App() {
                   )}
                 </AnimatePresence>
               </div>
-            </div>
+            </motion.div>
 
             {/* CENTER: Layers */}
-            <div
+            <motion.div
+              {...getEntranceMotionProps(entrancePhase, { delay: 0.19 })}
               ref={layersContainerRef}
               className="flex flex-col items-center relative pointer-events-auto justify-self-center"
             >
@@ -3370,11 +3872,14 @@ export default function App() {
                   </motion.div>
                 )}
               </AnimatePresence>
-            </div>
+            </motion.div>
 
             {/* RIGHT: Key Mapping */}
             {!mappingDrawerOpen ? (
-              <div className="flex flex-col items-end relative pointer-events-auto justify-self-end">
+              <motion.div
+                {...getEntranceMotionProps(entrancePhase, { delay: 0.26 })}
+                className="flex flex-col items-end relative pointer-events-auto justify-self-end"
+              >
                 <div className="flex items-center gap-[5px] text-[#666666] text-[12.5px] font-normal">
                   <button
                     onClick={() =>
@@ -3517,7 +4022,7 @@ export default function App() {
                       </motion.div>
                     )}
                 </div>
-              </div>
+              </motion.div>
             ) : (
               <div />
             )}
@@ -3526,15 +4031,21 @@ export default function App() {
           {/* CENTERPIECE: MOVABLE GRID MACRO 1 (3x3 KEYS + ONE ROTARY ENCODER) */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
             <motion.div
+              ref={macropadMoveUnitRef}
               animate={{ x: macropadOffset.x, y: macropadOffset.y }}
               transition={
                 isDraggingMacropad
                   ? { type: 'spring', stiffness: 650, damping: 42, mass: 0.5 }
-                  : { type: 'spring', stiffness: 320, damping: 30 }
+                  : { type: 'spring', stiffness: 320, damping: 40 }
               }
               className="flex flex-col items-center pointer-events-auto select-none"
             >
-              <div
+              <motion.div
+                {...getEntranceMotionProps(entrancePhase, {
+                  delay: 0.3,
+                  duration: 0.5,
+                  fadeOnly: true,
+                })}
                 onPointerDown={handleStartMacropadMove}
                 onDoubleClick={handleResetMacropadCenter}
                 className={
@@ -3551,10 +4062,17 @@ export default function App() {
                   onSelectKey={handleSelectKey}
                   onSelectEncoderSub={handleSelectEncoderSubAction}
                   onStartKeyDrag={handleStartMacropadKeyDrag}
+                  entrancePhase={entrancePhase}
                 />
-              </div>
+              </motion.div>
 
-              <button
+              <motion.button
+                {...getEntranceMotionProps(entrancePhase, {
+                  delay: 1.2,
+                  duration: 0.42,
+                  offsetY: 8,
+                  initialScale: 0.99,
+                })}
                 onClick={() => setSimulationMode((current) => !current)}
                 className="mt-[15px] h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
               >
@@ -3564,15 +4082,22 @@ export default function App() {
                   }`}
                 />
                 <span>{simulationMode ? 'Simulation on' : 'Simulation off'}</span>
-              </button>
+              </motion.button>
             </motion.div>
           </div>
 
           {/* BOTTOM-LEFT TIP WIDGET */}
-          <div className="px-[27px] pb-[24px] flex items-start">
+          <motion.div
+            {...getEntranceMotionProps(entrancePhase, {
+              delay: 0.35,
+              duration: 0.4,
+              fadeOnly: true,
+            })}
+            className="px-[27px] pb-[24px] flex items-start"
+          >
             <div
               onClick={() => setTipIndex((i) => (i + 1) % TIPS.length)}
-              className="flex items-start gap-[10px] cursor-pointer group min-h-[54px]"
+              className="flex items-start gap-[10px] cursor-pointer group h-[54px] shrink-0"
               title="Click for next tip"
             >
               <div className="pt-[3px] flex flex-col gap-[5px]">
@@ -3603,7 +4128,7 @@ export default function App() {
                 </AnimatePresence>
               </div>
             </div>
-          </div>
+          </motion.div>
 
           {/* =============================================================== */}
           {/* FULL-HEIGHT RIGHT KEY MAPPING DRAWER (FLUSH TO NAVBAR)          */}
@@ -6117,21 +6642,59 @@ export default function App() {
                   </h2>
                   <div className="divide-y divide-[#dadada] text-[10.5px]">
                     <div className="py-[7px] flex items-center justify-between">
-                      <span className="text-[#585858]">Device connected:</span>
+                      <span className="text-[#585858]">Device status:</span>
                       <span className="text-[#444444] font-medium">
-                        Grid Macro 1
+                        {deviceStatus.state === 'connected'
+                          ? deviceStatus.device || 'Grid Macro 1'
+                          : deviceStatus.state === 'connecting'
+                            ? 'Connecting…'
+                            : deviceStatus.state === 'searching'
+                              ? 'Searching…'
+                              : 'Not connected'}
                       </span>
                     </div>
                     <div className="py-[7px] flex items-center justify-between">
                       <span className="text-[#585858]">Firmware version:</span>
                       <span className="text-[#444444] font-medium tabular-nums">
-                        1.0.0
+                        {deviceStatus.state === 'connected' ? deviceStatus.fw || 'Unknown' : '—'}
                       </span>
+                    </div>
+                    <div className="pt-[7px] pb-[2px] flex flex-col gap-[5px]">
+                      <span className="text-[#585858]">Pre-sync device keymap backup</span>
+                      <span className="text-[#777777] leading-[1.35]" aria-live="polite">
+                        {deviceBackupSummary}
+                      </span>
+                      <div className="flex gap-[6px]">
+                        <button
+                          type="button"
+                          onClick={handleSaveDeviceBackup}
+                          disabled={deviceStatus.state !== 'connected'}
+                          className="h-[25px] px-[9px] rounded-full bg-white hover:bg-neutral-50 disabled:opacity-40 text-[10px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          Save backup
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadDeviceBackup}
+                          disabled={!deviceKeymapFileTools?.getLatestBackup()}
+                          className="h-[25px] px-[9px] rounded-full bg-white hover:bg-neutral-50 disabled:opacity-40 text-[10px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          Download backup
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRestoreDeviceBackup}
+                          disabled={deviceStatus.state !== 'connected'}
+                          className="h-[25px] px-[9px] rounded-full bg-white hover:bg-neutral-50 disabled:opacity-40 text-[10px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          Restore from file
+                        </button>
+                      </div>
                     </div>
                     <div className="pt-[7px] pb-[2px] flex items-center justify-between">
                       <span className="text-[#585858]">Input app version:</span>
                       <span className="text-[#444444] font-medium tabular-nums">
-                        1.0.2
+                        {appVersion}
                       </span>
                     </div>
                   </div>
@@ -6148,14 +6711,19 @@ export default function App() {
                       </span>
                       <SettingsSwitch
                         checked={allowAnalytics}
-                        onChange={() => setAllowAnalytics((v) => !v)}
+                        title="This build saves your consent preference but does not send analytics."
+                        onChange={() => void handleAppSettingChange('allowAnalytics', !allowAnalytics)}
                       />
                     </div>
                     <div className="py-[8px] flex items-center justify-between">
                       <span className="text-[#585858]">Launch app at startup</span>
                       <SettingsSwitch
                         checked={launchAtStartup}
-                        onChange={() => setLaunchAtStartup((v) => !v)}
+                        disabled={!settingsCapabilities.launchAtStartup}
+                        title={settingsCapabilities.launchAtStartup
+                          ? 'Start the installed app when you sign in'
+                          : 'Available only in the installed desktop app'}
+                        onChange={() => void handleAppSettingChange('launchAtStartup', !launchAtStartup)}
                       />
                     </div>
                     <div className="py-[8px] flex items-center justify-between">
@@ -6167,16 +6735,18 @@ export default function App() {
                       </span>
                       <SettingsSwitch
                         checked={allowTerminalSmartActions}
-                        onChange={() => setAllowTerminalSmartActions((v) => !v)}
+                        title="Terminal commands run on this computer. Enable only for trusted Smart Actions."
+                        onChange={() => void handleAppSettingChange('allowTerminalSmartActions', !allowTerminalSmartActions)}
                       />
                     </div>
                     <div className="pt-[8px] pb-[2px] flex items-center justify-between">
                       <span className="text-[#585858]">
-                        Allow notifications from device
+                        Notify on device connect/disconnect
                       </span>
                       <SettingsSwitch
                         checked={allowDeviceNotifications}
-                        onChange={() => setAllowDeviceNotifications((v) => !v)}
+                        title="Shows a system notification when the device connects or disconnects."
+                        onChange={() => void handleAppSettingChange('allowDeviceNotifications', !allowDeviceNotifications)}
                       />
                     </div>
                   </div>
@@ -6189,15 +6759,16 @@ export default function App() {
                     Support
                   </h2>
                   <div className="space-y-[7px]">
-                    {[
-                      'Help & Documentation',
-                      'Contact support',
-                      'Give feedback',
-                      'Release notes',
-                    ].map((label) => (
+                    {([
+                      { key: 'help', label: 'Help & Documentation' },
+                      { key: 'contact', label: 'Contact support' },
+                      { key: 'feedback', label: 'Give feedback' },
+                      { key: 'releaseNotes', label: 'Release notes' },
+                    ] as const).map(({ key, label }) => (
                       <button
+                        type="button"
                         key={label}
-                        onClick={() => showToast(`Opened ${label}`)}
+                        onClick={() => void handleOpenSupportLink(key, label)}
                         className="w-full h-[27px] rounded-full bg-white hover:bg-[#0051ff] text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
                       >
                         {label}
@@ -6212,10 +6783,13 @@ export default function App() {
                     <span>Device update</span>
                   </div>
                   <button
-                    onClick={() => showToast('Firmware 1.0.0 is up to date')}
-                    className="w-full h-[27px] rounded-full bg-white hover:bg-[#f59e0b] text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
+                    type="button"
+                    onClick={() => void handleCheckFirmwareUpdate()}
+                    disabled={firmwareCheckPending}
+                    title="Checks the published firmware release feed; it does not flash the device"
+                    className="w-full h-[27px] rounded-full bg-white hover:bg-[#f59e0b] disabled:opacity-50 text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-wait"
                   >
-                    Check firmware update
+                    {firmwareCheckPending ? 'Checking firmware…' : 'Check firmware update'}
                   </button>
                 </div>
 
@@ -6226,18 +6800,16 @@ export default function App() {
                   </div>
                   <div className="space-y-[7px]">
                     <button
-                      onClick={() => {
-                        pushState(INITIAL_PROFILES);
-                        setActiveProfileIndex(0);
-                        setActiveLayerIndex(0);
-                        showToast('Device config reset to factory default');
-                      }}
+                      type="button"
+                      onClick={handleResetLocalConfig}
                       className="w-full h-[27px] rounded-full bg-white hover:bg-[#e01b24] text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
                     >
-                      Reset device config
+                      Reset local config
                     </button>
                     <button
-                      onClick={() => showToast('Bootloader ready for advance flash')}
+                      type="button"
+                      onClick={() => void handleAdvanceFlash()}
+                      title="Copies a validated RP2040 UF2 to an already-mounted RPI-RP2 BOOTSEL drive in the desktop app"
                       className="w-full h-[27px] rounded-full bg-white hover:bg-[#e01b24] text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
                     >
                       Advance flash
@@ -6647,17 +7219,24 @@ function WarningTriangleIcon({ color }: { color: string }) {
 function SettingsSwitch({
   checked,
   onChange,
+  disabled = false,
+  title,
 }: {
   checked: boolean;
   onChange: () => void;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-disabled={disabled}
+      disabled={disabled}
+      title={title}
       onClick={onChange}
-      className={`w-[29px] h-[16px] rounded-full p-[2px] flex items-center transition-colors duration-200 cursor-pointer ${
+      className={`w-[29px] h-[16px] rounded-full p-[2px] flex items-center transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
         checked ? 'bg-[#000000] justify-end' : 'bg-[#b3b3b3] justify-start'
       }`}
     >
@@ -6670,118 +7249,116 @@ function SettingsSwitch({
   );
 }
 
+type PresetAppIconConfig = {
+  iconId?: string;
+  label: string;
+  background: string;
+  foreground: string;
+  iconMode?: 'fill' | 'stroke';
+};
+
+const PRESET_APP_ICON_CONFIGS: Record<string, PresetAppIconConfig> = {
+  chatgpt: { iconId: 'brand-openai', label: 'AI', background: 'linear-gradient(145deg, #20b98e, #087157)', foreground: '#ffffff', iconMode: 'stroke' },
+  vscode: { iconId: 'brand-vscode', label: 'VS', background: 'linear-gradient(145deg, #35b8ed, #0068b7)', foreground: '#ffffff', iconMode: 'stroke' },
+  github: { iconId: 'brand-github', label: 'GH', background: 'linear-gradient(145deg, #41454d, #17191e)', foreground: '#ffffff', iconMode: 'fill' },
+  terminal: { iconId: 'terminal', label: '>_', background: 'linear-gradient(145deg, #26384b, #101722)', foreground: '#a5f3c3', iconMode: 'stroke' },
+  docker: { iconId: 'brand-docker', label: 'D', background: 'linear-gradient(145deg, #43bdf0, #0878c9)', foreground: '#ffffff', iconMode: 'fill' },
+  chrome_devtools: { iconId: 'brand-chrome', label: 'C', background: 'linear-gradient(145deg, #424854, #20242c)', foreground: '#ffffff', iconMode: 'fill' },
+  photoshop: { iconId: 'brand-adobe-photoshop', label: 'Ps', background: 'linear-gradient(145deg, #06395a, #001e36)', foreground: '#45b8ff', iconMode: 'stroke' },
+  illustrator: { iconId: 'brand-adobe-illustrator', label: 'Ai', background: 'linear-gradient(145deg, #542100, #2b0800)', foreground: '#ffad35', iconMode: 'stroke' },
+  premiere: { iconId: 'brand-adobe-premiere', label: 'Pr', background: 'linear-gradient(145deg, #392d72, #18113e)', foreground: '#b9a8ff', iconMode: 'stroke' },
+  aftereffects: { iconId: 'brand-adobe-after-effects', label: 'Ae', background: 'linear-gradient(145deg, #342361, #171333)', foreground: '#d9a9ff', iconMode: 'stroke' },
+  davinci: { iconId: 'brand-davinciresolve', label: 'DR', background: 'linear-gradient(145deg, #343a46, #171b22)', foreground: '#ffffff', iconMode: 'fill' },
+  blender: { iconId: 'brand-blender', label: 'Bl', background: 'linear-gradient(145deg, #39576b, #182a39)', foreground: '#ff9a44', iconMode: 'fill' },
+  figma: { iconId: 'brand-figma', label: 'F', background: 'linear-gradient(145deg, #353535, #171717)', foreground: '#ffffff', iconMode: 'fill' },
+  framer: { iconId: 'brand-framer', label: 'F', background: 'linear-gradient(145deg, #25baff, #0751e7)', foreground: '#ffffff', iconMode: 'fill' },
+  canva: { label: 'C', background: 'linear-gradient(145deg, #00c4cc, #7134d8)', foreground: '#ffffff' },
+  audacity: { iconId: 'brand-audacity', label: 'Au', background: 'linear-gradient(145deg, #343b70, #171b37)', foreground: '#ffe36b', iconMode: 'fill' },
+  affinity: { label: 'A', background: 'linear-gradient(145deg, #6053b7, #14677a)', foreground: '#ffffff' },
+  excel: { label: 'X', background: 'linear-gradient(145deg, #20a366, #075b36)', foreground: '#ffffff' },
+  word: { label: 'W', background: 'linear-gradient(145deg, #3d8de6, #1557b0)', foreground: '#ffffff' },
+  powerpoint: { label: 'P', background: 'linear-gradient(145deg, #f17848, #b93c1f)', foreground: '#ffffff' },
+  notion: { iconId: 'brand-notion', label: 'N', background: 'linear-gradient(145deg, #ffffff, #e8e8e8)', foreground: '#171717', iconMode: 'fill' },
+  slack: { iconId: 'brand-slack', label: 'S', background: 'linear-gradient(145deg, #ffffff, #f0eaf2)', foreground: '#611f69', iconMode: 'fill' },
+  zoom: { iconId: 'brand-zoom', label: 'Z', background: 'linear-gradient(145deg, #55a5ff, #1674e8)', foreground: '#ffffff', iconMode: 'fill' },
+  obs: { iconId: 'brand-obsstudio', label: 'OBS', background: 'linear-gradient(145deg, #424a56, #17191f)', foreground: '#ffffff', iconMode: 'fill' },
+  discord: { iconId: 'brand-discord', label: 'D', background: 'linear-gradient(145deg, #8790ff, #4d58d7)', foreground: '#ffffff', iconMode: 'fill' },
+  spotify: { iconId: 'brand-spotify', label: 'S', background: 'linear-gradient(145deg, #47e184, #14a84e)', foreground: '#102117', iconMode: 'fill' },
+  windows: { iconId: 'brand-windows', label: '⊞', background: 'linear-gradient(145deg, #35a6ed, #0068bc)', foreground: '#ffffff', iconMode: 'fill' },
+};
+
+function getPresetAppIconPath(iconId: string): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return (
+    window as Window & { __MACRO_ICONS__?: { d?: Record<string, string> } }
+  ).__MACRO_ICONS__?.d?.[iconId];
+}
+
 function PresetAppIcon({ id }: { id: string }) {
-  switch (id) {
-    case 'chatgpt':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-white flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.06)] shrink-0">
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#111"
-            strokeWidth="1.7"
-          >
-            <path d="M12 3.5C9.5 3.5 7.5 5.2 7.2 7.5C5.2 8.1 3.8 9.9 3.8 12C3.8 14.2 5.2 16 7.2 16.5C7.6 18.8 9.5 20.5 12 20.5C14.5 20.5 16.5 18.8 16.8 16.5C18.8 15.9 20.2 14.1 20.2 12C20.2 9.8 18.8 8 16.8 7.5C16.4 5.2 14.5 3.5 12 3.5Z" />
-            <polygon points="12,8.2 15.3,10.1 15.3,13.9 12,15.8 8.7,13.9 8.7,10.1" />
-          </svg>
-        </div>
-      );
-    case 'framer':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-gradient-to-b from-[#25b8ff] to-[#0055ff] flex items-center justify-center shrink-0">
-          <svg width="14" height="18" viewBox="0 0 14 20" fill="white">
-            <path d="M1 1H13V7H7L1 1ZM1 7H7L13 13H1V7ZM1 13H7V19L1 13Z" />
-          </svg>
-        </div>
-      );
-    case 'figma':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-[#1e1e1e] flex items-center justify-center shrink-0">
-          <svg width="13" height="19" viewBox="0 0 14 21" fill="none">
-            <path
-              d="M3.5 21C5.43 21 7 19.43 7 17.5V14H3.5C1.57 14 0 15.57 0 17.5C0 19.43 1.57 21 3.5 21Z"
-              fill="#0ACF83"
-            />
-            <path
-              d="M0 10.5C0 8.57 1.57 7 3.5 7H7V14H3.5C1.57 14 0 12.43 0 10.5Z"
-              fill="#A259FF"
-            />
-            <path
-              d="M0 3.5C0 1.57 1.57 0 3.5 0H7V7H3.5C1.57 7 0 5.43 0 3.5Z"
-              fill="#F24E1E"
-            />
-            <path
-              d="M7 0H10.5C12.43 0 14 1.57 14 3.5C14 5.43 12.43 7 10.5 7H7V0Z"
-              fill="#FF7262"
-            />
-            <path
-              d="M14 10.5C14 12.43 12.43 14 10.5 14C8.57 14 7 12.43 7 10.5C7 8.57 8.57 7 10.5 7C12.43 7 14 8.57 14 10.5Z"
-              fill="#1ABCFE"
-            />
-          </svg>
-        </div>
-      );
-    case 'illustrator':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-[#330000] flex items-center justify-center shrink-0">
-          <span className="text-[#ff9a00] font-bold text-[13px] tracking-tight">
-            Ai
-          </span>
-        </div>
-      );
-    case 'photoshop':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-[#001e36] flex items-center justify-center shrink-0">
-          <span className="text-[#31a8ff] font-bold text-[13px] tracking-tight">
-            Ps
-          </span>
-        </div>
-      );
-    case 'premiere':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-[#00005b] flex items-center justify-center shrink-0">
-          <span className="text-[#9999ff] font-bold text-[13px] tracking-tight">
-            Pr
-          </span>
-        </div>
-      );
-    case 'blender':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-[#232323] flex items-center justify-center shrink-0">
-          <svg width="20" height="17" viewBox="0 0 24 20" fill="none">
-            <path
-              d="M9.5 3.5L16.5 7.5M5 9.5H15.5M14.5 13.5C14.5 16.26 12.04 18.5 9 18.5C5.96 18.5 3.5 16.26 3.5 13.5C3.5 10.74 5.96 8.5 9 8.5C12.04 8.5 14.5 10.74 14.5 13.5Z"
-              stroke="#f5792a"
-              strokeWidth="2.3"
-              strokeLinecap="round"
-            />
-            <circle cx="9" cy="13.5" r="2.4" fill="#2685e8" />
-          </svg>
-        </div>
-      );
-    case 'davinci':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-[#1b2028] flex items-center justify-center shrink-0">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="7.5" r="4" stroke="#29b6f6" strokeWidth="2.2" />
-            <circle cx="8.2" cy="14.5" r="4" stroke="#ffca28" strokeWidth="2.2" />
-            <circle cx="15.8" cy="14.5" r="4" stroke="#ef5350" strokeWidth="2.2" />
-          </svg>
-        </div>
-      );
-    case 'affinity':
-      return (
-        <div className="w-[30px] h-[30px] rounded-[7px] bg-[#75d957] flex items-center justify-center shrink-0">
-          <span className="text-[#111111] font-extrabold text-[19px] leading-none -mt-0.5">
-            a
-          </span>
-        </div>
-      );
-    default:
-      return null;
-  }
+  const config = PRESET_APP_ICON_CONFIGS[id] ?? {
+    label: '?',
+    background: 'linear-gradient(145deg, #515866, #20242c)',
+    foreground: '#ffffff',
+  };
+  const iconPath = config.iconId ? getPresetAppIconPath(config.iconId) : undefined;
+  const iconMode = config.iconMode ?? 'fill';
+
+  return (
+    <div
+      data-preset-icon={id}
+      aria-hidden="true"
+      className="w-[30px] h-[30px] flex items-center justify-center shrink-0 overflow-hidden"
+      style={{
+        borderRadius: '9px',
+        background: config.background,
+        color: config.foreground,
+        border: '1px solid rgba(255,255,255,0.22)',
+        boxShadow: '0 2px 7px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.18)',
+      }}
+    >
+      {iconPath ? (
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill={iconMode === 'fill' ? 'currentColor' : 'none'}
+          stroke={iconMode === 'stroke' ? 'currentColor' : 'none'}
+          strokeWidth={iconMode === 'stroke' ? 1.7 : 0}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d={iconPath} />
+        </svg>
+      ) : id === 'affinity' ? (
+        <svg
+          width="19"
+          height="19"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M4.5 19L10.4 5.8c.6-1.3 2.6-1.3 3.2 0L19.5 19M7.8 13.2h8.4" />
+        </svg>
+      ) : (
+        <span
+          className={`font-bold leading-none tracking-tight select-none ${
+            id === 'canva'
+              ? 'font-serif italic text-[18px]'
+              : id === 'affinity'
+                ? 'text-[18px]'
+                : ['excel', 'word', 'powerpoint'].includes(id)
+                  ? 'text-[14px]'
+                  : 'text-[12px]'
+          }`}
+        >
+          {config.label}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function EmptyKeyPlusIcon({
@@ -6847,6 +7424,7 @@ interface MacropadDeviceProps {
     slotId: KeySlotId,
     sub?: EncoderSubActionId
   ) => void;
+  entrancePhase?: EntrancePhase;
 }
 
 function MacropadDevice({
@@ -6859,6 +7437,7 @@ function MacropadDevice({
   onSelectKey,
   onSelectEncoderSub,
   onStartKeyDrag = () => {},
+  entrancePhase,
 }: MacropadDeviceProps) {
   const isEncoderOpen = selectedKey === GRID_MACRO_ENCODER_SLOT;
 
@@ -6890,24 +7469,42 @@ function MacropadDevice({
       <div className="w-[172px] bg-[#050505] rounded-[24px] p-[12px] flex flex-col items-center justify-center shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
         <div className="w-full bg-[#151515] rounded-[16px] p-[6px] flex flex-col gap-[6px]">
           <div className="grid grid-cols-3 gap-[3px] items-center h-[42px] w-full">
-            <div className="w-[42px] h-[42px] flex items-center justify-center select-none">
+            <motion.div
+              {...getEntranceMotionProps(entrancePhase, {
+                delay: 0.96,
+                duration: 0.4,
+                offsetY: 5,
+                initialScale: 0.98,
+              })}
+              className="w-[42px] h-[42px] flex items-center justify-center select-none"
+            >
               <span className="w-[5px] h-[5px] rounded-full bg-[#e8e8e8] shadow-[0_0_6px_rgba(255,255,255,0.85)]" />
-            </div>
+            </motion.div>
             <div className="w-[42px] h-[42px]" />
-            <div className="w-[42px] h-[42px] flex items-center justify-center">
+            <motion.div
+              {...getEntranceMotionProps(entrancePhase, {
+                delay: 0.96,
+                duration: 0.4,
+                offsetY: 5,
+                initialScale: 0.98,
+              })}
+              className="w-[42px] h-[42px] flex items-center justify-center"
+            >
               <FlatDialControl
                 selected={isEncoderOpen}
                 angle={encoderAngle}
                 title={`Dial: ${layer[GRID_MACRO_ENCODER_SLOT].binding}`}
                 onClick={() => onSelectKey(GRID_MACRO_ENCODER_SLOT)}
               />
-            </div>
+            </motion.div>
           </div>
 
           <div className="grid grid-cols-3 grid-rows-3 gap-[3px] place-items-center">
-            {GRID_MACRO_KEY_SLOTS.map((slotId) => (
+            {GRID_MACRO_KEY_SLOTS.map((slotId, index) => (
               <KeycapButton
                 key={slotId}
+                entrancePhase={entrancePhase}
+                entranceIndex={index}
                 slotId={slotId}
                 label={layer[slotId].label}
                 binding={layer[slotId].binding}
@@ -7170,6 +7767,8 @@ function EncoderPopupCapsule({
 }
 
 interface KeycapButtonProps {
+  entrancePhase?: EntrancePhase;
+  entranceIndex?: number;
   slotId: KeySlotId;
   label: string;
   binding: string;
@@ -7183,6 +7782,8 @@ interface KeycapButtonProps {
 }
 
 function KeycapButton({
+  entrancePhase,
+  entranceIndex,
   slotId,
   label,
   binding,
@@ -7197,9 +7798,17 @@ function KeycapButton({
   const isEmpty =
     !iconId && (!label || label === '—' || binding === 'blank');
   const isMultiWordCustom = !iconId && !isEmpty && label.length > 4;
+  const entranceProps =
+    entranceIndex === undefined
+      ? {}
+      : getEntranceMotionProps(
+          entrancePhase,
+          getKeycapEntranceOptions(entranceIndex)
+        );
 
   return (
-    <button
+    <motion.button
+      {...entranceProps}
       data-drop-slot={slotId}
       onPointerDown={onPointerDown}
       onClick={onClick}
@@ -7235,7 +7844,7 @@ function KeycapButton({
           {label}
         </span>
       )}
-    </button>
+    </motion.button>
   );
 }
 

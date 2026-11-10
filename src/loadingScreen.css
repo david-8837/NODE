@@ -1,0 +1,98 @@
+#app-loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 44%, rgb(52 54 58 / 42%), transparent 34%),
+    #111214;
+  color: #f4f3f0;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app-loading-screen.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 450ms;
+}
+
+.node-loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  transform: translateY(-2px);
+}
+
+.node-loading-content strong {
+  color: #f5f4f1;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  padding-left: 0.3em;
+}
+
+.node-loading-spinner {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-top-color: rgb(255 255 255 / 84%);
+  border-radius: 50%;
+  animation: node-loading-spin 900ms linear infinite;
+}
+
+.node-loading-spinner::after {
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 50%;
+  content: "";
+}
+
+.node-loading-label {
+  color: #a7a8aa;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+#root .app-shell::before {
+  position: absolute;
+  z-index: 999;
+  inset: 0;
+  background: #efefef;
+  content: "";
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#root.is-ready .app-shell::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes node-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app-loading-screen,
+  #root .app-shell::before {
+    transition-duration: 0.01ms !important;
+  }
+
+  .node-loading-spinner {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

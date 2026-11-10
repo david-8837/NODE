@@ -25,7 +25,7 @@
                 "tag": "button",
                 "attributes": {
                   "class": "flex items-center gap-[3px] text-white hover:opacity-90 transition-opacity focus:outline-none cursor-pointer px-[10px]",
-                  "title": "N\u00d8DE Studio"
+                  "title": "NØDE Studio"
                 },
                 "text": "",
                 "children": [
@@ -34,7 +34,7 @@
                     "attributes": {
                       "class": "font-bold text-[13px] tracking-[0.16em] text-white select-none leading-none"
                     },
-                    "text": "N\u00d8DE",
+                    "text": "NØDE",
                     "children": []
                   }
                 ]
@@ -170,10 +170,12 @@
             ]
           },
           {
-            "tag": "div",
+            "tag": "button",
             "attributes": {
-              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 transition-colors bg-[#4a4a4a]",
-              "title": "Open the desktop app to connect a device"
+              "aria-label": "Connect Grid Macro 1 via QMK/VIA",
+              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 transition-colors cursor-pointer disabled:cursor-wait bg-[#4a4a4a]",
+              "title": "WebHID unavailable; use Chrome or Edge over HTTPS or localhost",
+              "type": "button"
             },
             "text": "",
             "children": [
@@ -414,14 +416,12 @@
                             ]
                           },
                           {
-                            "tag": "input",
+                            "tag": "span",
                             "attributes": {
-                              "class": "w-full bg-transparent text-[#6a6a6a] placeholder:text-[#9c9c9c] text-[11.5px] font-medium truncate focus:outline-none",
-                              "placeholder": "Profile name...",
-                              "type": "text",
-                              "value": "Default Profile"
+                              "class": "w-full text-[#6a6a6a] text-[11.5px] font-medium truncate",
+                              "title": "Default Profile"
                             },
-                            "text": "",
+                            "text": "Default Profile",
                             "children": []
                           }
                         ]
@@ -555,7 +555,6 @@
                         "tag": "button",
                         "attributes": {
                           "class": "w-[26px] h-[26px] rounded-full border-[1.5px] text-[11.5px] font-medium flex items-center justify-center transition-colors duration-200 tabular-nums cursor-pointer bg-[#0051ff] border-[#0051ff] text-white",
-                          "style": "opacity: 1; transform: none;",
                           "tabindex": "0",
                           "title": "Layer 1"
                         },
@@ -1629,7 +1628,7 @@
               {
                 "tag": "div",
                 "attributes": {
-                  "class": "flex items-start gap-[10px] cursor-pointer group min-h-[54px]",
+                  "class": "flex items-start gap-[10px] cursor-pointer group h-[54px] shrink-0",
                   "title": "Click for next tip"
                 },
                 "text": "",

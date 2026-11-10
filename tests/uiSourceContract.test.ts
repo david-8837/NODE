@@ -15,6 +15,30 @@ describe('Embedded app regression checks', () => {
   const packageConfig = JSON.parse(
     fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')
   );
+  const loadingScript = fs.readFileSync(
+    path.join(process.cwd(), 'src/loadingScreen.ts'),
+    'utf-8'
+  );
+  const loadingStyles = fs.readFileSync(
+    path.join(process.cwd(), 'src/loadingScreen.css'),
+    'utf-8'
+  );
+  const appSource = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const entranceAnimations = fs.readFileSync(
+    path.join(process.cwd(), 'src/entranceAnimations.ts'),
+    'utf-8'
+  );
+  const macropadMovement = fs.readFileSync(
+    path.join(process.cwd(), 'src/macropadMovement.ts'),
+    'utf-8'
+  );
+  const embeddedEntranceRuntime = fs.readFileSync(
+    path.join(process.cwd(), 'src/embeddedEntranceRuntime.js'),
+    'utf-8'
+  ).trim();
+  const shippedInlineBundle = htmlContent.match(
+    /<script type="module">([\s\S]*?)<\/script>/
+  )?.[1] ?? '';
 
   it('prepares relative packaged assets and Windows Electron titlebar interaction', () => {
     expect(viteConfig).toContain("base: './'");
@@ -24,6 +48,103 @@ describe('Embedded app regression checks', () => {
     expect(htmlContent).toContain('-webkit-app-region: drag');
     expect(htmlContent).toContain('-webkit-app-region: no-drag');
     expect(htmlContent).toContain("document.documentElement.classList.add('grid-macro-ui')");
+  });
+
+  it('keeps the startup loader visible for at least four seconds before revealing the app', () => {
+    expect(htmlContent).toContain('id="app-loading-screen"');
+    expect(htmlContent).toContain('src="/src/loadingScreen.ts"');
+    expect(htmlContent).toContain('/src/loadingScreen.css');
+    expect(htmlContent).toContain('Loading your studio');
+    expect(loadingScript).toContain('const minimumVisibleMs = 4000');
+    expect(loadingScript).toContain('new MutationObserver');
+    expect(loadingScript).toContain('appRoot.childElementCount > 0');
+    expect(loadingScript).toContain('hidden || appRoot.childElementCount === 0');
+    expect(loadingScript).toContain("appRoot.classList.add('is-ready')");
+    expect(loadingStyles).toContain('#app-loading-screen.is-hidden');
+    expect(loadingScript).toContain('window.dispatchEvent(new Event(APP_READY_EVENT))');
+    expect(loadingStyles).toContain('#root.is-ready .app-shell::before');
+    expect(loadingStyles).toContain('transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1)');
+    expect(loadingStyles).toContain('@media (prefers-reduced-motion: reduce)');
+  });
+
+  it('stagger-animates the initial home screen once and respects reduced motion', () => {
+    expect(appSource).toContain('useReducedMotion()');
+    expect(appSource).toContain('window.addEventListener(APP_READY_EVENT, beginEntrance)');
+    expect(appSource).toContain('getEntranceMotionProps(entrancePhase');
+    expect(appSource).toContain('fadeOnly: true');
+    expect(appSource).toContain('delay: 0.35');
+    expect(appSource).toContain('entranceIndex={index}');
+    expect(appSource).toContain("setEntrancePhase('complete')");
+    expect(entranceAnimations).toContain('[0.22, 1, 0.36, 1]');
+    expect(entranceAnimations).toContain('0.58 + row * 0.11 + column * 0.035');
+    expect(entranceAnimations).toContain('initialScale: 0.975');
+    expect(shippedInlineBundle.endsWith(embeddedEntranceRuntime)).toBe(true);
+    expect(embeddedEntranceRuntime).toContain('node:app-ready');
+    expect(embeddedEntranceRuntime).toContain('prefers-reduced-motion: reduce');
+    expect(embeddedEntranceRuntime).toContain('0.58 + row * 0.11 + column * 0.035');
+  });
+
+  it('keeps the entire Macropad movement unit inside the open canvas in source and shipped app', () => {
+    expect(appSource).toContain('macropadMoveUnitRef');
+    expect(appSource).toContain('clampMacropadOffsetToArea');
+    expect(appSource).toContain('bottom: rect.bottom - 132');
+    expect(appSource).toContain('isEncoderPopupOpen ? 300 : 132');
+    expect(appSource).toContain('stiffness: 320, damping: 40');
+    expect(appSource).toContain('setMacropadOffset(clampMacropadOffset(0, 0))');
+    expect(appSource).toContain('new ResizeObserver(reclampMacropad)');
+    expect(macropadMovement).toContain('area.left');
+    expect(macropadMovement).toContain('area.right');
+    expect(macropadMovement).toContain('area.top');
+    expect(macropadMovement).toContain('area.bottom');
+    expect(shippedInlineBundle).toContain('rect.left+8');
+    expect(shippedInlineBundle).toContain('rect.bottom-132');
+    expect(shippedInlineBundle).toContain('offsetWidth');
+    expect(shippedInlineBundle).toContain('offsetHeight');
+    expect(shippedInlineBundle).toContain('l===`dial-tl`?240:95');
+    expect(shippedInlineBundle).toContain('It(Rn(0,0))');
+    expect(shippedInlineBundle).toContain('mass:.5}:{type:`spring`,stiffness:320,damping:40}');
+  });
+
+  it('edits profile names inside their capsules and keeps the top field display-only', () => {
+    expect(appSource).toContain('handleUpdateProfileName(idx, event.target.value)');
+    expect(appSource).toContain("title={currentProfile.name || 'Untitled Profile'}");
+    expect(appSource).toContain('aria-label={`Rename profile ${prof.name || idx + 1}`}');
+    expect(shippedInlineBundle).toContain('rr=(e,t=a)=>');
+    expect(shippedInlineBundle).toContain('Rename profile ${e.name||t+1}');
+  });
+
+  it('refreshes every preset app badge in source and shipped library views', () => {
+    const presetIconIds = [
+      'chatgpt', 'vscode', 'github', 'terminal', 'docker', 'chrome_devtools', 'photoshop',
+      'illustrator', 'premiere', 'aftereffects', 'davinci', 'blender', 'figma', 'framer',
+      'canva', 'audacity', 'affinity', 'excel', 'word', 'powerpoint', 'notion', 'slack',
+      'zoom', 'obs', 'discord', 'spotify', 'windows',
+    ];
+    const sourcePresetIcons = appSource.slice(
+      appSource.indexOf('const PRESET_APP_ICON_CONFIGS'),
+      appSource.indexOf('function getPresetAppIconPath')
+    );
+    const shippedPresetIcons = shippedInlineBundle.slice(
+      shippedInlineBundle.indexOf('function Bd({id:e})'),
+      shippedInlineBundle.indexOf('function Vd({size:e=16')
+    );
+
+    expect(appSource).toContain('data-preset-icon={id}');
+    expect(shippedInlineBundle).toContain('data-preset-icon');
+    expect(sourcePresetIcons).not.toBe('');
+    expect(shippedPresetIcons).not.toBe('');
+    for (const id of presetIconIds) {
+      expect(sourcePresetIcons).toContain(`${id}:`);
+      expect(shippedPresetIcons).toContain(`${id}:{`);
+    }
+    expect(appSource).toContain('getPresetAppIconPath(config.iconId)');
+    expect(shippedInlineBundle).toContain('window.__MACRO_ICONS__?.d?.[t.icon]');
+  });
+
+  it('keeps the Tip widget height fixed while its text rotates', () => {
+    expect(appSource).toContain('group h-[54px] shrink-0');
+    expect(appSource).not.toContain('group min-h-[54px]');
+    expect(shippedInlineBundle).toContain('group h-[54px] shrink-0');
   });
 
   it('adapts the desktop geometry only at constrained window sizes', () => {
@@ -111,6 +232,22 @@ describe('Embedded app regression checks', () => {
   it('should include Simulation Mode toggle and real-time PC action bridge trigger', () => {
     expect(htmlContent).toContain('/api/execute-action');
     expect(htmlContent).toContain('Simulation');
+  });
+
+  it('routes both app implementations through real profile and device backup file helpers', () => {
+    expect(appSource).toContain('profileFileTools.pickFile()');
+    expect(appSource).toContain('profileFileTools.merge(');
+    expect(appSource).toContain('profileFileTools.download(source, customItemsByTab)');
+    expect(appSource).toContain('deviceKeymapFileTools.downloadLatestBackup()');
+    expect(appSource).toContain('deviceKeymapFileTools.restoreFromFile(bridge');
+    expect(appSource).toContain('deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot');
+    expect(appSource).not.toContain("name: 'Imported Profile'");
+    expect(shippedInlineBundle).toContain('window.nodeStudioProfileFiles');
+    expect(shippedInlineBundle).toContain('await e.pickFile()');
+    expect(shippedInlineBundle).toContain('n.download(t,ae)');
+    expect(shippedInlineBundle).toContain('window.nodeStudioDeviceKeymapFiles?.restoreFromFile');
+    expect(shippedInlineBundle).toContain('window.nodeStudioDeviceKeymapFiles?.downloadLatestBackup');
+    expect(shippedInlineBundle).toContain('savePreSyncSnapshot(e.snapshot');
   });
 
   it('loads the stock VIA bridge, profile-file helpers, and local backup controls', () => {
