@@ -67,6 +67,22 @@ function isTrustedRenderer(event) {
   );
 }
 
+function getRendererTrustDiagnostics(event) {
+  const frame = event.senderFrame;
+  const senderUrl = event.sender?.getURL?.() || '';
+  return {
+    hasMainWindow: Boolean(mainWindow),
+    senderMatchesMainWindow: Boolean(mainWindow && event.sender === mainWindow.webContents),
+    hasSenderFrame: Boolean(frame),
+    senderFrameIsMain: frame?.isMainFrame ?? null,
+    senderFrameUrl: frame?.url || null,
+    senderUrl: senderUrl || null,
+    expectedAppUrl: getAppEntryUrl(),
+    senderFrameUrlTrusted: frame ? isTrustedAppUrl(frame.url) : false,
+    senderUrlTrusted: senderUrl ? isTrustedAppUrl(senderUrl) : false,
+  };
+}
+
 const DEFAULT_APP_SETTINGS = Object.freeze({
   allowAnalytics: false,
   launchAtStartup: false,
@@ -330,7 +346,8 @@ async function runPersistenceSmokeTest() {
       const result = await mainWindow.webContents.executeJavaScript(`(async () => {
         const setting = await window.electronAPI?.setAppSetting('allowTerminalSmartActions', true);
         if (!setting?.ok || setting.settings?.allowTerminalSmartActions !== true) {
-          throw new Error(setting?.error || 'Native Settings did not save the terminal-action preference');
+          const error = setting?.error || 'Native Settings did not save the terminal-action preference';
+          throw new Error(error + (setting?.diagnostics ? ' ' + JSON.stringify(setting.diagnostics) : ''));
         }
         window.localStorage.setItem('cm2.state.v2', ${JSON.stringify(serializedState)});
         const savedState = JSON.parse(window.localStorage.getItem('cm2.state.v2') || 'null');
@@ -601,7 +618,13 @@ ipcMain.handle('get-app-settings', (event) => {
 });
 
 ipcMain.handle('set-app-setting', (event, key, value) => {
-  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  if (!isTrustedRenderer(event)) {
+    return {
+      ok: false,
+      error: 'Untrusted renderer',
+      ...(isPersistenceSmokeTest() ? { diagnostics: getRendererTrustDiagnostics(event) } : {}),
+    };
+  }
   if (!APP_SETTING_KEYS.has(key) || typeof value !== 'boolean') {
     return { ok: false, error: 'Invalid app setting' };
   }
