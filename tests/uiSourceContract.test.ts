@@ -190,7 +190,7 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(electronMain).toContain("if (url.protocol !== 'file:') return false");
     expect(electronMain).toContain("process.platform === 'win32'");
     expect(electronMain).toContain('requestedPath.toLowerCase() === expectedPath.toLowerCase()');
-    expect(electronMain).toContain('frame?.isMainFrame');
+    expect(electronMain).toContain('frame?.parent === null');
   });
 
   it('smoke-tests the installed Windows UI, persists native/profile state, and verifies uninstall data retention', () => {

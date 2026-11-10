@@ -59,10 +59,12 @@ function isTrustedAppUrl(rawUrl) {
 
 function isTrustedRenderer(event) {
   const frame = event.senderFrame;
+  // WebFrameMain identifies the top frame with a null parent; `isMainFrame`
+  // is available in renderer process APIs, not on IPC's senderFrame object.
   return Boolean(
     mainWindow &&
     event.sender === mainWindow.webContents &&
-    frame?.isMainFrame &&
+    frame?.parent === null &&
     isTrustedAppUrl(frame.url)
   );
 }
@@ -74,7 +76,7 @@ function getRendererTrustDiagnostics(event) {
     hasMainWindow: Boolean(mainWindow),
     senderMatchesMainWindow: Boolean(mainWindow && event.sender === mainWindow.webContents),
     hasSenderFrame: Boolean(frame),
-    senderFrameIsMain: frame?.isMainFrame ?? null,
+    senderFrameIsMain: frame ? frame.parent === null : null,
     senderFrameUrl: frame?.url || null,
     senderUrl: senderUrl || null,
     expectedAppUrl: getAppEntryUrl(),
