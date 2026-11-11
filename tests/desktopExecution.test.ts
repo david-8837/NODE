@@ -125,6 +125,16 @@ describe('shared desktop action executor', () => {
     await executor.close();
   });
 
+  it('steps Windows display brightness by ten percent in either direction and clamps to 0–100', () => {
+    const brightnessFunction = POWERSHELL_WORKER_SCRIPT.match(/function Set-DisplayBrightness[\s\S]*?\n}/)?.[0] ?? '';
+
+    expect(brightnessFunction).toContain('$step = 10');
+    expect(brightnessFunction).toContain('$target = [Math]::Min(100, $current + $step)');
+    expect(brightnessFunction).toContain('$target = [Math]::Max(0, $current - $step)');
+    expect(brightnessFunction).toContain('if ($target -eq $current) { continue }');
+    expect(brightnessFunction).not.toContain('$levels');
+  });
+
   it('refuses all execution until Simulation is enabled, and cancels held input when disabled', async () => {
     let finishInput: ((value: { success: boolean }) => void) | undefined;
     const inputAdapter = {
