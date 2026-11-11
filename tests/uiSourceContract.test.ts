@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { PRESET_CATALOG } from '../src/presetCatalog';
-import { parseAssignedJson, presetBrandIconData } from './presetBrandIconData';
+import {
+  iconBootstrapData,
+  parseAssignedJson,
+  presetBrandIconData,
+  presetBrandIconPaths,
+} from './presetBrandIconData';
 
 describe('Production React source and legacy inline regression checks', () => {
   const htmlContent = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
@@ -16,6 +21,14 @@ describe('Production React source and legacy inline regression checks', () => {
   const backupSource = fs.readFileSync(path.join(process.cwd(), 'src/deviceKeymapFiles.ts'), 'utf-8');
   const viteConfig = fs.readFileSync(path.join(process.cwd(), 'vite.config.ts'), 'utf-8');
   const electronMain = fs.readFileSync(path.join(process.cwd(), 'electron/main.cjs'), 'utf-8');
+  const electronSecurityPolicy = fs.readFileSync(
+    path.join(process.cwd(), 'electron/securityPolicy.cjs'),
+    'utf-8'
+  );
+  const electronBrowserSmoke = fs.readFileSync(
+    path.join(process.cwd(), 'electron/browserSmoke.cjs'),
+    'utf-8'
+  );
   const windowsWorkflow = fs.readFileSync(
     path.join(process.cwd(), '.github/workflows/windows-installer.yml'),
     'utf-8'
@@ -32,6 +45,10 @@ describe('Production React source and legacy inline regression checks', () => {
     'utf-8'
   );
   const appSource = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const iconLibrarySource = fs.readFileSync(
+    path.join(process.cwd(), 'src/iconLibrary.ts'),
+    'utf-8'
+  );
   const appStyles = fs.readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
   const nativeExecutorSource = fs.readFileSync(path.join(process.cwd(), 'native-executor.ts'), 'utf-8');
   const desktopExecutorSource = fs.readFileSync(path.join(process.cwd(), 'electron/desktopExecution.cjs'), 'utf-8');
@@ -195,10 +212,11 @@ describe('Production React source and legacy inline regression checks', () => {
   });
 
   it('matches packaged Windows renderer URLs using case-insensitive file paths', () => {
-    expect(electronMain).toContain("if (url.protocol !== 'file:') return false");
-    expect(electronMain).toContain("process.platform === 'win32'");
-    expect(electronMain).toContain('requestedPath.toLowerCase() === expectedPath.toLowerCase()');
-    expect(electronMain).toContain('frame?.parent === null');
+    expect(electronSecurityPolicy).toContain("requestedUrl.protocol !== 'file:'");
+    expect(electronSecurityPolicy).toContain("platform === 'win32'");
+    expect(electronSecurityPolicy).toContain('requestedPath.toLowerCase() === expectedPath.toLowerCase()');
+    expect(electronSecurityPolicy).toContain('frame.parent === null');
+    expect(electronMain).toContain('isTrustedAppFrame(event.senderFrame)');
   });
 
   it('smoke-tests the installed Windows UI, persists native/profile state, and verifies uninstall data retention', () => {
@@ -211,7 +229,31 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(electronMain).toContain("app.setPath('userData', path.join(process.env.APPDATA, userDataDirectoryName))");
     expect(electronMain).toContain('settingsFilePath: getAppSettingsPath()');
     expect(electronMain).toContain("setAppSetting('allowTerminalSmartActions', true)");
+    expect(electronMain).toContain("setAppSetting('launchAtStartup', true)");
+    expect(electronMain).toContain('launchAtStartupRestored: true');
+    expect(electronMain).toContain('launchAtStartupCleanedUp: true');
     expect(electronMain).toContain('structuredExecutionRestored: true');
+    expect(electronMain).toContain('getIconPickerBrowserSmokeScript()');
+    expect(electronMain).toContain("on('will-frame-navigate'");
+    expect(electronMain).toContain('setPermissionRequestHandler');
+    expect(electronMain.match(/function isAllowedHardwareOrigin\(/g)).toHaveLength(1);
+    expect(electronMain).not.toContain("origin.startsWith('file:')");
+    expect(electronSecurityPolicy).toContain('isMainFrame === true');
+    expect(electronSecurityPolicy).toContain('APP_PERMISSIONS.has(permission)');
+    expect(electronBrowserSmoke).toContain('icons-data\\.js');
+    expect(electronBrowserSmoke).toContain('Browse all 8,507 icons');
+    expect(electronBrowserSmoke).toContain('brand airbnb');
+    expect(electronBrowserSmoke).toContain('emojiCatalog-');
+    expect(electronBrowserSmoke).toContain('function runIconPickerMemorySoak()');
+    expect(electronBrowserSmoke).toContain('performance.memory.usedJSHeapSize');
+    expect(electronBrowserSmoke).toContain('checkpoints.push');
+    expect(electronMain).toContain('getIconPickerMemorySoakScript()');
+    expect(electronMain).toContain('evaluateRendererHeapSoak(rawMemorySoakResult)');
+    expect(electronMain).toContain("appendSwitch('enable-precise-memory-info')");
+    expect(electronMain).toContain("appendSwitch('js-flags', '--expose-gc')");
+    expect(electronMain).toContain('getRendererProcessMemorySnapshot');
+    expect(windowsWorkflow).toContain('maxCheckpointGrowthBytes');
+    expect(windowsWorkflow).toContain('renderer process memory samples are missing');
     expect(windowsWorkflow).toContain('Install packaged app and capture responsive UI');
     expect(windowsWorkflow).toContain('NODE_GRID_VISUAL_SMOKE_DIAGNOSTICS');
     expect(windowsWorkflow).toContain('Verify installed-app Settings/profile persistence and uninstall behavior');
@@ -355,8 +397,31 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(legacyInlineBundle).not.toContain('children:`Device connected:`');
   });
 
-  it('should load the full 8,703 vector icon library via static public script', () => {
-    expect(htmlContent).toContain('src="/icons-data.js"');
+  it('ships only the preset icon bootstrap initially and retains on-demand full-catalog loading', () => {
+    expect(htmlContent).toContain('src="/icon-bootstrap.js"');
+    expect(htmlContent).not.toContain('src="/icons-data.js"');
+    expect(Object.keys(iconBootstrapData.d)).toHaveLength(140);
+    expect(iconBootstrapData.l).toHaveLength(140);
+
+    const startupPaths = {
+      ...iconBootstrapData.d,
+      ...presetBrandIconData.d,
+    };
+    const requiredPresetIcons = new Set([
+      ...Object.keys(presetBrandIconPaths),
+      ...PRESET_CATALOG.flatMap((preset) => [
+        ...preset.keys.map(({ iconId }) => iconId),
+        ...Object.values(preset.dial).map(({ iconId }) => iconId),
+      ]).filter((iconId): iconId is string => Boolean(iconId)),
+    ]);
+    for (const iconId of requiredPresetIcons) {
+      expect(startupPaths[iconId], `startup vector path for ${iconId}`).toBeTruthy();
+    }
+
+    expect(iconLibrarySource).toContain("new URL('icons-data.js', document.baseURI)");
+    expect(iconLibrarySource).toContain("script.async = true");
+    expect(mainSource).toContain('hasSavedIconOutsideStartupCatalog');
+
     const iconDataPath = path.join(process.cwd(), 'public', 'icons-data.js');
     expect(fs.existsSync(iconDataPath)).toBe(true);
     expect(fs.statSync(iconDataPath).size).toBeGreaterThan(6 * 1024 * 1024); // >6MB
@@ -371,8 +436,9 @@ describe('Production React source and legacy inline regression checks', () => {
   });
 
   it('loads genuine Canva, Affinity, and Microsoft Office logos before the React app', () => {
-    const iconLibraryScript = htmlContent.indexOf('src="/icons-data.js"');
+    const bootstrapScript = htmlContent.indexOf('src="/icon-bootstrap.js"');
     const presetBrandScript = htmlContent.indexOf('src="/preset-brand-icons.js"');
+    const fullIconLibraryScript = htmlContent.indexOf('src="/icons-data.js"');
     const reactEntry = htmlContent.indexOf('src="/src/main.tsx"');
     const expectedBrandIds = [
       'brand-canva',
@@ -382,8 +448,9 @@ describe('Production React source and legacy inline regression checks', () => {
       'brand-microsoft-powerpoint',
     ];
 
-    expect(iconLibraryScript).toBeGreaterThanOrEqual(0);
-    expect(presetBrandScript).toBeGreaterThan(iconLibraryScript);
+    expect(bootstrapScript).toBeGreaterThanOrEqual(0);
+    expect(fullIconLibraryScript).toBe(-1);
+    expect(presetBrandScript).toBeGreaterThan(bootstrapScript);
     expect(reactEntry).toBeGreaterThan(presetBrandScript);
     expect(presetBrandIconData.l.map(({ id }) => id)).toEqual(expectedBrandIds);
     for (const iconId of expectedBrandIds) {

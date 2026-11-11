@@ -22,6 +22,11 @@ export function parseAssignedJson<T>(source: string, assignment: string): T {
 const iconSource = readFileSync(join(process.cwd(), 'public/icons-data.js'), 'utf8');
 const iconJson = iconSource.slice(iconSource.indexOf('=') + 1, iconSource.lastIndexOf(';'));
 const iconLibrary = JSON.parse(iconJson) as IconLibrary;
+const bootstrapIconScript = readFileSync(join(process.cwd(), 'public/icon-bootstrap.js'), 'utf8');
+export const iconBootstrapData = parseAssignedJson<PresetBrandIconData>(
+  bootstrapIconScript,
+  'window.__MACRO_ICON_BOOTSTRAP__ = '
+);
 const brandIconScript = readFileSync(join(process.cwd(), 'public/preset-brand-icons.js'), 'utf8');
 export const presetBrandIconData = parseAssignedJson<PresetBrandIconData>(
   brandIconScript,

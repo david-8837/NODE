@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useMotionValue, useSpring } from 'motion/react';
 import {
   getEntranceMotionProps,
@@ -42,8 +42,8 @@ import {
   findIconMetadata,
   ICON_SEARCH_PAGE_SIZE,
   searchIconCatalog,
-  type IconLibrary,
 } from './iconCatalog';
+import { getMacroIconLibrary, loadFullMacroIconLibrary } from './iconLibrary';
 import {
   ChevronDown,
   ChevronUp,
@@ -54,6 +54,8 @@ import {
 } from 'lucide-react';
 
 declare const __APP_VERSION__: string;
+
+const LazyIconPickerPopover = lazy(() => import('./IconPickerPopover'));
 
 type KeySlotId = GridMacroSlotId;
 
@@ -917,7 +919,9 @@ export default function App() {
   const [iconPickerShowAll, setIconPickerShowAll] = useState(false);
   const [iconPickerPage, setIconPickerPage] = useState(0);
   const [selectableEmojiList, setSelectableEmojiList] = useState<EmojiCatalogEntry[]>([]);
-  const iconCatalog = useMemo(() => buildIconCatalog(getMacroIconLibrary()), []);
+  const [iconCatalog, setIconCatalog] = useState(() =>
+    buildIconCatalog(getMacroIconLibrary())
+  );
   const iconSearchResults = useMemo(
     () =>
       searchIconCatalog(
@@ -1522,6 +1526,17 @@ export default function App() {
     presetOs,
   ]);
 
+  const ensureIconCatalog = async () => {
+    try {
+      const library = await loadFullMacroIconLibrary();
+      setIconCatalog(buildIconCatalog(library));
+      return true;
+    } catch {
+      showToast('Could not load the icon choices');
+      return false;
+    }
+  };
+
   const ensureEmojiCatalog = async () => {
     if (selectableEmojiList.length > 0) return true;
     try {
@@ -1539,11 +1554,13 @@ export default function App() {
       setIconPickerOpen(false);
       return;
     }
+    if (iconPickerTab === 'Icon' && !(await ensureIconCatalog())) return;
     if (iconPickerTab === 'Emoji' && !(await ensureEmojiCatalog())) return;
     setIconPickerOpen(true);
   };
 
   const handleIconPickerTabChange = async (tab: 'Icon' | 'Emoji') => {
+    if (tab === 'Icon' && !(await ensureIconCatalog())) return;
     if (tab === 'Emoji' && !(await ensureEmojiCatalog())) return;
     setIconPickerTab(tab);
   };
@@ -4888,185 +4905,45 @@ export default function App() {
                       {/* ======================================================= */}
                       {/* SELECT ICON / EMOJI POPOVER DRAWER (Screenshot 2)       */}
                       {/* ======================================================= */}
-                      <AnimatePresence>
-                        {iconPickerOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                            transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
-                            className="absolute top-[68px] left-0 w-[216px] bg-[#efefef] rounded-[18px] p-[11px] shadow-[0_8px_28px_rgba(0,0,0,0.16)] border border-black/[0.06] z-50"
-                          >
-                            <div className="flex items-center justify-between mb-[10px]">
-                              <button
-                                onClick={() => setIconPickerOpen(false)}
-                                className="w-[22px] h-[22px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555555] hover:text-black transition-all cursor-pointer"
-                              >
-                                <X className="w-[13px] h-[13px] stroke-[1.8]" />
-                              </button>
-                              <span className="text-[11px] font-medium text-[#555555]">
-                                Select Icon
-                              </span>
-                              <div className="w-5" />
-                            </div>
-
-                            {/* Icon | Emoji Segmented Toggle */}
-                            <div className="h-[26px] rounded-full bg-white flex overflow-hidden mb-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-                              {(['Icon', 'Emoji'] as const).map((t) => (
-                                <button
-                                  key={t}
-                                  onClick={() => void handleIconPickerTabChange(t)}
-                                  className={`flex-1 h-full text-[10.5px] font-medium transition-colors cursor-pointer ${
-                                    iconPickerTab === t
-                                      ? 'bg-[#000000] text-white rounded-full'
-                                      : 'text-[#555555] hover:text-black'
-                                  }`}
-                                >
-                                  {t}
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Search Icon / Emoji */}
-                            <div className="h-[25px] rounded-full bg-white px-[9px] flex items-center gap-[5px] mb-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                              <Search className="w-[10px] h-[10px] text-[#666666] stroke-[2] shrink-0" />
-                              <input
-                                type="text"
-                                value={iconPickerSearch}
-                                onChange={(e) => {
-                                  setIconPickerSearch(e.target.value);
-                                  setIconPickerPage(0);
-                                }}
-                                placeholder={
-                                  iconPickerTab === 'Icon'
-                                    ? 'Search icon'
-                                    : 'Search emoji'
-                                }
-                                className="w-full bg-transparent text-[10px] text-[#333333] placeholder:text-[#a0a0a0] focus:outline-none"
-                              />
-                            </div>
-
-                            {/* Grid of Real Icons or Real Emojis */}
-                            <div className="bg-white rounded-[14px] p-[8px] h-[196px] overflow-y-auto list-accordion-scroll grid grid-cols-6 gap-[6px] content-start">
-                              {iconPickerTab === 'Icon' ? (
-                                iconSearchResults.icons.length > 0 ? (
-                                  iconSearchResults.icons.map((ic) => {
-                                    const isChosen = selectedIconId === ic.id;
-                                    return (
-                                      <button
-                                        key={ic.id}
-                                        onClick={() => {
-                                          setSelectedIconId(ic.id);
-                                          setSelectedEmoji(undefined);
-                                          setIconPickerOpen(false);
-                                        }}
-                                        title={ic.id}
-                                        aria-label={`Select icon ${ic.id.replaceAll('-', ' ')}`}
-                                        aria-pressed={isChosen}
-                                        className={`w-[26px] h-[26px] rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-                                          isChosen
-                                            ? 'bg-[#0051ff] text-white'
-                                            : 'bg-[#dcdcdc] text-[#444444] hover:bg-[#0051ff] hover:text-white'
-                                        }`}
-                                      >
-                                        <CustomPickerIcon id={ic.id} size={13} />
-                                      </button>
-                                    );
-                                  })
-                                ) : (
-                                  <p className="col-span-6 py-4 text-center text-[10px] text-[#777777]">
-                                    No icons found
-                                  </p>
-                                )
-                              ) : (
-                                selectableEmojiList
-                                  .filter(
-                                    (em) =>
-                                      !iconPickerSearch.trim() ||
-                                      em.keywords
-                                        .toLowerCase()
-                                        .includes(iconPickerSearch.toLowerCase()) ||
-                                      em.emoji.includes(iconPickerSearch)
-                                  )
-                                  .map((em) => {
-                                    const isChosen = selectedEmoji === em.emoji;
-                                    return (
-                                      <button
-                                        key={em.emoji}
-                                        onClick={() => {
-                                          setSelectedEmoji(em.emoji);
-                                          setSelectedIconId(undefined);
-                                          setIconPickerOpen(false);
-                                        }}
-                                        title={em.keywords.split(' ')[0]}
-                                        className={`w-[26px] h-[26px] rounded-full flex items-center justify-center text-[14px] transition-colors cursor-pointer ${
-                                          isChosen
-                                            ? 'bg-[#0051ff] text-white'
-                                            : 'bg-[#efefef] hover:bg-[#0051ff]'
-                                        }`}
-                                      >
-                                        {em.emoji}
-                                      </button>
-                                    );
-                                  })
-                              )}
-                            </div>
-                            {iconPickerTab === 'Icon' && (
-                              <div className="mt-[7px] flex min-h-[17px] items-center justify-between px-[3px]">
-                                {!iconPickerSearch.trim() && !iconPickerShowAll ? (
-                                  <button
-                                    onClick={() => {
-                                      setIconPickerShowAll(true);
-                                      setIconPickerPage(0);
-                                    }}
-                                    className="text-[9px] font-medium text-[#0051ff] hover:underline cursor-pointer"
-                                  >
-                                    Browse all {iconCatalog.length.toLocaleString()} icons
-                                  </button>
-                                ) : (
-                                  <>
-                                    <span className="text-[8px] text-[#777777]" aria-live="polite">
-                                      Showing{' '}
-                                      {iconSearchResults.total === 0
-                                        ? '0'
-                                        : `${(iconPickerPage * ICON_SEARCH_PAGE_SIZE + 1).toLocaleString()}–${Math.min(
-                                            (iconPickerPage + 1) * ICON_SEARCH_PAGE_SIZE,
-                                            iconSearchResults.total
-                                          ).toLocaleString()}`}{' '}
-                                      of {iconSearchResults.total.toLocaleString()}
-                                    </span>
-                                    <div className="flex items-center gap-[4px]">
-                                      {iconPickerPage > 0 && (
-                                        <button
-                                          aria-label="Previous icon results"
-                                          title="Previous icons"
-                                          onClick={() =>
-                                            setIconPickerPage((page) => Math.max(0, page - 1))
-                                          }
-                                          className="w-[18px] h-[18px] rounded-full text-[12px] text-[#555555] hover:bg-[#e8e8e8] cursor-pointer"
-                                        >
-                                          ‹
-                                        </button>
-                                      )}
-                                      {(iconPickerPage + 1) * ICON_SEARCH_PAGE_SIZE <
-                                        iconSearchResults.total && (
-                                        <button
-                                          aria-label="Next icon results"
-                                          title="Next icons"
-                                          onClick={() => setIconPickerPage((page) => page + 1)}
-                                          className="w-[18px] h-[18px] rounded-full text-[12px] text-[#555555] hover:bg-[#e8e8e8] cursor-pointer"
-                                        >
-                                          ›
-                                        </button>
-                                      )}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      <Suspense fallback={null}>
+                        <LazyIconPickerPopover
+                          open={iconPickerOpen}
+                          selectedIconId={selectedIconId}
+                          selectedEmoji={selectedEmoji}
+                          iconPickerTab={iconPickerTab}
+                          iconPickerSearch={iconPickerSearch}
+                          iconPickerShowAll={iconPickerShowAll}
+                          iconPickerPage={iconPickerPage}
+                          iconCatalogLength={iconCatalog.length}
+                          iconSearchResults={iconSearchResults}
+                          selectableEmojiList={selectableEmojiList}
+                          IconRenderer={CustomPickerIcon}
+                          onClose={() => setIconPickerOpen(false)}
+                          onTabChange={handleIconPickerTabChange}
+                          onSearchChange={(search) => {
+                            setIconPickerSearch(search);
+                            setIconPickerPage(0);
+                          }}
+                          onSelectIcon={(iconId) => {
+                            setSelectedIconId(iconId);
+                            setSelectedEmoji(undefined);
+                            setIconPickerOpen(false);
+                          }}
+                          onSelectEmoji={(emoji) => {
+                            setSelectedEmoji(emoji);
+                            setSelectedIconId(undefined);
+                            setIconPickerOpen(false);
+                          }}
+                          onBrowseAll={() => {
+                            setIconPickerShowAll(true);
+                            setIconPickerPage(0);
+                          }}
+                          onPreviousPage={() =>
+                            setIconPickerPage((page) => Math.max(0, page - 1))
+                          }
+                          onNextPage={() => setIconPickerPage((page) => page + 1)}
+                        />
+                      </Suspense>
                     </div>
 
                     {/* Notched Center Horizontal Divider Line */}
@@ -7946,11 +7823,6 @@ const PRESET_APP_ICON_CONFIGS: Record<string, PresetAppIconConfig> = {
   spotify: { iconId: 'brand-spotify', background: 'linear-gradient(145deg, #47e184, #14a84e)', foreground: '#102117', iconMode: 'fill' },
   windows: { iconId: 'brand-windows', background: 'linear-gradient(145deg, #35a6ed, #0068bc)', foreground: '#ffffff', iconMode: 'fill' },
 };
-
-function getMacroIconLibrary(): IconLibrary | undefined {
-  if (typeof window === 'undefined') return undefined;
-  return (window as Window & { __MACRO_ICONS__?: IconLibrary }).__MACRO_ICONS__;
-}
 
 function getPresetAppIconPath(iconId: string): string | undefined {
   return getMacroIconLibrary()?.d?.[iconId];
