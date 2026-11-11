@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { PRESET_CATALOG } from '../src/presetCatalog';
-import { presetBrandIconData } from './presetBrandIconData';
+import { parseAssignedJson, presetBrandIconData } from './presetBrandIconData';
 
 describe('Production React source and legacy inline regression checks', () => {
   const htmlContent = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
@@ -360,6 +360,14 @@ describe('Production React source and legacy inline regression checks', () => {
     const iconDataPath = path.join(process.cwd(), 'public', 'icons-data.js');
     expect(fs.existsSync(iconDataPath)).toBe(true);
     expect(fs.statSync(iconDataPath).size).toBeGreaterThan(6 * 1024 * 1024); // >6MB
+  });
+
+  it('parses supplemental icon data with Windows CRLF line endings', () => {
+    const windowsScript =
+      'window.__PRESET_BRAND_ICON_DATA__ = {"d":{},"l":[]};\r\nwindow.afterData = true;';
+    expect(
+      parseAssignedJson(windowsScript, 'window.__PRESET_BRAND_ICON_DATA__ = ')
+    ).toEqual({ d: {}, l: [] });
   });
 
   it('loads genuine Canva, Affinity, and Microsoft Office logos before the React app', () => {

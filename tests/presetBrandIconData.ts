@@ -8,15 +8,15 @@ type IconLibrary = {
 
 type PresetBrandIconData = Pick<IconLibrary, 'd' | 'l'>;
 
-function parseAssignedJson<T>(source: string, assignment: string): T {
+export function parseAssignedJson<T>(source: string, assignment: string): T {
   const assignmentIndex = source.indexOf(assignment);
   if (assignmentIndex < 0) throw new Error(`Missing ${assignment} in preset icon data`);
 
   const valueStart = assignmentIndex + assignment.length;
-  const valueEnd = source.indexOf(';\n', valueStart);
-  if (valueEnd < 0) throw new Error(`Unterminated ${assignment} in preset icon data`);
+  const terminator = /;\r?\n/.exec(source.slice(valueStart));
+  if (!terminator) throw new Error(`Unterminated ${assignment} in preset icon data`);
 
-  return JSON.parse(source.slice(valueStart, valueEnd)) as T;
+  return JSON.parse(source.slice(valueStart, valueStart + terminator.index)) as T;
 }
 
 const iconSource = readFileSync(join(process.cwd(), 'public/icons-data.js'), 'utf8');
