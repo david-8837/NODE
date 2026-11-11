@@ -385,5 +385,18 @@ describe('production React preset experience', () => {
     expect(groups[0]?.querySelector<HTMLButtonElement>('button')?.title).toContain('My personal action');
     expect(groups[1]?.textContent).toContain('ChatGPT');
     expect(groups[2]?.textContent).toContain('VS Code');
+
+    const listViewButton = mappingDrawer?.querySelector<HTMLButtonElement>('button[aria-label="List view"]');
+    const gridViewButton = mappingDrawer?.querySelector<HTMLButtonElement>('button[aria-label="Grid view"]');
+    expect(listViewButton?.getAttribute('aria-pressed')).toBe('false');
+    expect(gridViewButton?.getAttribute('aria-pressed')).toBe('true');
+    await click(listViewButton!);
+    const customGroup = mappingDrawer?.querySelector<HTMLElement>('[data-action-group="custom"]');
+    expect(customGroup?.querySelector('[data-action-view="list"]')).not.toBeNull();
+    expect(customGroup?.querySelector('[data-action-list-item]')).not.toBeNull();
+    expect(listViewButton?.getAttribute('aria-pressed')).toBe('true');
+    await click(gridViewButton!);
+    expect(customGroup?.querySelector('[data-action-view="grid"]')).not.toBeNull();
+    expect(gridViewButton?.getAttribute('aria-pressed')).toBe('true');
   });
 });

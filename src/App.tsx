@@ -3086,7 +3086,14 @@ export default function App() {
                 )}
               </div>
             )}
-            <div className="grid grid-cols-5 gap-[6px] content-start">
+            <div
+              data-action-view={mappingViewMode}
+              className={
+                mappingViewMode === 'grid'
+                  ? 'grid grid-cols-5 gap-[6px] content-start'
+                  : 'flex flex-col gap-[6px]'
+              }
+            >
               {group.items.map((item) => {
                 const isBeingDragged = draggedTile?.item.id === item.id;
                 const isFlashed = flashedTileId === item.id;
@@ -3102,17 +3109,25 @@ export default function App() {
                       backgroundColor: `${group.presetColor}1A`,
                     }
                   : undefined;
+                const listIconStyle = group.presetColor
+                  ? presetIconStyle
+                  : { color: '#666666', backgroundColor: '#f1f1f1' };
+                const listDescription = item.listLabel || item.top || item.macropadLabel;
+                const layoutClasses = mappingViewMode === 'grid'
+                  ? 'h-[54px] rounded-[10px] flex-col justify-center px-1 text-center'
+                  : 'w-full min-h-[48px] rounded-[10px] flex-row justify-start gap-[10px] px-[9px] text-left';
 
                 return (
                   <button
                     key={item.id}
                     data-preset-action-item={group.presetId ? item.id : undefined}
+                    data-action-list-item={mappingViewMode === 'list' ? item.id : undefined}
                     onPointerDown={(e) => handleStartTileDrag(e, item, tab)}
                     onClick={() => handleAssignTileFromDrawer(item)}
                     onDoubleClick={() => handleOpenCreatorEditor(tab, item)}
                     title={`${item.main} (Click or drag onto key, double-click to edit)`}
                     style={presetTileStyle}
-                    className={`h-[54px] rounded-[10px] border-[1.5px] flex flex-col items-center justify-center px-1 text-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${
+                    className={`border-[1.5px] flex items-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${layoutClasses} ${
                       isFlashed
                         ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
                         : isBeingDragged
@@ -3120,28 +3135,66 @@ export default function App() {
                           : 'bg-white hover:bg-[#fafafa] text-[#444444] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
                     }`}
                   >
-                    {item.iconId ? (
-                      <span
-                        data-preset-action-icon={group.presetId ?? undefined}
-                        className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
-                        style={presetIconStyle}
-                      >
-                        <CustomPickerIcon id={item.iconId} size={20} />
-                      </span>
-                    ) : item.emoji ? (
-                      <span
-                        className="text-[20px] leading-none"
-                        style={group.presetColor ? { color: group.presetColor } : undefined}
-                      >
-                        {item.emoji}
-                      </span>
+                    {mappingViewMode === 'grid' ? (
+                      item.iconId ? (
+                        <span
+                          data-preset-action-icon={group.presetId ?? undefined}
+                          className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
+                          style={presetIconStyle}
+                        >
+                          <CustomPickerIcon id={item.iconId} size={20} />
+                        </span>
+                      ) : item.emoji ? (
+                        <span
+                          className="text-[20px] leading-none"
+                          style={group.presetColor ? { color: group.presetColor } : undefined}
+                        >
+                          {item.emoji}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-[10px] leading-[1.2] whitespace-pre-line"
+                          style={group.presetColor ? { color: group.presetColor } : undefined}
+                        >
+                          {formatCustomTileText(item.main)}
+                        </span>
+                      )
                     ) : (
-                      <span
-                        className="text-[10px] leading-[1.2] whitespace-pre-line"
-                        style={group.presetColor ? { color: group.presetColor } : undefined}
-                      >
-                        {formatCustomTileText(item.main)}
-                      </span>
+                      <>
+                        <span
+                          className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0"
+                          style={listIconStyle}
+                        >
+                          {item.iconId ? (
+                            <span
+                              data-preset-action-icon={group.presetId ?? undefined}
+                              className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
+                              style={presetIconStyle}
+                            >
+                              <CustomPickerIcon id={item.iconId} size={20} />
+                            </span>
+                          ) : item.emoji ? (
+                            <span className="text-[20px] leading-none">{item.emoji}</span>
+                          ) : (
+                            <span className="text-[10px] leading-[1.2] whitespace-pre-line">
+                              {formatCustomTileText(item.main)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className="block truncate text-[11px] font-medium"
+                            style={group.presetColor ? { color: group.presetColor } : undefined}
+                          >
+                            {item.main}
+                          </span>
+                          {listDescription && listDescription !== item.main && (
+                            <span className="block truncate text-[9.5px] leading-[1.3] text-[#888888]">
+                              {listDescription}
+                            </span>
+                          )}
+                        </span>
+                      </>
                     )}
                   </button>
                 );
@@ -6531,6 +6584,7 @@ export default function App() {
                         <button
                           onClick={() => setMappingViewMode('list')}
                           aria-label="List view"
+                          aria-pressed={mappingViewMode === 'list'}
                           className={`flex-1 h-full rounded-l-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center transition-all cursor-pointer ${
                             mappingViewMode === 'list'
                               ? 'bg-[#000000] text-white'
@@ -6575,6 +6629,7 @@ export default function App() {
                         <button
                           onClick={() => setMappingViewMode('grid')}
                           aria-label="Grid view"
+                          aria-pressed={mappingViewMode === 'grid'}
                           className={`flex-1 h-full rounded-r-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center transition-all cursor-pointer ${
                             mappingViewMode === 'grid'
                               ? 'bg-[#000000] text-white'
