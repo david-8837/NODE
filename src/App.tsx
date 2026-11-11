@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
+import { AnimatePresence, motion, useMotionValue, useSpring } from 'motion/react';
 import {
-  APP_READY_EVENT,
   getEntranceMotionProps,
   getKeycapEntranceOptions,
   type EntrancePhase,
@@ -873,52 +872,9 @@ const TIPS = [
 ];
 
 export default function App() {
-  const prefersReducedMotion = useReducedMotion();
-  const prefersReducedMotionRef = useRef(Boolean(prefersReducedMotion));
-  prefersReducedMotionRef.current = Boolean(prefersReducedMotion);
-  const [entrancePhase, setEntrancePhase] = useState<EntrancePhase>(() =>
-    typeof document !== 'undefined' &&
-    document.getElementById('root')?.classList.contains('is-ready')
-      ? 'complete'
-      : 'waiting'
-  );
-
-  useEffect(() => {
-    const beginEntrance = () => {
-      setEntrancePhase((phase) => {
-        if (phase !== 'waiting') return phase;
-        return prefersReducedMotionRef.current ? 'complete' : 'entering';
-      });
-    };
-
-    window.addEventListener(APP_READY_EVENT, beginEntrance);
-    if (document.getElementById('root')?.classList.contains('is-ready')) {
-      beginEntrance();
-    }
-    return () => window.removeEventListener(APP_READY_EVENT, beginEntrance);
-  }, []);
-
-  useEffect(() => {
-    if (entrancePhase !== 'entering') return;
-    const completionTimer = window.setTimeout(() => {
-      setEntrancePhase('complete');
-    }, 1900);
-    return () => window.clearTimeout(completionTimer);
-  }, [entrancePhase]);
-
-  useEffect(() => {
-    if (prefersReducedMotion && entrancePhase === 'entering') {
-      setEntrancePhase('complete');
-    }
-  }, [entrancePhase, prefersReducedMotion]);
-
+  // Render the workspace directly; keep the loading screen to a simple spinner.
+  const entrancePhase: EntrancePhase = 'complete';
   const [activeNav, setActiveNav] = useState<'Keymap' | 'Preset' | 'Settings'>('Keymap');
-
-  useEffect(() => {
-    if (activeNav !== 'Keymap' && entrancePhase === 'entering') {
-      setEntrancePhase('complete');
-    }
-  }, [activeNav, entrancePhase]);
   const [savedProfileState] = useState(loadSavedProfileState);
   const [profiles, setProfiles] = useState<ProfileData[]>(
     () => savedProfileState?.profiles ?? INITIAL_PROFILES
@@ -3571,7 +3527,7 @@ export default function App() {
         </button>
       </motion.header>
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="wait" initial={false}>
         {/* ===================================================================== */}
         {/* 1. KEYMAP VIEW                                                        */}
         {/* ===================================================================== */}

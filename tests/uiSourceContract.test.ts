@@ -69,46 +69,42 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(viteConfig).toContain('test: /node_modules/');
   });
 
-  it('shows a brief NØDE-branded loading screen until the app is ready', () => {
+  it('uses a simple loading indicator and hides it as soon as the app mounts', () => {
     expect(htmlContent).toContain('id="app-loading-screen"');
     expect(htmlContent).toContain('role="status"');
     expect(htmlContent).toContain('src="/src/loadingScreen.ts"');
     expect(htmlContent).toContain('/src/loadingScreen.css');
-    expect(htmlContent).toContain('NØDE');
-    expect(htmlContent).toContain('GRID MACRO 1 STUDIO');
-    expect(htmlContent).toContain('Preparing your workspace');
-    expect((htmlContent.match(/class="node-loading-key(?: is-active)?"/g) ?? [])).toHaveLength(9);
-    expect(loadingScript).toContain('const minimumVisibleMs = 350');
+    expect(htmlContent).toContain('class="simple-loading-spinner"');
+    expect(htmlContent).toContain('Loading…');
+    expect(htmlContent).not.toContain('node-loading-key');
+    expect(htmlContent).not.toContain('Preparing your workspace');
     expect(loadingScript).toContain("loadingScreen.setAttribute('aria-busy', 'false')");
     expect(loadingScript).toContain('new MutationObserver');
-    expect(loadingScript).toContain('appRoot.childElementCount > 0');
-    expect(loadingScript).toContain('hidden || appRoot.childElementCount === 0');
-    expect(loadingScript).toContain("appRoot.classList.add('is-ready')");
+    expect(loadingScript).toContain('appRoot.childElementCount === 0');
+    expect(loadingScript).toContain("loadingScreen.classList.add('is-hidden')");
+    expect(loadingScript).not.toContain('minimumVisibleMs');
+    expect(loadingScript).not.toContain('setTimeout');
+    expect(loadingScript).not.toContain('APP_READY_EVENT');
     expect(loadingStyles).toContain('#app-loading-screen.is-hidden');
-    expect(loadingStyles).toContain('#08090d');
-    expect(loadingStyles).toContain('.node-loading-key.is-active');
-    expect(loadingStyles).toContain('@keyframes node-progress-sweep');
-    expect(loadingScript).toContain('window.dispatchEvent(new Event(APP_READY_EVENT))');
-    expect(loadingStyles).toContain('#root.is-ready .app-shell::before');
-    expect(loadingStyles).toContain('transition: opacity 320ms cubic-bezier(0.22, 1, 0.36, 1)');
+    expect(loadingStyles).toContain('background: #efefef');
+    expect(loadingStyles).toContain('.simple-loading-spinner');
+    expect(loadingStyles).toContain('@keyframes simple-loading-spin');
+    expect(loadingStyles).not.toContain('node-progress-sweep');
+    expect(loadingStyles).not.toContain('#root.is-ready .app-shell::before');
     expect(loadingStyles).toContain('@media (prefers-reduced-motion: reduce)');
   });
 
-  it('stagger-animates the initial home screen once and respects reduced motion', () => {
-    expect(appSource).toContain('useReducedMotion()');
-    expect(appSource).toContain('window.addEventListener(APP_READY_EVENT, beginEntrance)');
+  it('shows the workspace directly without a staged startup entrance', () => {
+    expect(appSource).toContain("const entrancePhase: EntrancePhase = 'complete';");
+    expect(appSource).not.toContain('APP_READY_EVENT');
+    expect(appSource).not.toContain('setEntrancePhase');
+    expect(appSource).not.toContain('useReducedMotion');
     expect(appSource).toContain('getEntranceMotionProps(entrancePhase');
-    expect(appSource).toContain('fadeOnly: true');
-    expect(appSource).toContain('delay: 0.35');
-    expect(appSource).toContain('entranceIndex={index}');
-    expect(appSource).toContain("setEntrancePhase('complete')");
-    expect(entranceAnimations).toContain('[0.22, 1, 0.36, 1]');
-    expect(entranceAnimations).toContain('0.58 + row * 0.11 + column * 0.035');
-    expect(entranceAnimations).toContain('initialScale: 0.975');
+    expect(appSource).toContain('<AnimatePresence mode="wait" initial={false}>');
+    expect(entranceAnimations).toContain("normalizedPhase === 'complete'");
+    expect(entranceAnimations).toContain('initial: false as const');
     expect(shippedInlineBundle.endsWith(embeddedEntranceRuntime)).toBe(true);
     expect(embeddedEntranceRuntime).toContain('node:app-ready');
-    expect(embeddedEntranceRuntime).toContain('prefers-reduced-motion: reduce');
-    expect(embeddedEntranceRuntime).toContain('0.58 + row * 0.11 + column * 0.035');
   });
 
   it('keeps the entire Macropad movement unit inside the open canvas in source and legacy app', () => {
