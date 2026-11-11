@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { PRESET_CATALOG } from '../src/presetCatalog';
+import { presetBrandIconData } from './presetBrandIconData';
 
 describe('Production React source and legacy inline regression checks', () => {
   const htmlContent = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
@@ -159,7 +160,11 @@ describe('Production React source and legacy inline regression checks', () => {
     for (const id of presetIconIds) {
       expect(sourcePresetIcons).toContain(`${id}:`);
       expect(shippedPresetIcons).toContain(`${id}:{`);
+      expect(sourcePresetIcons).toMatch(new RegExp(`${id}:\\s*\\{\\s*iconId:`));
+      expect(shippedPresetIcons).toMatch(new RegExp(`${id}:\\{icon:`));
     }
+    expect(sourcePresetIcons).not.toContain('label:');
+    expect(shippedPresetIcons).not.toContain('label:');
     expect(appSource).toContain('getPresetAppIconPath(config.iconId)');
     expect(shippedInlineBundle).toContain('window.__MACRO_ICONS__?.d?.[t.icon]');
   });
@@ -355,5 +360,26 @@ describe('Production React source and legacy inline regression checks', () => {
     const iconDataPath = path.join(process.cwd(), 'public', 'icons-data.js');
     expect(fs.existsSync(iconDataPath)).toBe(true);
     expect(fs.statSync(iconDataPath).size).toBeGreaterThan(6 * 1024 * 1024); // >6MB
+  });
+
+  it('loads genuine Canva, Affinity, and Microsoft Office logos before the React app', () => {
+    const iconLibraryScript = htmlContent.indexOf('src="/icons-data.js"');
+    const presetBrandScript = htmlContent.indexOf('src="/preset-brand-icons.js"');
+    const reactEntry = htmlContent.indexOf('src="/src/main.tsx"');
+    const expectedBrandIds = [
+      'brand-canva',
+      'brand-affinity',
+      'brand-microsoft-excel',
+      'brand-microsoft-word',
+      'brand-microsoft-powerpoint',
+    ];
+
+    expect(iconLibraryScript).toBeGreaterThanOrEqual(0);
+    expect(presetBrandScript).toBeGreaterThan(iconLibraryScript);
+    expect(reactEntry).toBeGreaterThan(presetBrandScript);
+    expect(presetBrandIconData.l.map(({ id }) => id)).toEqual(expectedBrandIds);
+    for (const iconId of expectedBrandIds) {
+      expect(presetBrandIconData.d[iconId]).toMatch(/^M/);
+    }
   });
 });

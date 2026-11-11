@@ -7911,41 +7911,40 @@ function SettingsSwitch({
 }
 
 type PresetAppIconConfig = {
-  iconId?: string;
-  label: string;
+  iconId: string;
   background: string;
   foreground: string;
-  iconMode?: 'fill' | 'stroke';
+  iconMode: 'fill' | 'stroke';
 };
 
 const PRESET_APP_ICON_CONFIGS: Record<string, PresetAppIconConfig> = {
-  chatgpt: { iconId: 'brand-openai', label: 'AI', background: 'linear-gradient(145deg, #20b98e, #087157)', foreground: '#ffffff', iconMode: 'stroke' },
-  vscode: { iconId: 'brand-vscode', label: 'VS', background: 'linear-gradient(145deg, #35b8ed, #0068b7)', foreground: '#ffffff', iconMode: 'stroke' },
-  github: { iconId: 'brand-github', label: 'GH', background: 'linear-gradient(145deg, #41454d, #17191e)', foreground: '#ffffff', iconMode: 'fill' },
-  terminal: { iconId: 'terminal', label: '>_', background: 'linear-gradient(145deg, #26384b, #101722)', foreground: '#a5f3c3', iconMode: 'stroke' },
-  docker: { iconId: 'brand-docker', label: 'D', background: 'linear-gradient(145deg, #43bdf0, #0878c9)', foreground: '#ffffff', iconMode: 'fill' },
-  chrome_devtools: { iconId: 'brand-chrome', label: 'C', background: 'linear-gradient(145deg, #424854, #20242c)', foreground: '#ffffff', iconMode: 'fill' },
-  photoshop: { iconId: 'brand-adobe-photoshop', label: 'Ps', background: 'linear-gradient(145deg, #06395a, #001e36)', foreground: '#45b8ff', iconMode: 'stroke' },
-  illustrator: { iconId: 'brand-adobe-illustrator', label: 'Ai', background: 'linear-gradient(145deg, #542100, #2b0800)', foreground: '#ffad35', iconMode: 'stroke' },
-  premiere: { iconId: 'brand-adobe-premiere', label: 'Pr', background: 'linear-gradient(145deg, #392d72, #18113e)', foreground: '#b9a8ff', iconMode: 'stroke' },
-  aftereffects: { iconId: 'brand-adobe-after-effects', label: 'Ae', background: 'linear-gradient(145deg, #342361, #171333)', foreground: '#d9a9ff', iconMode: 'stroke' },
-  davinci: { iconId: 'brand-davinciresolve', label: 'DR', background: 'linear-gradient(145deg, #343a46, #171b22)', foreground: '#ffffff', iconMode: 'fill' },
-  blender: { iconId: 'brand-blender', label: 'Bl', background: 'linear-gradient(145deg, #39576b, #182a39)', foreground: '#ff9a44', iconMode: 'fill' },
-  figma: { iconId: 'brand-figma', label: 'F', background: 'linear-gradient(145deg, #353535, #171717)', foreground: '#ffffff', iconMode: 'fill' },
-  framer: { iconId: 'brand-framer', label: 'F', background: 'linear-gradient(145deg, #25baff, #0751e7)', foreground: '#ffffff', iconMode: 'fill' },
-  canva: { label: 'C', background: 'linear-gradient(145deg, #00c4cc, #7134d8)', foreground: '#ffffff' },
-  audacity: { iconId: 'brand-audacity', label: 'Au', background: 'linear-gradient(145deg, #343b70, #171b37)', foreground: '#ffe36b', iconMode: 'fill' },
-  affinity: { label: 'A', background: 'linear-gradient(145deg, #6053b7, #14677a)', foreground: '#ffffff' },
-  excel: { label: 'X', background: 'linear-gradient(145deg, #20a366, #075b36)', foreground: '#ffffff' },
-  word: { label: 'W', background: 'linear-gradient(145deg, #3d8de6, #1557b0)', foreground: '#ffffff' },
-  powerpoint: { label: 'P', background: 'linear-gradient(145deg, #f17848, #b93c1f)', foreground: '#ffffff' },
-  notion: { iconId: 'brand-notion', label: 'N', background: 'linear-gradient(145deg, #ffffff, #e8e8e8)', foreground: '#171717', iconMode: 'fill' },
-  slack: { iconId: 'brand-slack', label: 'S', background: 'linear-gradient(145deg, #ffffff, #f0eaf2)', foreground: '#611f69', iconMode: 'fill' },
-  zoom: { iconId: 'brand-zoom', label: 'Z', background: 'linear-gradient(145deg, #55a5ff, #1674e8)', foreground: '#ffffff', iconMode: 'fill' },
-  obs: { iconId: 'brand-obsstudio', label: 'OBS', background: 'linear-gradient(145deg, #424a56, #17191f)', foreground: '#ffffff', iconMode: 'fill' },
-  discord: { iconId: 'brand-discord', label: 'D', background: 'linear-gradient(145deg, #8790ff, #4d58d7)', foreground: '#ffffff', iconMode: 'fill' },
-  spotify: { iconId: 'brand-spotify', label: 'S', background: 'linear-gradient(145deg, #47e184, #14a84e)', foreground: '#102117', iconMode: 'fill' },
-  windows: { iconId: 'brand-windows', label: '⊞', background: 'linear-gradient(145deg, #35a6ed, #0068bc)', foreground: '#ffffff', iconMode: 'fill' },
+  chatgpt: { iconId: 'brand-openai', background: 'linear-gradient(145deg, #20b98e, #087157)', foreground: '#ffffff', iconMode: 'stroke' },
+  vscode: { iconId: 'brand-vscode', background: 'linear-gradient(145deg, #35b8ed, #0068b7)', foreground: '#ffffff', iconMode: 'stroke' },
+  github: { iconId: 'brand-github', background: 'linear-gradient(145deg, #41454d, #17191e)', foreground: '#ffffff', iconMode: 'fill' },
+  terminal: { iconId: 'terminal', background: 'linear-gradient(145deg, #26384b, #101722)', foreground: '#a5f3c3', iconMode: 'stroke' },
+  docker: { iconId: 'brand-docker', background: 'linear-gradient(145deg, #43bdf0, #0878c9)', foreground: '#ffffff', iconMode: 'fill' },
+  chrome_devtools: { iconId: 'brand-chrome', background: 'linear-gradient(145deg, #424854, #20242c)', foreground: '#ffffff', iconMode: 'fill' },
+  photoshop: { iconId: 'brand-adobe-photoshop', background: 'linear-gradient(145deg, #06395a, #001e36)', foreground: '#45b8ff', iconMode: 'stroke' },
+  illustrator: { iconId: 'brand-adobe-illustrator', background: 'linear-gradient(145deg, #542100, #2b0800)', foreground: '#ffad35', iconMode: 'stroke' },
+  premiere: { iconId: 'brand-adobe-premiere', background: 'linear-gradient(145deg, #392d72, #18113e)', foreground: '#b9a8ff', iconMode: 'stroke' },
+  aftereffects: { iconId: 'brand-adobe-after-effects', background: 'linear-gradient(145deg, #342361, #171333)', foreground: '#d9a9ff', iconMode: 'stroke' },
+  davinci: { iconId: 'brand-davinciresolve', background: 'linear-gradient(145deg, #343a46, #171b22)', foreground: '#ffffff', iconMode: 'fill' },
+  blender: { iconId: 'brand-blender', background: 'linear-gradient(145deg, #39576b, #182a39)', foreground: '#ff9a44', iconMode: 'fill' },
+  figma: { iconId: 'brand-figma', background: 'linear-gradient(145deg, #353535, #171717)', foreground: '#ffffff', iconMode: 'fill' },
+  framer: { iconId: 'brand-framer', background: 'linear-gradient(145deg, #25baff, #0751e7)', foreground: '#ffffff', iconMode: 'fill' },
+  canva: { iconId: 'brand-canva', background: 'linear-gradient(145deg, #00c4cc, #7134d8)', foreground: '#ffffff', iconMode: 'fill' },
+  audacity: { iconId: 'brand-audacity', background: 'linear-gradient(145deg, #343b70, #171b37)', foreground: '#ffe36b', iconMode: 'fill' },
+  affinity: { iconId: 'brand-affinity', background: 'linear-gradient(145deg, #6053b7, #14677a)', foreground: '#ffffff', iconMode: 'fill' },
+  excel: { iconId: 'brand-microsoft-excel', background: 'linear-gradient(145deg, #20a366, #075b36)', foreground: '#ffffff', iconMode: 'fill' },
+  word: { iconId: 'brand-microsoft-word', background: 'linear-gradient(145deg, #3d8de6, #1557b0)', foreground: '#ffffff', iconMode: 'fill' },
+  powerpoint: { iconId: 'brand-microsoft-powerpoint', background: 'linear-gradient(145deg, #f17848, #b93c1f)', foreground: '#ffffff', iconMode: 'fill' },
+  notion: { iconId: 'brand-notion', background: 'linear-gradient(145deg, #ffffff, #e8e8e8)', foreground: '#171717', iconMode: 'fill' },
+  slack: { iconId: 'brand-slack', background: 'linear-gradient(145deg, #ffffff, #f0eaf2)', foreground: '#611f69', iconMode: 'fill' },
+  zoom: { iconId: 'brand-zoom', background: 'linear-gradient(145deg, #55a5ff, #1674e8)', foreground: '#ffffff', iconMode: 'fill' },
+  obs: { iconId: 'brand-obsstudio', background: 'linear-gradient(145deg, #424a56, #17191f)', foreground: '#ffffff', iconMode: 'fill' },
+  discord: { iconId: 'brand-discord', background: 'linear-gradient(145deg, #8790ff, #4d58d7)', foreground: '#ffffff', iconMode: 'fill' },
+  spotify: { iconId: 'brand-spotify', background: 'linear-gradient(145deg, #47e184, #14a84e)', foreground: '#102117', iconMode: 'fill' },
+  windows: { iconId: 'brand-windows', background: 'linear-gradient(145deg, #35a6ed, #0068bc)', foreground: '#ffffff', iconMode: 'fill' },
 };
 
 function getMacroIconLibrary(): IconLibrary | undefined {
@@ -7958,13 +7957,10 @@ function getPresetAppIconPath(iconId: string): string | undefined {
 }
 
 function PresetAppIcon({ id, size = 30 }: { id: string; size?: number }) {
-  const config = PRESET_APP_ICON_CONFIGS[id] ?? {
-    label: '?',
-    background: 'linear-gradient(145deg, #515866, #20242c)',
-    foreground: '#ffffff',
-  };
-  const iconPath = config.iconId ? getPresetAppIconPath(config.iconId) : undefined;
-  const iconMode = config.iconMode ?? 'fill';
+  const config = PRESET_APP_ICON_CONFIGS[id];
+  if (!config) return null;
+
+  const iconPath = getPresetAppIconPath(config.iconId);
 
   return (
     <div
@@ -7981,47 +7977,19 @@ function PresetAppIcon({ id, size = 30 }: { id: string; size?: number }) {
         boxShadow: '0 2px 7px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.18)',
       }}
     >
-      {iconPath ? (
+      {iconPath && (
         <svg
           width={Math.round(size * 0.6)}
           height={Math.round(size * 0.6)}
           viewBox="0 0 24 24"
-          fill={iconMode === 'fill' ? 'currentColor' : 'none'}
-          stroke={iconMode === 'stroke' ? 'currentColor' : 'none'}
-          strokeWidth={iconMode === 'stroke' ? 1.7 : 0}
+          fill={config.iconMode === 'fill' ? 'currentColor' : 'none'}
+          stroke={config.iconMode === 'stroke' ? 'currentColor' : 'none'}
+          strokeWidth={config.iconMode === 'stroke' ? 1.7 : 0}
           strokeLinecap="round"
           strokeLinejoin="round"
         >
           <path d={iconPath} />
         </svg>
-      ) : id === 'affinity' ? (
-        <svg
-          width={Math.round(size * 0.6)}
-          height={Math.round(size * 0.6)}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M4.5 19L10.4 5.8c.6-1.3 2.6-1.3 3.2 0L19.5 19M7.8 13.2h8.4" />
-        </svg>
-      ) : (
-        <span
-          className={`font-bold leading-none tracking-tight select-none ${
-            id === 'canva'
-              ? 'font-serif italic text-[18px]'
-              : id === 'affinity'
-                ? 'text-[18px]'
-                : ['excel', 'word', 'powerpoint'].includes(id)
-                  ? 'text-[14px]'
-                  : 'text-[12px]'
-          }`}
-          style={size > 30 ? { fontSize: `${Math.round(size * 0.36)}px` } : undefined}
-        >
-          {config.label}
-        </span>
       )}
     </div>
   );
