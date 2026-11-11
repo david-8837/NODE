@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onHardwareSync: (callback) => {
     ipcRenderer.on('trigger-hardware-sync', () => callback());
   },
+  onResetMacropadKeys: (callback) => {
+    ipcRenderer.on('trigger-reset-macropad-keys', () => callback());
+  },
   onOpenHardwareModal: (callback) => {
     ipcRenderer.on('open-hardware-modal', () => callback());
   },

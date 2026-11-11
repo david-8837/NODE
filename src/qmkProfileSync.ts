@@ -318,6 +318,10 @@ function applyBinding(
   location: string,
   warnings: string[]
 ): ViaAction | undefined {
+  const cleanBinding = (entry.binding ?? '').trim();
+  if (!cleanBinding || cleanBinding === 'blank' || entry.label === '—') {
+    return { t: 'none' };
+  }
   const parsed = entry.execution === undefined
     ? parseBinding(entry.binding ?? '', entry.label ?? '', entry.actionType ?? '', os)
     : parseStructuredExecution(entry.execution, os)!;

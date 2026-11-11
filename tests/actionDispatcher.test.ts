@@ -150,5 +150,35 @@ describe('actionDispatcher: Unified Action Resolution and Dispatch', () => {
       })
     );
   });
+
+  it('never resolves an action if key binding is blank, cleared, or placeholder', () => {
+    const layerWithBlanks: ActionDispatcherLayer = {
+      r1c1: {
+        label: '',
+        binding: 'blank',
+        actionType: 'Basic input',
+      },
+      r1c2: {
+        label: '—',
+        binding: '—',
+        actionType: 'Basic input',
+      },
+      r1c3: {
+        label: '',
+        binding: 'blank',
+        actionType: 'Smart Action',
+        execution: {
+          kind: 'smart',
+          actionType: 'Web',
+          value: 'https://youtube.com',
+        },
+      },
+    };
+
+    expect(resolveActionForGesture('r1c1', 'onTap', layerWithBlanks)).toBeNull();
+    expect(resolveActionForGesture('r1c2', 'onTap', layerWithBlanks)).toBeNull();
+    // Even if execution object was not cleaned up, blank binding must not execute
+    expect(resolveActionForGesture('r1c3', 'onTap', layerWithBlanks)).toBeNull();
+  });
 });
 

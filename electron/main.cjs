@@ -1010,6 +1010,12 @@ app.whenReady().then(() => {
             mainWindow.webContents.send('trigger-hardware-sync'),
         },
         {
+          label: 'Reset Macropad Keys',
+          click: () =>
+            mainWindow &&
+            mainWindow.webContents.send('trigger-reset-macropad-keys'),
+        },
+        {
           label: 'Open Hardware Inspector',
           click: () =>
             mainWindow &&

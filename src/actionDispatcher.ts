@@ -74,6 +74,16 @@ function resolveEntryAction(
   entry: ActionDispatcherSlotEntry,
   gesture: GestureType
 ): ResolvedAction | null {
+  if (!entry) return null;
+
+  const binding = (entry.binding || '').trim();
+  const label = (entry.label || '').trim();
+
+  // If the key is blank, cleared, unassigned, or set to placeholder '—', never execute any action
+  if (!binding || binding === 'blank' || binding === '—' || label === '—') {
+    return null;
+  }
+
   const execution = entry.execution;
 
   if (execution) {
@@ -138,9 +148,6 @@ function resolveEntryAction(
 
   // Fallback to binding or label string if no execution object exists
   if (gesture !== 'onTap') return null;
-
-  const binding = (entry.binding || '').trim();
-  const label = (entry.label || '').trim();
 
   // Smart action pattern in binding string: (Web: ...), (App: ...), etc.
   const smartMatch = binding.match(/\((Web|App|Cmd|Text):\s*([^)]+)\)/i);

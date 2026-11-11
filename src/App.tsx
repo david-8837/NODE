@@ -66,6 +66,7 @@ import {
   Check,
   X,
   Search,
+  RotateCcw,
 } from 'lucide-react';
 
 declare const __APP_VERSION__: string;
@@ -1897,6 +1898,36 @@ export default function App() {
     setLayerDeleteConfirm(false);
   };
 
+  const handleResetLayerKeys = (allLayers = false) => {
+    const layerNumber = activeLayerIndex + 1;
+    const confirmMessage = allLayers
+      ? 'Reset all keys across all layers in this profile to blank defaults?'
+      : `Reset all keys on Layer ${layerNumber} to blank defaults?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    const blankLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
+    const nextProfiles = profiles.map((p, idx) => {
+      if (idx !== activeProfileIndex) return p;
+      return {
+        ...p,
+        layers: allLayers
+          ? p.layers.map(() => JSON.parse(JSON.stringify(INITIAL_LAYER_1)))
+          : p.layers.map((l, lIdx) => (lIdx === activeLayerIndex ? blankLayer : l)),
+      };
+    });
+
+    pushState(nextProfiles);
+    setSelectedKey(null);
+    setSelectedEncoderSub(null);
+    setMappingDrawerOpen(false);
+    gestureEngineRef.current?.resetAll();
+    showToast(
+      allLayers
+        ? 'All macropad keys reset to blank'
+        : `Layer ${layerNumber} keys reset to blank`
+    );
+  };
+
   const handleUpdateKeyAssignment = (
     slotId: KeySlotId,
     updates: Partial<KeyAssignment>
@@ -1905,12 +1936,26 @@ export default function App() {
       if (pIdx !== activeProfileIndex) return p;
       const nextLayers = p.layers.map((layer, lIdx) => {
         if (lIdx !== activeLayerIndex) return layer;
+        const currentSlot = layer[slotId];
+        const merged: KeyAssignment = {
+          ...currentSlot,
+          ...updates,
+        };
+        if (updates.execution === undefined) {
+          delete merged.execution;
+        }
+        if (updates.iconId === undefined && updates.binding === 'blank') {
+          delete merged.iconId;
+        }
+        if (updates.actionId === undefined && updates.binding === 'blank') {
+          delete merged.actionId;
+        }
+        if (updates.color === undefined && updates.binding === 'blank') {
+          delete merged.color;
+        }
         return {
           ...layer,
-          [slotId]: {
-            ...layer[slotId],
-            ...updates,
-          },
+          [slotId]: merged,
         };
       });
       return { ...p, layers: nextLayers };
@@ -1943,24 +1988,38 @@ export default function App() {
         [subTarget]: {
           label: item.isClearIcon ? '—' : formatEncoderShortLabel(displayBinding),
           binding: item.isClearIcon ? 'blank' : displayBinding,
-          execution: item.isClearIcon ? undefined : item.execution,
+          ...(item.isClearIcon ? {} : item.execution ? { execution: item.execution } : {}),
         },
       };
       handleUpdateKeyAssignment(targetSlot, {
-        actionType: actionTypeMap[effectiveTab],
+        actionType: item.isClearIcon ? 'Basic input' : actionTypeMap[effectiveTab],
         encoderActions: updatedActions,
       });
-      showToast(`Assigned "${displayBinding}" to Encoder (${subTarget.toUpperCase()})`);
+      showToast(item.isClearIcon ? `Cleared Encoder (${subTarget.toUpperCase()})` : `Assigned "${displayBinding}" to Encoder (${subTarget.toUpperCase()})`);
+      return;
+    }
+
+    if (item.isClearIcon) {
+      handleUpdateKeyAssignment(targetSlot, {
+        label: '',
+        binding: 'blank',
+        actionType: 'Basic input',
+        iconId: undefined,
+        actionId: undefined,
+        execution: undefined,
+        color: undefined,
+      });
+      showToast(`Cleared ${targetSlot.toUpperCase()} to blank`);
       return;
     }
 
     handleUpdateKeyAssignment(targetSlot, {
-      label: item.isClearIcon ? '' : item.macropadLabel,
-      binding: item.isClearIcon ? 'blank' : displayBinding,
+      label: item.macropadLabel,
+      binding: displayBinding,
       actionType: actionTypeMap[effectiveTab],
-      iconId: item.isClearIcon ? undefined : item.iconId,
-      actionId: item.isClearIcon ? undefined : item.id,
-      execution: item.isClearIcon ? undefined : item.execution,
+      iconId: item.iconId,
+      actionId: item.id,
+      execution: item.execution,
     });
     showToast(`Assigned "${displayBinding}" to ${targetSlot.toUpperCase()}`);
   };
@@ -4336,6 +4395,15 @@ export default function App() {
                             </svg>
                           </button>
 
+                          {/* Reset Layer Keys Button */}
+                          <button
+                            onClick={() => handleResetLayerKeys(false)}
+                            title="Reset all keys on this layer to blank"
+                            className="w-[28px] h-[28px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#dc0000] flex items-center justify-center text-[#555555] hover:text-[#dc0000] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
+                          >
+                            <RotateCcw className="w-[12px] h-[12px] stroke-[1.8]" />
+                          </button>
+
                           {/* Delete Layer × Button (only shown when more than 1 layer exists; turns solid red on hover) */}
                           {currentProfile.layers.length > 1 && (
                             <button
@@ -4859,24 +4927,41 @@ export default function App() {
                 />
               </motion.div>
 
-              <motion.button
-                {...getEntranceMotionProps(entrancePhase, {
-                  delay: 1.2,
-                  duration: 0.42,
-                  offsetY: 8,
-                  initialScale: 0.99,
-                })}
-                onClick={() => void toggleSimulationMode()}
-                disabled={simulationTransition}
-                className="mt-[15px] h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
-              >
-                <span
-                  className={`w-[8px] h-[8px] rounded-full transition-colors ${
-                    simulationMode ? 'bg-[#0051ff]' : 'bg-[#b5b5b5]'
-                  }`}
-                />
-                <span>{simulationMode ? 'Simulation on' : 'Simulation off'}</span>
-              </motion.button>
+              <div className="mt-[15px] flex items-center gap-[8px]">
+                <motion.button
+                  {...getEntranceMotionProps(entrancePhase, {
+                    delay: 1.2,
+                    duration: 0.42,
+                    offsetY: 8,
+                    initialScale: 0.99,
+                  })}
+                  onClick={() => void toggleSimulationMode()}
+                  disabled={simulationTransition}
+                  className="h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
+                >
+                  <span
+                    className={`w-[8px] h-[8px] rounded-full transition-colors ${
+                      simulationMode ? 'bg-[#0051ff]' : 'bg-[#b5b5b5]'
+                    }`}
+                  />
+                  <span>{simulationMode ? 'Simulation on' : 'Simulation off'}</span>
+                </motion.button>
+
+                <motion.button
+                  {...getEntranceMotionProps(entrancePhase, {
+                    delay: 1.25,
+                    duration: 0.42,
+                    offsetY: 8,
+                    initialScale: 0.99,
+                  })}
+                  onClick={() => handleResetLayerKeys(false)}
+                  className="h-[28px] px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#dc0000] text-[#3a3a3a] hover:text-[#dc0000] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[11px] font-medium transition-all cursor-pointer"
+                  title="Reset all keys on this layer to blank defaults"
+                >
+                  <RotateCcw className="w-[12px] h-[12px]" />
+                  <span>Reset keys</span>
+                </motion.button>
+              </div>
             </motion.div>
           </div>
 
@@ -6624,7 +6709,54 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div className="w-[24px]" />
+                      {selectedKey ? (
+                        <button
+                          onClick={() => {
+                            if (!selectedKey) return;
+                            if (selectedKey === GRID_MACRO_ENCODER_SLOT) {
+                              if (selectedEncoderSub) {
+                                const currentActions = getEncoderActions(currentLayer[GRID_MACRO_ENCODER_SLOT]);
+                                handleUpdateKeyAssignment(GRID_MACRO_ENCODER_SLOT, {
+                                  encoderActions: {
+                                    ...currentActions,
+                                    [selectedEncoderSub]: {
+                                      label: '—',
+                                      binding: 'blank',
+                                    },
+                                  },
+                                });
+                                showToast(`Reset Dial ${selectedEncoderSub.toUpperCase()} to blank`);
+                              } else {
+                                handleUpdateKeyAssignment(GRID_MACRO_ENCODER_SLOT, {
+                                  label: '',
+                                  actionType: 'Basic input',
+                                  binding: 'blank',
+                                  encoderActions: BLANK_ENCODER_ACTIONS,
+                                  execution: undefined,
+                                });
+                                showToast('Reset Dial to blank');
+                              }
+                            } else {
+                              handleUpdateKeyAssignment(selectedKey, {
+                                label: '',
+                                actionType: 'Basic input',
+                                binding: 'blank',
+                                iconId: undefined,
+                                actionId: undefined,
+                                execution: undefined,
+                                color: undefined,
+                              });
+                              showToast(`Reset ${selectedKey.toUpperCase()} to blank`);
+                            }
+                          }}
+                          title="Reset this key to blank"
+                          className="w-[24px] h-[24px] rounded-full border-[1.5px] border-transparent hover:border-[#dc0000] text-[#777] hover:text-[#dc0000] flex items-center justify-center transition-all cursor-pointer"
+                        >
+                          <RotateCcw className="w-[13px] h-[13px] stroke-[1.8]" />
+                        </button>
+                      ) : (
+                        <div className="w-[24px]" />
+                      )}
 
                       <AnimatePresence>
                         {activeTooltip === 'drawer-mapping' && (
