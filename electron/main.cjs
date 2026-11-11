@@ -1,5 +1,5 @@
 // electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
-const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -34,8 +34,62 @@ const desktopActionExecutor = createDesktopActionExecutor({
   },
 });
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 let visualSmokeCaptureStarted = false;
 let completingQuit = false;
+
+function createTray() {
+  if (tray || isVisualSmokeTest() || isPersistenceSmokeTest()) return;
+  const iconPath = path.join(__dirname, '../public/favicon.ico');
+  if (!fs.existsSync(iconPath)) return;
+
+  try {
+    tray = new Tray(iconPath);
+    tray.setToolTip('NØDE — Grid Macro 1 Studio');
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Open NØDE Studio',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        },
+      },
+      {
+        label: 'Hide to Tray',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.hide();
+          }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit NØDE Studio',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ]);
+
+    tray.setContextMenu(contextMenu);
+    tray.on('click', () => {
+      if (!mainWindow) return;
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+  } catch (err) {
+    console.error('Could not initialize system tray icon:', err);
+  }
+}
 
 // Unpackaged Electron is development. Never let a user-level NODE_ENV value make
 // an installed app load a local development server instead of its bundled UI.
@@ -715,6 +769,14 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  mainWindow.on('close', (event) => {
+    if (!isQuitting && !isVisualSmokeTest() && !isPersistenceSmokeTest()) {
+      event.preventDefault();
+      mainWindow.hide();
+      return false;
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     void desktopActionExecutor.setSimulationEnabled(false);
@@ -736,7 +798,12 @@ ipcMain.handle('window-maximize', (event) => {
 });
 
 ipcMain.handle('window-close', (event) => {
-  if (isTrustedRenderer(event) && mainWindow) mainWindow.close();
+  if (!isTrustedRenderer(event) || !mainWindow) return;
+  if (!isQuitting && !isVisualSmokeTest() && !isPersistenceSmokeTest()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.close();
+  }
 });
 
 ipcMain.handle('window-is-maximized', (event) => {
@@ -926,7 +993,10 @@ app.whenReady().then(() => {
         {
           label: 'Quit NØDE Studio',
           accelerator: 'CmdOrCtrl+Q',
-          click: () => app.quit(),
+          click: () => {
+            isQuitting = true;
+            app.quit();
+          },
         },
       ],
     },
@@ -968,20 +1038,32 @@ app.whenReady().then(() => {
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 
+  createTray();
+
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    } else if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 });
 
 app.on('before-quit', (event) => {
+  isQuitting = true;
   if (completingQuit) return;
   event.preventDefault();
   completingQuit = true;
+  if (tray) {
+    try { tray.destroy(); } catch {}
+    tray = null;
+  }
   void desktopActionExecutor.close().finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (isQuitting || process.platform === 'darwin' || isVisualSmokeTest() || isPersistenceSmokeTest()) {
     app.quit();
   }
 });
