@@ -1,75 +1,50 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
   <defs>
-    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#111419"/>
+    <linearGradient id="panel" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#111316"/>
       <stop offset="1" stop-color="#090b0e"/>
     </linearGradient>
-    <radialGradient id="blueGlow" cx="50%" cy="42%" r="70%">
-      <stop offset="0" stop-color="#0051ff" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#0051ff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="device" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#20242b"/>
-      <stop offset="1" stop-color="#15181d"/>
-    </linearGradient>
     <linearGradient id="key" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#393e47"/>
-      <stop offset="1" stop-color="#272b32"/>
+      <stop offset="0" stop-color="#25282d"/>
+      <stop offset="1" stop-color="#191b1f"/>
     </linearGradient>
-    <linearGradient id="activeKey" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2670ff"/>
-      <stop offset="1" stop-color="#0051ff"/>
+    <linearGradient id="active" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b81ff"/>
+      <stop offset="1" stop-color="#0752d5"/>
     </linearGradient>
-    <pattern id="microGrid" width="12" height="12" patternUnits="userSpaceOnUse">
-      <path d="M12 0H0V12" fill="none" stroke="#ffffff" stroke-opacity="0.025" stroke-width="0.5"/>
+    <pattern id="grid" width="12" height="12" patternUnits="userSpaceOnUse">
+      <path d="M12 0H0V12" fill="none" stroke="#fff" stroke-opacity=".025" stroke-width=".5"/>
     </pattern>
   </defs>
 
   <rect width="164" height="314" fill="url(#panel)"/>
-  <rect width="164" height="314" fill="url(#blueGlow)"/>
-  <rect width="164" height="314" fill="url(#microGrid)"/>
-  <path d="M0 82H164M0 238H164" stroke="#ffffff" stroke-opacity="0.045"/>
-  <path d="M0 0V314" stroke="#0051ff" stroke-opacity="0.7" stroke-width="2"/>
+  <rect width="164" height="314" fill="url(#grid)"/>
+  <rect x="0" y="0" width="2" height="314" fill="#1762ef"/>
+  <path d="M17 62H147M17 288H147" fill="none" stroke="#fff" stroke-opacity=".13"/>
 
-  <rect x="17" y="17" width="3" height="25" rx="1.5" fill="#0051ff"/>
-  <text x="27" y="31" fill="#f7f8fa" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="0.8">NØDE</text>
-  <text x="27" y="43" fill="#8b929e" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.4" font-weight="600" letter-spacing="1.25">GRID MACRO 1 STUDIO</text>
-  <circle cx="144" cy="23" r="3" fill="#0051ff"/>
-  <circle cx="144" cy="23" r="6" fill="none" stroke="#0051ff" stroke-opacity="0.28"/>
-  <path d="M17 58H147" stroke="#ffffff" stroke-opacity="0.12"/>
+  <text x="18" y="29" fill="#f7f8fa" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing=".7">NØDE</text>
+  <text x="18" y="43" fill="#9299a4" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.5" font-weight="600" letter-spacing="1.15">GRID MACRO 1 STUDIO</text>
+  <circle cx="143" cy="23" r="3" fill="#1762ef"/>
+  <circle cx="143" cy="23" r="6" fill="none" stroke="#1762ef" stroke-opacity=".34"/>
 
-  <text x="17" y="77" fill="#9aa2ae" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.4" font-weight="600" letter-spacing="1.05">A CONTROL SURFACE, YOURS</text>
+  <text x="18" y="84" fill="#f5f6f8" font-family="DejaVu Sans, Arial, sans-serif" font-size="8.4" font-weight="700" letter-spacing=".75">MAKE IT</text>
+  <text x="18" y="99" fill="#f5f6f8" font-family="DejaVu Sans, Arial, sans-serif" font-size="8.4" font-weight="700" letter-spacing=".75">YOUR OWN.</text>
+  <text x="18" y="117" fill="#a0a6af" font-family="DejaVu Sans, Arial, sans-serif" font-size="6.3" font-weight="400">Your keys. Your flow.</text>
 
-  <!-- A compact, front-on Grid Macro 1 illustration replaces NSIS's stock PC/download art. -->
-  <ellipse cx="82" cy="224" rx="59" ry="9" fill="#000000" fill-opacity="0.34"/>
-  <rect x="27" y="91" width="110" height="139" rx="17" fill="#07090c" stroke="#373d47" stroke-width="1"/>
-  <rect x="33" y="97" width="98" height="127" rx="12" fill="url(#device)" stroke="#242932" stroke-width="1"/>
-  <circle cx="47" cy="113" r="2.3" fill="#0051ff"/>
-  <circle cx="47" cy="113" r="4.4" fill="#0051ff" fill-opacity="0.12"/>
-  <circle cx="115" cy="115" r="12" fill="#2b3038" stroke="#424852" stroke-width="1"/>
-  <circle cx="115" cy="115" r="8.5" fill="#20242b"/>
-  <path d="M115 107V115L121 109" fill="none" stroke="#59616c" stroke-width="1" stroke-linecap="round"/>
-
-  <g stroke-width="1">
-    <rect x="44" y="135" width="22" height="22" rx="4" fill="url(#activeKey)" stroke="#4b86ff"/>
-    <rect x="70" y="135" width="22" height="22" rx="4" fill="url(#key)" stroke="#4a505a"/>
-    <rect x="96" y="135" width="22" height="22" rx="4" fill="url(#key)" stroke="#4a505a"/>
-    <rect x="44" y="161" width="22" height="22" rx="4" fill="url(#key)" stroke="#4a505a"/>
-    <rect x="70" y="161" width="22" height="22" rx="4" fill="url(#key)" stroke="#4a505a"/>
-    <rect x="96" y="161" width="22" height="22" rx="4" fill="url(#key)" stroke="#4a505a"/>
-    <rect x="44" y="187" width="22" height="22" rx="4" fill="url(#key)" stroke="#4a505a"/>
-    <rect x="70" y="187" width="22" height="22" rx="4" fill="url(#key)" stroke="#4a505a"/>
-    <rect x="96" y="187" width="22" height="22" rx="4" fill="url(#key)" stroke="#4a505a"/>
+  <g fill="url(#key)" stroke="#464a50" stroke-width="1.25">
+    <rect x="18" y="144" width="38" height="38"/>
+    <rect x="63" y="144" width="38" height="38"/>
+    <rect x="108" y="144" width="38" height="38"/>
+    <rect x="18" y="187" width="38" height="38"/>
+    <rect x="63" y="187" width="38" height="38"/>
+    <rect x="108" y="187" width="38" height="38"/>
+    <rect x="18" y="230" width="38" height="38"/>
+    <rect x="63" y="230" width="38" height="38"/>
+    <rect x="108" y="230" width="38" height="38"/>
   </g>
-  <g fill="#eef2f8" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.6" font-weight="700" text-anchor="middle">
-    <text x="55" y="149">1</text><text x="81" y="149">2</text><text x="107" y="149">3</text>
-    <text x="55" y="175">4</text><text x="81" y="175">5</text><text x="107" y="175">6</text>
-    <text x="55" y="201">7</text><text x="81" y="201">8</text><text x="107" y="201">9</text>
-  </g>
-  <path d="M48 216H116" stroke="#444b56" stroke-width="1" stroke-linecap="round"/>
-  <circle cx="82" cy="216" r="1.2" fill="#0051ff"/>
+  <rect x="75" y="156" width="14" height="14" rx="1" fill="url(#active)"/>
+  <circle cx="82" cy="276" r="2.2" fill="#1762ef"/>
+  <path d="M18 276H73M91 276H146" fill="none" stroke="#fff" stroke-opacity=".17"/>
 
-  <text x="17" y="258" fill="#f4f6f9" font-family="DejaVu Sans, Arial, sans-serif" font-size="8.4" font-weight="700" letter-spacing="0.65">NINE KEYS.</text>
-  <text x="17" y="272" fill="#4f83ff" font-family="DejaVu Sans, Arial, sans-serif" font-size="8.4" font-weight="700" letter-spacing="0.65">ONE DIAL.</text>
-  <text x="17" y="289" fill="#9aa2ae" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.4" font-weight="500" letter-spacing="0.7">SHORTCUTS, WITHIN REACH.</text>
+  <text x="18" y="302" fill="#aab0b9" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.4" font-weight="600" letter-spacing=".65">NINE KEYS. ONE DIAL.</text>
 </svg>
