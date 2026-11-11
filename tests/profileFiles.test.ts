@@ -67,6 +67,21 @@ describe('profile file import and export', () => {
     expect(parsed).toEqual({ profiles: [profile], activeProfileIndex: 0, customItems });
   });
 
+  it('round-trips the installed preset marker on a profile layer', () => {
+    const markedProfile = {
+      ...profile,
+      layers: [{ ...profile.layers[0], presetId: 'chatgpt' }],
+    };
+    const parsed = parseProfileFile(createProfileExport(markedProfile));
+    const parsedLayers = parsed.profiles[0].layers as Array<Record<string, unknown>>;
+
+    expect(parsedLayers[0].presetId).toBe('chatgpt');
+    expect(() => parseProfileFile(JSON.stringify({
+      ...markedProfile,
+      layers: [{ ...markedProfile.layers[0], presetId: 42 }],
+    }))).toThrow('invalid preset id');
+  });
+
   it('imports the legacy raw profile JSON format', () => {
     const parsed = parseProfileFile(JSON.stringify(profile));
     expect(parsed.profiles).toHaveLength(1);

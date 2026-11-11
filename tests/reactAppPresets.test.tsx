@@ -186,6 +186,142 @@ describe('production React preset experience', () => {
     expect(chatgptActionIcon?.style.color).toBe('rgb(16, 163, 127)');
   });
 
+  it('allows each preset only once in a profile while keeping other profiles independent', async () => {
+    const getChatgptInstallButton = () => {
+      const icon = container.querySelector<HTMLElement>('[data-preset-icon="chatgpt"]');
+      const card = icon?.parentElement?.parentElement?.parentElement;
+      return [...(card?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+        .find((button) => ['Install', 'Installed'].includes(button.textContent?.trim() ?? ''));
+    };
+
+    await openPresets();
+    const firstInstall = getChatgptInstallButton();
+    expect(firstInstall?.textContent?.trim()).toBe('Install');
+    await click(firstInstall!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+
+    let saved = JSON.parse(window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) || 'null');
+    expect(saved.profiles[0].layers).toHaveLength(2);
+    expect(saved.profiles[0].layers[1].presetId).toBe('chatgpt');
+
+    await act(async () => root.unmount());
+    container.remove();
+    container = document.createElement('div');
+    container.id = 'root';
+    container.classList.add('is-ready');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root.render(createElement(App)));
+
+    await openPresets();
+    const chatgptIcon = container.querySelector<HTMLElement>('[data-preset-icon="chatgpt"]');
+    const chatgptCard = chatgptIcon?.parentElement?.parentElement?.parentElement;
+    const previewButton = [...(chatgptCard?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.trim() === 'Preview');
+    expect(previewButton).toBeDefined();
+    await click(previewButton!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 300));
+    });
+    const previewInstall = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="ChatGPT preset already installed on this profile"]'
+    );
+    expect(previewInstall?.disabled).toBe(true);
+    expect(previewInstall?.textContent?.trim()).toBe('Installed');
+    await click(previewInstall!);
+
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="Back to presets"]')!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 300));
+    });
+    const duplicateInstall = getChatgptInstallButton();
+    expect(duplicateInstall?.textContent?.trim()).toBe('Installed');
+    expect(duplicateInstall?.disabled).toBe(true);
+    await click(duplicateInstall!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    });
+    saved = JSON.parse(window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) || 'null');
+    expect(saved.profiles[0].layers).toHaveLength(2);
+
+    const keymapTab = [...container.querySelectorAll<HTMLButtonElement>('nav button')]
+      .find((button) => button.textContent?.trim() === 'Keymap');
+    await click(keymapTab!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+    await click(container.querySelector<HTMLButtonElement>('button[aria-label="Toggle profile list"]')!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    });
+    const addProfileButton = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === 'Add Profile');
+    expect(addProfileButton).toBeDefined();
+    await click(addProfileButton!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+
+    await openPresets();
+    const secondProfileInstall = getChatgptInstallButton();
+    expect(secondProfileInstall?.textContent?.trim()).toBe('Install');
+    expect(secondProfileInstall?.disabled).toBe(false);
+    await click(secondProfileInstall!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+
+    saved = JSON.parse(window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) || 'null');
+    expect(saved.profiles).toHaveLength(2);
+    expect(saved.profiles.map((profile: { layers: unknown[] }) => profile.layers)).toEqual([
+      expect.arrayContaining([expect.objectContaining({ presetId: 'chatgpt' })]),
+      expect.arrayContaining([expect.objectContaining({ presetId: 'chatgpt' })]),
+    ]);
+    expect(saved.profiles.every((profile: { layers: unknown[] }) => profile.layers.length === 2)).toBe(true);
+  });
+
+  it('recognizes preset layers saved before installation markers were added', async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    window.localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify({
+      v: 1,
+      activeProfileIndex: 0,
+      profiles: [{
+        id: 'legacy-profile',
+        name: 'Legacy Profile',
+        color: '#0051ff',
+        layers: [
+          {},
+          {
+            'dial-tl': { label: 'ChatGPT', binding: 'ChatGPT Dial' },
+            r1c1: {
+              label: 'New Chat',
+              binding: 'New Chat (Ctrl + Shift + O)',
+              actionType: 'Shortcut',
+              actionId: 'preset-chatgpt-r1c1',
+            },
+          },
+        ],
+      }],
+    }));
+    container = document.createElement('div');
+    container.id = 'root';
+    container.classList.add('is-ready');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root.render(createElement(App)));
+
+    await openPresets();
+    const icon = container.querySelector<HTMLElement>('[data-preset-icon="chatgpt"]');
+    const card = icon?.parentElement?.parentElement?.parentElement;
+    const installButton = [...(card?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.trim() === 'Installed');
+
+    expect(installButton?.disabled).toBe(true);
+  });
+
   it('keeps personal actions above installed preset groups after another preset is added', async () => {
     await act(async () => root.unmount());
     container.remove();

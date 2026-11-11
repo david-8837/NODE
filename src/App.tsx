@@ -89,7 +89,7 @@ interface KeyAssignment {
   encoderActions?: Record<EncoderSubActionId, EncoderSubBinding>;
 }
 
-type LayerKeymap = Record<KeySlotId, KeyAssignment>;
+type LayerKeymap = Record<KeySlotId, KeyAssignment> & { presetId?: string };
 
 function formatEncoderShortLabel(text: string): string {
   const clean = text.trim();
@@ -109,6 +109,33 @@ interface ProfileData {
   name: string;
   color: string;
   layers: LayerKeymap[];
+}
+
+function isPresetInstalledInProfile(profile: ProfileData, presetId: string): boolean {
+  const preset = PRESET_CATALOG.find((entry) => entry.id === presetId);
+  const actionIdPrefix = `preset-${presetId}-`;
+  const minimumLegacyKeyMatches = Math.max(
+    2,
+    (preset?.keys.length ?? GRID_MACRO_KEY_SLOTS.length) - 1
+  );
+
+  return profile.layers.some((layer) => {
+    if (layer.presetId === presetId) return true;
+
+    const matchingKeyCount = GRID_MACRO_KEY_SLOTS.filter((slot) =>
+      layer[slot]?.actionId?.startsWith(actionIdPrefix)
+    ).length;
+    const hasLegacyDialSignature =
+      preset !== undefined &&
+      layer[GRID_MACRO_ENCODER_SLOT]?.binding === `${preset.title} Dial`;
+
+    // Pre-marker profiles are recognized by their dial preset binding, or by
+    // nearly all preset key IDs if the user has since edited the dial.
+    return (
+      matchingKeyCount > 0 &&
+      (hasLegacyDialSignature || matchingKeyCount >= minimumLegacyKeyMatches)
+    );
+  });
 }
 
 interface PresetItem {
@@ -2981,12 +3008,21 @@ export default function App() {
   };
 
   const handleInstallPreset = (preset: PresetItem) => {
+    if (isPresetInstalledInProfile(currentProfile, preset.id)) {
+      showToast(`${preset.title} is already installed in this profile.`);
+      return;
+    }
     if (currentProfile.layers.length >= 8) {
       showToast('A profile can have up to 8 layers. Remove one first.');
       return;
     }
 
-    const clonedLayer: LayerKeymap = JSON.parse(JSON.stringify(preset.layerKeymap));
+    const clonedLayer: LayerKeymap = JSON.parse(
+      JSON.stringify({
+        ...preset.layerKeymap,
+        presetId: preset.id,
+      })
+    );
     const nextLayerIndex = currentProfile.layers.length;
     const nextProfiles = profiles.map((profile, index) => {
       if (index !== activeProfileIndex) return profile;
@@ -3301,6 +3337,9 @@ export default function App() {
   const previewPresetDetails = previewPreset
     ? PRESET_CATALOG.find((preset) => preset.id === previewPreset.id)
     : undefined;
+  const isPreviewPresetInstalled = previewPreset
+    ? isPresetInstalledInProfile(currentProfile, previewPreset.id)
+    : false;
 
   const filteredBasicSections = BASIC_KEY_SECTIONS.map((sec) => ({
     ...sec,
@@ -7018,60 +7057,75 @@ export default function App() {
             data-preset-grid
             className="mt-[36px] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-[17px]"
           >
-            {filteredPresets.map((preset) => (
-              <div
-                key={preset.id}
-                className="bg-[#e3e3e3] rounded-[18px] p-[15px] flex flex-col justify-between min-h-[164px]"
-              >
-                <div>
-                  <div className="flex items-center gap-[10px]">
-                    <PresetAppIcon id={preset.id} />
-                    <div>
-                      <div className="text-[10px] text-[#6d6d6d] leading-none mb-[3px]">
-                        Layer preset
+            {filteredPresets.map((preset) => {
+              const isInstalled = isPresetInstalledInProfile(currentProfile, preset.id);
+              return (
+                <div
+                  key={preset.id}
+                  className="bg-[#e3e3e3] rounded-[18px] p-[15px] flex flex-col justify-between min-h-[164px]"
+                >
+                  <div>
+                    <div className="flex items-center gap-[10px]">
+                      <PresetAppIcon id={preset.id} />
+                      <div>
+                        <div className="text-[10px] text-[#6d6d6d] leading-none mb-[3px]">
+                          Layer preset
+                        </div>
+                        <div className="text-[15px] font-semibold text-[#111111] leading-none">
+                          {preset.title}
+                        </div>
                       </div>
-                      <div className="text-[15px] font-semibold text-[#111111] leading-none">
-                        {preset.title}
-                      </div>
+                    </div>
+
+                    <p className="mt-[11px] text-[10.5px] leading-[1.35] text-[#666666] min-h-[28px]">
+                      {preset.description}
+                    </p>
+
+                    <div className="mt-[6px] text-[10px] font-medium text-[#2b2b2b]">
+                      Author: {preset.author}
                     </div>
                   </div>
 
-                  <p className="mt-[11px] text-[10.5px] leading-[1.35] text-[#666666] min-h-[28px]">
-                    {preset.description}
-                  </p>
-
-                  <div className="mt-[6px] text-[10px] font-medium text-[#2b2b2b]">
-                    Author: {preset.author}
-                  </div>
-                </div>
-
-                <div className="mt-[10px]">
-                  {preset.hasPreview ? (
-                    <div className="grid grid-cols-2 gap-[8px]">
-                      <button
-                        onClick={() => setPreviewPreset(preset)}
-                        className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
-                      >
-                        Preview
-                      </button>
+                  <div className="mt-[10px]">
+                    {preset.hasPreview ? (
+                      <div className="grid grid-cols-2 gap-[8px]">
+                        <button
+                          onClick={() => setPreviewPreset(preset)}
+                          className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
+                        >
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => handleInstallPreset(preset)}
+                          disabled={isInstalled}
+                          aria-label={
+                            isInstalled
+                              ? `${preset.title} preset already installed on this profile`
+                              : `Install ${preset.title} preset`
+                          }
+                          className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
+                        >
+                          {isInstalled ? 'Installed' : 'Install'}
+                        </button>
+                      </div>
+                    ) : (
                       <button
                         onClick={() => handleInstallPreset(preset)}
-                        className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
+                        disabled={isInstalled}
+                        aria-label={
+                          isInstalled
+                            ? `${preset.title} preset already installed on this profile`
+                            : `Install ${preset.title} preset`
+                        }
+                        className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
                       >
-                        Install
+                        {isInstalled ? 'Installed' : 'Install'}
                       </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleInstallPreset(preset)}
-                      className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
-                    >
-                      Install
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </motion.main>
       )}
@@ -7305,11 +7359,16 @@ export default function App() {
                     </div>
                     <button
                       type="button"
-                      aria-label={`Install ${previewPreset.title} preset`}
+                      aria-label={
+                        isPreviewPresetInstalled
+                          ? `${previewPreset.title} preset already installed on this profile`
+                          : `Install ${previewPreset.title} preset`
+                      }
                       onClick={() => handleInstallPreset(previewPreset)}
-                      className="mt-[20px] w-full h-[39px] rounded-full bg-black hover:bg-[#0051ff] text-white text-[13px] font-medium transition-colors cursor-pointer"
+                      disabled={isPreviewPresetInstalled}
+                      className="mt-[20px] w-full h-[39px] rounded-full bg-black hover:bg-[#0051ff] text-white text-[13px] font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:bg-[#777777] disabled:hover:bg-[#777777]"
                     >
-                      Install
+                      {isPreviewPresetInstalled ? 'Installed' : 'Install'}
                     </button>
                   </div>
                   <div className="md:max-w-[540px] md:pt-[8px] md:text-right">
