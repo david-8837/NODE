@@ -1049,8 +1049,7 @@ export default function App() {
   const filteredInstalledApplications = useMemo(() => {
     const query = smartAppValue.trim().toLocaleLowerCase();
     return installedApplications
-      .filter((application) => application.name.toLocaleLowerCase().includes(query))
-      .slice(0, 100);
+      .filter((application) => application.name.toLocaleLowerCase().includes(query));
   }, [installedApplications, smartAppValue]);
 
   // Action editor states (Interactive keyboard recorder + Advance mode)
