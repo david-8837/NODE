@@ -3,6 +3,15 @@
  * arbitrary profile JSON stays in the configurator's browser storage.
  */
 
+import {
+  isHardwareEventReport,
+  decodeHardwareReport,
+  isSequentialReport,
+  reconcileMatrixState,
+  HardwareEventType,
+  type DecodedHardwareEvent,
+} from './hardwareEventProtocol';
+
 export const VIA_USB_VENDOR_ID = 0xfeed;
 export const VIA_USB_PRODUCT_ID = 0x6001;
 export const VIA_RAW_USAGE_PAGE = 0xff60;
@@ -265,11 +274,23 @@ export class QmkViaBridge {
   private status: QmkViaStatus;
   private statusListeners = new Set<(status: QmkViaStatus) => void>();
   private eventListeners = new Set<(event: unknown) => void>();
+  private hardwareEventListeners = new Set<(event: DecodedHardwareEvent) => void>();
+  private lastHardwareSequence: number | null = null;
+  private lastMatrixStateMask = 0;
 
   private readonly onInputReport = (event: Event) => {
     const report = event as HidInputReportEventLike;
-    if (report.device !== this.device || report.reportId !== 0 || !this.pending) return;
+    if (report.device !== this.device || report.reportId !== 0) return;
     const bytes = toReportData(report.data);
+
+    // Unsolicited custom hardware event report (0xEE)
+    if (isHardwareEventReport(bytes)) {
+      this.handleHardwareEventReport(bytes);
+      return;
+    }
+
+    // Standard VIA request/reply response
+    if (!this.pending) return;
     if (bytes[0] === VIA_COMMAND.unhandled) {
       this.pending.reject(new Error('The device does not support this VIA command'));
     } else if (bytes[0] === this.pending.commandId) {
@@ -277,12 +298,53 @@ export class QmkViaBridge {
     }
   };
 
+  private handleHardwareEventReport(bytes: Uint8Array): void {
+    const decoded = decodeHardwareReport(bytes);
+    if (!decoded) return;
+
+    if (!isSequentialReport(decoded.sequence, this.lastHardwareSequence)) {
+      return; // Discard duplicate or stale report
+    }
+    this.lastHardwareSequence = decoded.sequence;
+
+    // Detect any keys released according to the matrix mask that may have missed a release packet
+    const previousMask = this.lastMatrixStateMask;
+    this.lastMatrixStateMask = decoded.matrixStateMask;
+
+    const { releasedSlots } = reconcileMatrixState(previousMask, decoded.matrixStateMask);
+    for (const releasedSlot of releasedSlots) {
+      if (releasedSlot !== decoded.slotId) {
+        const syntheticRelease: DecodedHardwareEvent = {
+          version: decoded.version,
+          type: releasedSlot === 'dial-tl' ? HardwareEventType.DIAL_UP : HardwareEventType.BUTTON_UP,
+          slotIndex: -1,
+          slotId: releasedSlot,
+          sequence: decoded.sequence,
+          activeLayer: decoded.activeLayer,
+          matrixStateMask: decoded.matrixStateMask,
+          isPressed: false,
+          isDialRotation: false,
+        };
+        for (const listener of this.hardwareEventListeners) {
+          listener(syntheticRelease);
+        }
+      }
+    }
+
+    for (const listener of this.hardwareEventListeners) {
+      listener(decoded);
+    }
+    this.emit({ type: 'hardware-event', event: decoded });
+  }
+
   private readonly onHidDisconnect = (event: Event) => {
     const device = (event as Event & { device?: HidDeviceLike }).device;
     if (!device || device !== this.device) return;
     device.removeEventListener('inputreport', this.onInputReport);
     this.device = null;
     this.layerCount = 0;
+    this.lastHardwareSequence = null;
+    this.lastMatrixStateMask = 0;
     this.pending?.reject(new Error('The QMK/VIA device disconnected'));
     this.pending = null;
     this.setStatus({ state: 'disconnected', error: 'The device was disconnected' });
@@ -304,6 +366,11 @@ export class QmkViaBridge {
   public onEvent(callback: (event: unknown) => void): () => void {
     this.eventListeners.add(callback);
     return () => this.eventListeners.delete(callback);
+  }
+
+  public onHardwareEvent(callback: (event: DecodedHardwareEvent) => void): () => void {
+    this.hardwareEventListeners.add(callback);
+    return () => this.hardwareEventListeners.delete(callback);
   }
 
   public async getStatus(): Promise<QmkViaStatus> {
@@ -379,6 +446,8 @@ export class QmkViaBridge {
     const device = this.device;
     this.device = null;
     this.layerCount = 0;
+    this.lastHardwareSequence = null;
+    this.lastMatrixStateMask = 0;
     this.pending?.reject(new Error('The QMK/VIA device was disconnected by the user'));
     this.pending = null;
     if (device) {

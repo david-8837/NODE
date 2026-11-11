@@ -881,8 +881,14 @@ ipcMain.handle('execute-smart-action', async (event, payload) => {
     return { success: false, error: 'Invalid action payload' };
   }
 
+  const isHardwareExecution = payload.executionSource === 'hardware';
+  const authorizedHardwareSource = Boolean(
+    isHardwareExecution && isTrustedRenderer(event)
+  );
+
   try {
     return await desktopActionExecutor.execute(payload, {
+      authorizedHardwareSource,
       // Settings are read in the main process; the renderer cannot grant itself
       // terminal-command permission by setting a request field.
       allowTerminal: readStoredAppSettings().allowTerminalSmartActions === true,

@@ -21,6 +21,21 @@ import {
   type SimulationAction,
   type SmartActionSubTab,
 } from './actionExecution';
+import {
+  GestureEngine,
+  type RecognizedGestureEvent,
+  type RecognizedDialEvent,
+} from './gestureEngine';
+import {
+  resolveActionForGesture,
+  resolveActionForDial,
+  dispatchResolvedAction,
+  type ActionDispatcherLayer,
+} from './actionDispatcher';
+import {
+  HardwareEventType,
+  type DecodedHardwareEvent,
+} from './hardwareEventProtocol';
 import { MAX_PROFILE_COUNT, PROFILE_FILE_STORAGE_KEY, profileFileTools } from './profileFiles';
 import {
   APP_VERSION_FALLBACK,
@@ -1195,6 +1210,12 @@ export default function App() {
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
   const lastSyncedConfigKeyRef = useRef('');
 
+  const gestureEngineRef = useRef<GestureEngine | null>(null);
+  if (!gestureEngineRef.current) {
+    gestureEngineRef.current = new GestureEngine();
+  }
+  const lastSimPointerUpRef = useRef<Record<string, number>>({});
+
   useEffect(() => {
     const bridge = window.macropad;
     if (!bridge) {
@@ -1210,9 +1231,39 @@ export default function App() {
       if (active) setDeviceStatus(status);
     });
 
+    const unsubscribeHardware = bridge.onHardwareEvent
+      ? bridge.onHardwareEvent((event: DecodedHardwareEvent) => {
+          if (!active) return;
+          const engine = gestureEngineRef.current;
+          if (!engine) return;
+
+          switch (event.type) {
+            case HardwareEventType.BUTTON_DOWN:
+              if (event.slotId) engine.buttonDown(event.slotId, 'hardware');
+              break;
+            case HardwareEventType.BUTTON_UP:
+              if (event.slotId) engine.buttonUp(event.slotId);
+              break;
+            case HardwareEventType.ENC_CW:
+              engine.dialRotate('cw', 'hardware');
+              break;
+            case HardwareEventType.ENC_CCW:
+              engine.dialRotate('ccw', 'hardware');
+              break;
+            case HardwareEventType.DIAL_DOWN:
+              engine.buttonDown(GRID_MACRO_ENCODER_SLOT, 'hardware');
+              break;
+            case HardwareEventType.DIAL_UP:
+              engine.buttonUp(GRID_MACRO_ENCODER_SLOT);
+              break;
+          }
+        })
+      : () => {};
+
     return () => {
       active = false;
       unsubscribe();
+      unsubscribeHardware();
     };
   }, []);
 
@@ -1350,11 +1401,150 @@ export default function App() {
     }, 2200);
   };
 
+  const simulationModeRef = useRef(simulationMode);
+  simulationModeRef.current = simulationMode;
+
+  const currentLayerRef = useRef(currentLayer);
+  currentLayerRef.current = currentLayer;
+
+  const activeLayerIndexRef = useRef(activeLayerIndex);
+  activeLayerIndexRef.current = activeLayerIndex;
+
+  const currentProfileRef = useRef(currentProfile);
+  currentProfileRef.current = currentProfile;
+
+  useEffect(() => {
+    const engine = gestureEngineRef.current;
+    if (!engine) return;
+
+    engine.configureAllSlots((slot) => {
+      const assignment =
+        slot === GRID_MACRO_ENCODER_SLOT
+          ? currentLayer[slot]?.encoderActions?.press || currentLayer[slot]
+          : currentLayer[slot];
+      if (!assignment) return {};
+      const execution = assignment.execution;
+      if (execution?.kind === 'multi') {
+        const gestures = execution.gestures || {};
+        return {
+          hasDoubleTap: Boolean(gestures.doubleTap?.trim()),
+          hasHold: Boolean(gestures.onHold?.trim()),
+          hasTapHold: Boolean(gestures.tapHold?.trim()),
+          tappingTermMs: execution.tappingTermMs || 250,
+        };
+      }
+      const binding = assignment.binding || '';
+      const hasDoubleTap = /doubleTap:/i.test(binding);
+      const hasHold = /onHold:/i.test(binding);
+      const hasTapHold = /tapHold:/i.test(binding);
+      if (hasDoubleTap || hasHold || hasTapHold) {
+        return {
+          hasDoubleTap,
+          hasHold,
+          hasTapHold,
+          tappingTermMs: 250,
+        };
+      }
+      return {};
+    });
+  }, [currentLayer]);
+
+  const handleRecognizedGesture = useCallback(
+    (event: RecognizedGestureEvent) => {
+      const { slot, gesture, source: eventSource } = event;
+      const isSim = simulationModeRef.current;
+      const layer = currentLayerRef.current;
+      const profile = currentProfileRef.current;
+      const layerIdx = activeLayerIndexRef.current;
+      const source = eventSource || (isSim ? 'simulation' : 'hardware');
+
+      const slotAssignment = layer[slot];
+      if (slotAssignment?.actionType === 'Layer Cycle') {
+        const nextLayer = (layerIdx + 1) % profile.layers.length;
+        setActiveLayerIndex(nextLayer);
+        setSelectedKey(null);
+        setSelectedEncoderSub(null);
+        setMappingDrawerOpen(false);
+        showToast(`Switched to Layer ${nextLayer + 1}`);
+        return;
+      }
+
+      const action = resolveActionForGesture(
+        slot,
+        gesture,
+        layer as ActionDispatcherLayer
+      );
+      if (!action) return;
+
+      if (action.type === 'Layer Cycle') {
+        const nextLayer = (layerIdx + 1) % profile.layers.length;
+        setActiveLayerIndex(nextLayer);
+        setSelectedKey(null);
+        setSelectedEncoderSub(null);
+        setMappingDrawerOpen(false);
+        showToast(`Switched to Layer ${nextLayer + 1}`);
+        return;
+      }
+
+      void dispatchResolvedAction(action, {
+        source,
+        host: window,
+        showToast,
+        onLayerChange: (targetLayer) => {
+          if (targetLayer >= profile.layers.length) {
+            showToast(`Layer ${targetLayer + 1} is not available on this profile`);
+            return false;
+          }
+          setActiveLayerIndex(targetLayer);
+          setSelectedKey(null);
+          setSelectedEncoderSub(null);
+          setMappingDrawerOpen(false);
+          return true;
+        },
+      });
+    },
+    [showToast]
+  );
+
+  const handleRecognizedDial = useCallback(
+    (event: RecognizedDialEvent) => {
+      const { direction, source: eventSource } = event;
+      const isSim = simulationModeRef.current;
+      const layer = currentLayerRef.current;
+      const source = eventSource || (isSim ? 'simulation' : 'hardware');
+
+      setEncoderAngle((angle) =>
+        direction === 'cw' ? (angle + 30) % 360 : (angle - 30 + 360) % 360
+      );
+
+      const action = resolveActionForDial(
+        direction,
+        layer as ActionDispatcherLayer
+      );
+      if (!action) return;
+
+      void dispatchResolvedAction(action, {
+        source,
+        host: window,
+        showToast,
+      });
+    },
+    [showToast]
+  );
+
+  useEffect(() => {
+    const engine = gestureEngineRef.current;
+    if (!engine) return;
+    engine.setOnGesture(handleRecognizedGesture);
+    engine.setOnDial(handleRecognizedDial);
+  }, [handleRecognizedGesture, handleRecognizedDial]);
+
   const toggleSimulationMode = async () => {
     if (simulationTransition) return;
     const enabled = !simulationMode;
     setSimulationTransition(true);
     if (!enabled) setSimulationMode(false);
+    gestureEngineRef.current?.resetAll();
     try {
       const result = await requestSimulationMode(enabled, window);
       if (result.ok && result.enabled === enabled) {
@@ -2500,6 +2690,20 @@ export default function App() {
     subAction?: EncoderSubActionId
   ) => {
     if (e.button !== 0) return;
+    if (simulationMode) {
+      if (slotId === GRID_MACRO_ENCODER_SLOT) {
+        if (subAction === 'cw') {
+          gestureEngineRef.current?.dialRotate('cw', 'simulation');
+        } else if (subAction === 'ccw') {
+          gestureEngineRef.current?.dialRotate('ccw', 'simulation');
+        } else {
+          gestureEngineRef.current?.buttonDown(GRID_MACRO_ENCODER_SLOT, 'simulation');
+        }
+        return;
+      }
+      gestureEngineRef.current?.buttonDown(slotId, 'simulation');
+      return;
+    }
     // Drag encoder bindings from their CW / Press / CCW capsule, not the knob body.
     if (slotId === GRID_MACRO_ENCODER_SLOT && !subAction) return;
 
@@ -2551,6 +2755,35 @@ export default function App() {
     };
   };
 
+  const handleKeyPointerUp = (
+    _e: React.PointerEvent,
+    slotId: KeySlotId,
+    subAction?: EncoderSubActionId
+  ) => {
+    if (!simulationMode) return;
+    lastSimPointerUpRef.current[slotId] = Date.now();
+    if (slotId === GRID_MACRO_ENCODER_SLOT) {
+      if (subAction === 'press' || !subAction) {
+        gestureEngineRef.current?.buttonUp(GRID_MACRO_ENCODER_SLOT);
+      }
+      return;
+    }
+    gestureEngineRef.current?.buttonUp(slotId);
+  };
+
+  const handleKeyPointerLeave = (
+    _e: React.PointerEvent,
+    slotId: KeySlotId
+  ) => {
+    if (!simulationMode) return;
+    const targetSlot = slotId === GRID_MACRO_ENCODER_SLOT ? GRID_MACRO_ENCODER_SLOT : slotId;
+    const state = gestureEngineRef.current?.getSlotState(targetSlot);
+    if (state === 'PRESSED_1' || state === 'PRESSED_2') {
+      lastSimPointerUpRef.current[targetSlot] = Date.now();
+      gestureEngineRef.current?.buttonUp(targetSlot);
+    }
+  };
+
   const runSimulationAction = (
     assignment: SimulationAction & { actionId?: string },
     gesture?: MultiGestureKey
@@ -2576,10 +2809,13 @@ export default function App() {
     if (suppressNextClickRef.current) return;
     if (simulationMode) {
       if (slotId === GRID_MACRO_ENCODER_SLOT) {
-        setEncoderAngle((angle) => (angle + 30) % 360);
-        runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
-      } else {
-        runSimulationAction(currentLayer[slotId]);
+        gestureEngineRef.current?.dialRotate('cw', 'simulation');
+        return;
+      }
+      const lastUp = lastSimPointerUpRef.current[slotId] || 0;
+      if (Date.now() - lastUp > 350) {
+        gestureEngineRef.current?.buttonDown(slotId, 'simulation');
+        gestureEngineRef.current?.buttonUp(slotId);
       }
       return;
     }
@@ -2616,9 +2852,17 @@ export default function App() {
   ) => {
     if (suppressNextClickRef.current) return;
     if (simulationMode) {
-      if (subAction === 'cw') setEncoderAngle((angle) => (angle + 30) % 360);
-      if (subAction === 'ccw') setEncoderAngle((angle) => (angle - 30 + 360) % 360);
-      runSimulationAction(getEncoderActions(currentLayer[slotId])[subAction]);
+      if (subAction === 'cw') {
+        gestureEngineRef.current?.dialRotate('cw', 'simulation');
+      } else if (subAction === 'ccw') {
+        gestureEngineRef.current?.dialRotate('ccw', 'simulation');
+      } else {
+        const lastUp = lastSimPointerUpRef.current[slotId] || 0;
+        if (Date.now() - lastUp > 350) {
+          gestureEngineRef.current?.buttonDown(GRID_MACRO_ENCODER_SLOT, 'simulation');
+          gestureEngineRef.current?.buttonUp(GRID_MACRO_ENCODER_SLOT);
+        }
+      }
       return;
     }
     if (selectedDrawerTile) {
@@ -4609,6 +4853,8 @@ export default function App() {
                   onSelectKey={handleSelectKey}
                   onSelectEncoderSub={handleSelectEncoderSubAction}
                   onStartKeyDrag={handleStartMacropadKeyDrag}
+                  onKeyPointerUp={handleKeyPointerUp}
+                  onKeyPointerLeave={handleKeyPointerLeave}
                   entrancePhase={entrancePhase}
                 />
               </motion.div>
@@ -7930,6 +8176,15 @@ interface MacropadDeviceProps {
     slotId: KeySlotId,
     sub?: EncoderSubActionId
   ) => void;
+  onKeyPointerUp?: (
+    e: React.PointerEvent,
+    slotId: KeySlotId,
+    sub?: EncoderSubActionId
+  ) => void;
+  onKeyPointerLeave?: (
+    e: React.PointerEvent,
+    slotId: KeySlotId
+  ) => void;
   onHoverSlot?: (slotId: KeySlotId | null) => void;
   highlightedSlot?: KeySlotId | null;
   entrancePhase?: EntrancePhase;
@@ -7946,6 +8201,8 @@ function MacropadDevice({
   onSelectKey,
   onSelectEncoderSub,
   onStartKeyDrag = () => {},
+  onKeyPointerUp,
+  onKeyPointerLeave,
   onHoverSlot,
   highlightedSlot = null,
   entrancePhase,
@@ -8028,6 +8285,8 @@ function MacropadDevice({
                 isDraggingSource={draggedFromSlot === slotId}
                 onClick={() => onSelectKey(slotId)}
                 onPointerDown={(e) => onStartKeyDrag(e, slotId)}
+                onPointerUp={(e) => onKeyPointerUp?.(e, slotId)}
+                onPointerLeave={(e) => onKeyPointerLeave?.(e, slotId)}
                 onHoverSlot={onHoverSlot}
                 previewHighlighted={highlightedSlot === slotId}
               />
@@ -8297,6 +8556,8 @@ interface KeycapButtonProps {
   isLowercase?: boolean;
   onClick: () => void;
   onPointerDown?: (e: React.PointerEvent) => void;
+  onPointerUp?: (e: React.PointerEvent) => void;
+  onPointerLeave?: (e: React.PointerEvent) => void;
   onHoverSlot?: (slotId: KeySlotId | null) => void;
   previewHighlighted?: boolean;
 }
@@ -8316,6 +8577,8 @@ function KeycapButton({
   isLowercase,
   onClick,
   onPointerDown,
+  onPointerUp,
+  onPointerLeave,
   onHoverSlot,
   previewHighlighted = false,
 }: KeycapButtonProps) {
@@ -8335,6 +8598,8 @@ function KeycapButton({
       {...entranceProps}
       data-drop-slot={slotId}
       onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
       onClick={onClick}
       onMouseEnter={() => onHoverSlot?.(slotId)}
       onMouseLeave={() => onHoverSlot?.(null)}
