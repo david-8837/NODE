@@ -20,7 +20,42 @@ describe('Application Logic: Profile Validation & Sanitization', () => {
     expect(result.profile).toBeDefined();
     expect(result.profile?.name).toBe('Custom OBS Studio');
     expect(result.profile?.layers[0].r1c1.binding).toBe('Ctrl+Shift+R');
-    expect(result.profile?.layers[0]['dial-tl'].encoderActions?.cw.binding).toBe('volume +');
+    expect(result.profile?.layers[0]['dial-tl']).toMatchObject({
+      label: '',
+      binding: 'blank',
+      encoderActions: {
+        cw: { label: '', binding: 'blank' },
+        ccw: { label: '', binding: 'blank' },
+        press: { label: '', binding: 'blank' },
+      },
+    });
+  });
+
+  it('preserves explicitly assigned dial actions while keeping omitted actions blank', () => {
+    const result = validateProfile({
+      name: 'Custom dial',
+      layers: [{
+        'dial-tl': {
+          label: 'Stream controls',
+          binding: 'Custom dial',
+          encoderActions: {
+            cw: { label: 'Next', binding: 'next track' },
+            press: { label: '', binding: '' },
+          },
+        },
+      }],
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.profile?.layers[0]['dial-tl']).toMatchObject({
+      label: 'Stream controls',
+      binding: 'Custom dial',
+      encoderActions: {
+        cw: { label: 'Next', binding: 'next track' },
+        ccw: { label: '', binding: 'blank' },
+        press: { label: '', binding: '' },
+      },
+    });
   });
 
   it('should reject profile with missing name', () => {

@@ -40,6 +40,32 @@ describe('QMK profile-to-VIA configuration', () => {
     });
   });
 
+  it('keeps a missing or partially empty dial unassigned instead of supplying media defaults', () => {
+    const empty = buildViaConfiguration({ layers: [{}] }, 'win');
+    expect(empty.warnings).toEqual([]);
+    expect(empty.config.layers[0]?.enc).toEqual({
+      cw: { t: 'none' },
+      press: { t: 'none' },
+      ccw: { t: 'none' },
+    });
+
+    const partial = buildViaConfiguration({
+      layers: [{
+        'dial-tl': {
+          encoderActions: {
+            cw: { label: 'Next', binding: 'next track' },
+          },
+        },
+      }],
+    }, 'win');
+    expect(partial.warnings).toEqual([]);
+    expect(partial.config.layers[0]?.enc).toEqual({
+      cw: { t: 'media', c: 'SCAN_NEXT_TRACK' },
+      press: { t: 'none' },
+      ccw: { t: 'none' },
+    });
+  });
+
   it.each([
     ['bright up', 'BRIGHTNESS_INCREMENT', 0x00bd],
     ['brightness up', 'BRIGHTNESS_INCREMENT', 0x00bd],

@@ -76,24 +76,22 @@ export function validateProfile(input: any): { valid: boolean; profile?: Profile
       };
     }
 
-    // Validate and sanitize dial
+    // Missing dial actions are intentionally empty, matching the blank key defaults.
     const dialData = rawLayer['dial-tl'] || {};
+    const sanitizeEncoderAction = (direction: 'cw' | 'ccw' | 'press') => {
+      const action = dialData.encoderActions?.[direction];
+      return {
+        label: String(action?.label ?? ''),
+        binding: String(action?.binding ?? 'blank'),
+      };
+    };
     cleanLayer['dial-tl'] = {
-      label: String(dialData.label || 'Dial'),
-      binding: String(dialData.binding || ''),
+      label: String(dialData.label ?? ''),
+      binding: String(dialData.binding ?? 'blank'),
       encoderActions: {
-        cw: {
-          label: String(dialData.encoderActions?.cw?.label || 'Vol+'),
-          binding: String(dialData.encoderActions?.cw?.binding || 'volume +'),
-        },
-        ccw: {
-          label: String(dialData.encoderActions?.ccw?.label || 'Vol-'),
-          binding: String(dialData.encoderActions?.ccw?.binding || 'volume -'),
-        },
-        press: {
-          label: String(dialData.encoderActions?.press?.label || 'Mute'),
-          binding: String(dialData.encoderActions?.press?.binding || 'mute'),
-        },
+        cw: sanitizeEncoderAction('cw'),
+        ccw: sanitizeEncoderAction('ccw'),
+        press: sanitizeEncoderAction('press'),
       },
     };
 

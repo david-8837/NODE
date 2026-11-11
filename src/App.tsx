@@ -67,6 +67,12 @@ interface EncoderSubBinding {
   execution?: DesktopExecutionDefinition;
 }
 
+const BLANK_ENCODER_ACTIONS: Record<EncoderSubActionId, EncoderSubBinding> = {
+  cw: { label: '', binding: 'blank' },
+  press: { label: '', binding: 'blank' },
+  ccw: { label: '', binding: 'blank' },
+};
+
 interface KeyAssignment {
   label: string;
   actionType:
@@ -95,13 +101,7 @@ function formatEncoderShortLabel(text: string): string {
 function getEncoderActions(
   assignment: KeyAssignment
 ): Record<EncoderSubActionId, EncoderSubBinding> {
-  return (
-    assignment.encoderActions || {
-      cw: { label: 'vo...', binding: 'volume +' },
-      press: { label: 'pl...', binding: 'play' },
-      ccw: { label: 'vo...', binding: 'volume -' },
-    }
-  );
+  return assignment.encoderActions || BLANK_ENCODER_ACTIONS;
 }
 
 interface ProfileData {
@@ -478,14 +478,10 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
 
 export const INITIAL_LAYER_1: LayerKeymap = {
   'dial-tl': {
-    label: 'Vol',
-    actionType: 'Shortcut',
-    binding: 'Volume / Play',
-    encoderActions: {
-      cw: { label: 'vo...', binding: 'volume +' },
-      press: { label: 'pl...', binding: 'play' },
-      ccw: { label: 'vo...', binding: 'volume -' },
-    },
+    label: '',
+    actionType: 'Basic input',
+    binding: 'blank',
+    encoderActions: BLANK_ENCODER_ACTIONS,
   },
   r1c1: { label: '', actionType: 'Basic input', binding: 'blank' },
   r1c2: { label: '', actionType: 'Basic input', binding: 'blank' },

@@ -816,7 +816,7 @@
                                             "tag": "button",
                                             "attributes": {
                                               "class": "w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none border-transparent hover:border-[#0051ff] hover:z-10",
-                                              "title": "Dial: Volume / Play"
+                                              "title": "Dial: blank"
                                             },
                                             "text": "",
                                             "children": [
