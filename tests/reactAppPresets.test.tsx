@@ -3,6 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import App from '../src/App';
+import { PROFILE_FILE_STORAGE_KEY } from '../src/profileFiles';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -41,6 +42,9 @@ describe('production React preset experience', () => {
   it('renders all shipped preset cards and installs platform-aware bindings and custom actions', async () => {
     await openPresets();
     expect(container.querySelectorAll('[data-preset-icon]')).toHaveLength(27);
+    expect(container.querySelector('[data-preset-screen]')?.className).toContain('preset-screen-scroll');
+    expect(container.querySelector('[data-preset-grid]')?.className).toContain('xl:grid-cols-4');
+    expect(container.querySelector('[data-preset-grid]')?.className).toContain('2xl:grid-cols-5');
 
     await click(container.querySelector<HTMLButtonElement>('button[aria-label="macOS Presets"]')!);
     let chatgptIcon = container.querySelector<HTMLElement>('[data-preset-icon="chatgpt"]');
@@ -180,5 +184,70 @@ describe('production React preset experience', () => {
     expect(chatgptTile).not.toBeNull();
     const chatgptActionIcon = chatgptTile?.querySelector<HTMLElement>('[data-preset-action-icon="chatgpt"]');
     expect(chatgptActionIcon?.style.color).toBe('rgb(16, 163, 127)');
+  });
+
+  it('keeps personal actions above installed preset groups after another preset is added', async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    window.localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify({
+      v: 1,
+      activeProfileIndex: 0,
+      profiles: [{ id: 'default', name: 'Default Profile', color: '#0051ff', layers: [{}] }],
+      customItems: {
+        Action: [
+          {
+            id: 'preset-chatgpt-r1c1',
+            main: 'New Chat',
+            listLabel: 'New Chat (Ctrl + Shift + O)',
+            macropadLabel: 'New',
+          },
+          {
+            id: 'custom-personal',
+            main: 'My personal action',
+            listLabel: 'Personal shortcut (Ctrl + Alt + K)',
+            macropadLabel: 'Mine',
+          },
+        ],
+        'Multi-A': [],
+        'Smart-A': [],
+      },
+    }));
+
+    container = document.createElement('div');
+    container.id = 'root';
+    container.classList.add('is-ready');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root.render(createElement(App)));
+
+    await openPresets();
+    const vscodeIcon = container.querySelector<HTMLElement>('[data-preset-icon="vscode"]');
+    const vscodeCard = vscodeIcon?.parentElement?.parentElement?.parentElement;
+    const vscodeInstall = [...(vscodeCard?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.trim() === 'Install');
+    expect(vscodeInstall).toBeDefined();
+    await click(vscodeInstall!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+
+    await click(container.querySelector<HTMLButtonElement>('button[title="Open Key Mapping"]')!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    });
+    const actionTab = [...container.querySelectorAll<HTMLButtonElement>('aside button')]
+      .find((button) => button.textContent?.trim() === 'Action');
+    expect(actionTab).toBeDefined();
+    await click(actionTab!);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 300));
+    });
+
+    const mappingDrawer = container.querySelector<HTMLElement>('aside');
+    const groups = [...(mappingDrawer?.querySelectorAll<HTMLElement>('[data-action-group]') ?? [])];
+    expect(groups.map((group) => group.dataset.actionGroup)).toEqual(['custom', 'chatgpt', 'vscode']);
+    expect(groups[0]?.querySelector<HTMLButtonElement>('button')?.title).toContain('My personal action');
+    expect(groups[1]?.textContent).toContain('ChatGPT');
+    expect(groups[2]?.textContent).toContain('VS Code');
   });
 });

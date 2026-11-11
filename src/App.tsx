@@ -170,7 +170,11 @@ function groupCustomItemsByPreset(
     });
   });
 
-  return [...groups.values()];
+  return [...groups.values()].sort((left, right) => {
+    if (!left.presetId && right.presetId) return -1;
+    if (left.presetId && !right.presetId) return 1;
+    return 0;
+  });
 }
 
 interface PersistedAppProfileState {
@@ -3021,7 +3025,11 @@ export default function App() {
       </div>
       <div className="space-y-[16px]">
         {groupCustomItemsByPreset(items, customGroupTitle).map((group) => (
-          <section key={group.id} data-preset-action-group={group.presetId}>
+          <section
+            key={group.id}
+            data-action-group={group.presetId ?? 'custom'}
+            data-preset-action-group={group.presetId}
+          >
             {group.presetId && (
               <div className="h-[20px] flex items-center gap-[7px] mb-[9px]">
                 <PresetAppIcon id={group.presetId} size={18} />
@@ -6935,7 +6943,8 @@ export default function App() {
           animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
           exit={{ opacity: 0, scale: 1.01, filter: 'blur(4px)' }}
           transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-          className="flex-1 overflow-y-auto w-full max-w-[732px] mx-auto pt-[54px] pb-[48px] px-4"
+          data-preset-screen
+          className="preset-screen-scroll flex-1 overflow-y-auto w-full max-w-[1440px] mx-auto pt-[54px] pb-[48px] px-4"
         >
           <div className="flex items-start justify-between">
             <div>
@@ -7005,7 +7014,10 @@ export default function App() {
             </div>
           </div>
 
-          <div className="mt-[36px] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-[17px]">
+          <div
+            data-preset-grid
+            className="mt-[36px] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-[17px]"
+          >
             {filteredPresets.map((preset) => (
               <div
                 key={preset.id}

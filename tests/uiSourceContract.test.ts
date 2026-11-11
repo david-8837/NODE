@@ -31,6 +31,7 @@ describe('Production React source and legacy inline regression checks', () => {
     'utf-8'
   );
   const appSource = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appStyles = fs.readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf-8');
   const nativeExecutorSource = fs.readFileSync(path.join(process.cwd(), 'native-executor.ts'), 'utf-8');
   const desktopExecutorSource = fs.readFileSync(path.join(process.cwd(), 'electron/desktopExecution.cjs'), 'utf-8');
   const entranceAnimations = fs.readFileSync(
@@ -277,6 +278,15 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(appSource).toContain('volume -');
     expect(appSource).not.toContain('knob-tr');
     expect(appSource).not.toContain('Creator Micro 2');
+  });
+
+  it('uses a responsive four/five-column preset grid without visible scrollbar chrome', () => {
+    expect(appSource).toContain('data-preset-screen');
+    expect(appSource).toContain('max-w-[1440px]');
+    expect(appSource).toContain('xl:grid-cols-4');
+    expect(appSource).toContain('2xl:grid-cols-5');
+    expect(appStyles).toMatch(/\.preset-screen-scroll\s*\{[^}]*scrollbar-width:\s*none/s);
+    expect(appStyles).toMatch(/\.preset-screen-scroll::-webkit-scrollbar\s*\{[^}]*display:\s*none/s);
   });
 
   it('includes the required Creator and Power-User presets in the production React app', () => {
