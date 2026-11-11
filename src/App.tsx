@@ -963,7 +963,7 @@ export default function App() {
     onHold: '',
     tapHold: '',
   });
-  const [tappingTermMs, setTappingTermMs] = useState('250');
+  const [tappingTermMs, setTappingTermMs] = useState('180');
   const [activeGestureDropdown, setActiveGestureDropdown] =
     useState<MultiGestureKey | null>(null);
   const [gestureKeySearch, setGestureKeySearch] = useState('');
@@ -1177,6 +1177,7 @@ export default function App() {
 
   useEffect(() => {
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       setTipIndex((prev) => (prev + 1) % TIPS.length);
     }, 5000);
     return () => clearInterval(interval);
@@ -1211,6 +1212,10 @@ export default function App() {
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
   const lastSyncedConfigKeyRef = useRef('');
 
+  // Hardware layout, physical event visual mirroring, and desktop execution mode
+  const [encoderAngle, setEncoderAngle] = useState(45);
+  const [activePhysicalPressedSlot, setActivePhysicalPressedSlot] = useState<string | null>(null);
+
   const gestureEngineRef = useRef<GestureEngine | null>(null);
   if (!gestureEngineRef.current) {
     gestureEngineRef.current = new GestureEngine();
@@ -1240,22 +1245,32 @@ export default function App() {
 
           switch (event.type) {
             case HardwareEventType.BUTTON_DOWN:
-              if (event.slotId) engine.buttonDown(event.slotId, 'hardware');
+              if (event.slotId) {
+                engine.buttonDown(event.slotId, 'hardware');
+                setActivePhysicalPressedSlot(event.slotId);
+              }
               break;
             case HardwareEventType.BUTTON_UP:
-              if (event.slotId) engine.buttonUp(event.slotId);
+              if (event.slotId) {
+                engine.buttonUp(event.slotId);
+                setActivePhysicalPressedSlot((cur) => (cur === event.slotId ? null : cur));
+              }
               break;
             case HardwareEventType.ENC_CW:
               engine.dialRotate('cw', 'hardware');
+              setEncoderAngle((prev) => (prev + 30) % 360);
               break;
             case HardwareEventType.ENC_CCW:
               engine.dialRotate('ccw', 'hardware');
+              setEncoderAngle((prev) => (prev - 30 + 360) % 360);
               break;
             case HardwareEventType.DIAL_DOWN:
               engine.buttonDown(GRID_MACRO_ENCODER_SLOT, 'hardware');
+              setActivePhysicalPressedSlot(GRID_MACRO_ENCODER_SLOT);
               break;
             case HardwareEventType.DIAL_UP:
               engine.buttonUp(GRID_MACRO_ENCODER_SLOT);
+              setActivePhysicalPressedSlot((cur) => (cur === GRID_MACRO_ENCODER_SLOT ? null : cur));
               break;
           }
         })
@@ -1336,8 +1351,7 @@ export default function App() {
     }
   }, [profiles, activeProfileIndex, customItemsByTab]);
 
-  // Hardware layout and desktop execution mode
-  const [encoderAngle, setEncoderAngle] = useState(45);
+  // Desktop execution simulation mode
   const [simulationMode, setSimulationMode] = useState(false);
   const [simulationTransition, setSimulationTransition] = useState(false);
 
@@ -1431,7 +1445,7 @@ export default function App() {
           hasDoubleTap: Boolean(gestures.doubleTap?.trim()),
           hasHold: Boolean(gestures.onHold?.trim()),
           hasTapHold: Boolean(gestures.tapHold?.trim()),
-          tappingTermMs: execution.tappingTermMs || 250,
+          tappingTermMs: execution.tappingTermMs || 180,
         };
       }
       const binding = assignment.binding || '';
@@ -1443,7 +1457,7 @@ export default function App() {
           hasDoubleTap,
           hasHold,
           hasTapHold,
-          tappingTermMs: 250,
+          tappingTermMs: 180,
         };
       }
       return {};
@@ -2756,10 +2770,12 @@ export default function App() {
         } else if (subAction === 'ccw') {
           gestureEngineRef.current?.dialRotate('ccw', 'simulation');
         } else {
+          setActivePhysicalPressedSlot(GRID_MACRO_ENCODER_SLOT);
           gestureEngineRef.current?.buttonDown(GRID_MACRO_ENCODER_SLOT, 'simulation');
         }
         return;
       }
+      setActivePhysicalPressedSlot(slotId);
       gestureEngineRef.current?.buttonDown(slotId, 'simulation');
       return;
     }
@@ -2820,6 +2836,7 @@ export default function App() {
     subAction?: EncoderSubActionId
   ) => {
     if (!simulationMode) return;
+    setActivePhysicalPressedSlot((cur) => (cur === slotId || (cur === GRID_MACRO_ENCODER_SLOT && slotId === GRID_MACRO_ENCODER_SLOT) ? null : cur));
     lastSimPointerUpRef.current[slotId] = Date.now();
     if (slotId === GRID_MACRO_ENCODER_SLOT) {
       if (subAction === 'press' || !subAction) {
@@ -2835,6 +2852,7 @@ export default function App() {
     slotId: KeySlotId
   ) => {
     if (!simulationMode) return;
+    setActivePhysicalPressedSlot((cur) => (cur === slotId || (cur === GRID_MACRO_ENCODER_SLOT && slotId === GRID_MACRO_ENCODER_SLOT) ? null : cur));
     const targetSlot = slotId === GRID_MACRO_ENCODER_SLOT ? GRID_MACRO_ENCODER_SLOT : slotId;
     const state = gestureEngineRef.current?.getSlotState(targetSlot);
     if (state === 'PRESSED_1' || state === 'PRESSED_2') {
@@ -3073,7 +3091,7 @@ export default function App() {
               onHold: fromDisplay('onHold'),
               tapHold: fromDisplay('tapHold'),
             });
-        setTappingTermMs(String(execution?.kind === 'multi' ? execution.tappingTermMs ?? 250 : 250));
+        setTappingTermMs(String(execution?.kind === 'multi' ? execution.tappingTermMs ?? 180 : 180));
       } else if (tab === 'Smart-A') {
         const execution = existingItem.execution;
         const displaySmart = (existingItem.listLabel || '').match(/\((Text|Cmd|Web|App):\s*([\s\S]*)\)$/i);
@@ -3108,7 +3126,7 @@ export default function App() {
           onHold: '',
           tapHold: '',
         });
-        setTappingTermMs('250');
+        setTappingTermMs('180');
       } else if (tab === 'Smart-A') {
         setNewCustomName('My Smart action');
         setSmartSubTab('Text');
@@ -3180,7 +3198,7 @@ export default function App() {
             .filter(([, value]) => value.trim())
             .map(([gesture, value]) => [gesture, value.trim()])
         ) as Partial<Record<MultiGestureKey, string>>,
-        tappingTermMs: Math.max(0, Number.parseInt(tappingTermMs, 10) || 250),
+        tappingTermMs: Math.max(0, Number.parseInt(tappingTermMs, 10) || 180),
       };
     } else if (creatorModalTab === 'Smart-A') {
       const val = smartSubTab === 'App'
@@ -4918,6 +4936,7 @@ export default function App() {
                   dragOverTarget={dragOverTarget}
                   draggedFromSlot={draggedTile?.fromSlotId || null}
                   encoderAngle={encoderAngle}
+                  activePhysicalSlot={activePhysicalPressedSlot}
                   onSelectKey={handleSelectKey}
                   onSelectEncoderSub={handleSelectEncoderSubAction}
                   onStartKeyDrag={handleStartMacropadKeyDrag}
@@ -5520,14 +5539,14 @@ export default function App() {
                                 }
                                 onBlur={() => {
                                   if (!tappingTermMs.trim()) {
-                                    setTappingTermMs('250');
+                                    setTappingTermMs('180');
                                   }
                                 }}
                                 onKeyDown={(e) => {
                                   e.stopPropagation();
                                   if (e.key === 'Enter') {
                                     if (!tappingTermMs.trim()) {
-                                      setTappingTermMs('250');
+                                      setTappingTermMs('180');
                                     }
                                     e.currentTarget.blur();
                                   }
@@ -5535,7 +5554,7 @@ export default function App() {
                                 style={{
                                   width: `${Math.max(
                                     2,
-                                    (tappingTermMs || '250').length
+                                    (tappingTermMs || '180').length
                                   )}ch`,
                                 }}
                                 className="min-w-[20px] max-w-[44px] bg-transparent text-left text-[10.5px] text-[#444444] focus:outline-none tabular-nums"
@@ -8319,6 +8338,7 @@ interface MacropadDeviceProps {
   ) => void;
   onHoverSlot?: (slotId: KeySlotId | null) => void;
   highlightedSlot?: KeySlotId | null;
+  activePhysicalSlot?: string | null;
   entrancePhase?: EntrancePhase;
   showSlotNumbers?: boolean;
 }
@@ -8337,6 +8357,7 @@ function MacropadDevice({
   onKeyPointerLeave,
   onHoverSlot,
   highlightedSlot = null,
+  activePhysicalSlot = null,
   entrancePhase,
   showSlotNumbers = false,
 }: MacropadDeviceProps) {
@@ -8393,6 +8414,7 @@ function MacropadDevice({
             >
               <FlatDialControl
                 selected={isEncoderOpen}
+                isPressed={activePhysicalSlot === GRID_MACRO_ENCODER_SLOT}
                 angle={encoderAngle}
                 title={`Dial: ${layer[GRID_MACRO_ENCODER_SLOT].binding}`}
                 onClick={() => onSelectKey(GRID_MACRO_ENCODER_SLOT)}
@@ -8420,7 +8442,8 @@ function MacropadDevice({
                 onPointerUp={(e) => onKeyPointerUp?.(e, slotId)}
                 onPointerLeave={(e) => onKeyPointerLeave?.(e, slotId)}
                 onHoverSlot={onHoverSlot}
-                previewHighlighted={highlightedSlot === slotId}
+                previewHighlighted={highlightedSlot === slotId || activePhysicalSlot === slotId}
+                isPhysicalPressed={activePhysicalSlot === slotId}
               />
             ))}
           </div>
@@ -8432,11 +8455,13 @@ function MacropadDevice({
 
 function FlatDialControl({
   selected,
+  isPressed = false,
   angle,
   title,
   onClick,
 }: {
   selected: boolean;
+  isPressed?: boolean;
   angle: number;
   title: string;
   onClick: () => void;
@@ -8446,7 +8471,9 @@ function FlatDialControl({
       onClick={onClick}
       title={title}
       className={`w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-        selected
+        isPressed
+          ? 'scale-[0.92] border-[#0051ff] shadow-[0_0_18px_rgba(0,81,255,0.9)] z-20 brightness-110'
+          : selected
           ? 'border-[#0051ff] shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
           : 'border-transparent hover:border-[#0051ff] hover:z-10'
       }`}
@@ -8692,6 +8719,7 @@ interface KeycapButtonProps {
   onPointerLeave?: (e: React.PointerEvent) => void;
   onHoverSlot?: (slotId: KeySlotId | null) => void;
   previewHighlighted?: boolean;
+  isPhysicalPressed?: boolean;
 }
 
 function KeycapButton({
@@ -8713,6 +8741,7 @@ function KeycapButton({
   onPointerLeave,
   onHoverSlot,
   previewHighlighted = false,
+  isPhysicalPressed = false,
 }: KeycapButtonProps) {
   const isEmpty =
     !iconId && (!label || label === '—' || binding === 'blank');
@@ -8746,7 +8775,9 @@ function KeycapButton({
           ? 'text-[11px] font-normal'
           : 'text-[11.5px] font-medium'
       } ${
-        previewHighlighted
+        isPhysicalPressed
+          ? 'scale-[0.93] bg-[#222222] text-[#00e5ff] border-[#0051ff] shadow-[0_0_18px_rgba(0,81,255,0.9)] z-20 brightness-110'
+          : previewHighlighted
           ? 'bg-[#313131] text-[#f3f3f3] border-[#0051ff] shadow-[0_0_12px_rgba(0,81,255,0.65)] z-10'
           : isDraggingSource
           ? 'bg-[#1e1e1e] text-[#6d6d6d] border-transparent'

@@ -15,7 +15,7 @@
 #define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095
 #define DYNAMIC_KEYMAP_LAYER_COUNT 4
 
-#define TAPPING_TERM 200
+#define TAPPING_TERM 180
 
 /* One onboard WS2812 indicator on GP16. */
 #define WS2812_DI_PIN GP16

@@ -36,8 +36,8 @@ export interface GestureEngineOptions {
   onDial?: (event: RecognizedDialEvent) => void;
 }
 
-const DEFAULT_TAPPING_TERM_MS = 250;
-const DEFAULT_HOLD_THRESHOLD_MIN_MS = 400;
+const DEFAULT_TAPPING_TERM_MS = 180;
+const DEFAULT_HOLD_THRESHOLD_MIN_MS = 300;
 
 export const ALL_GRID_MACRO_SLOTS: readonly GridMacroSlotId[] = [
   ...GRID_MACRO_KEY_SLOTS,
