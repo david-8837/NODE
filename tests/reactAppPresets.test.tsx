@@ -15,10 +15,15 @@ async function click(button: HTMLButtonElement) {
 async function openPresets() {
   const presetButton = [...container.querySelectorAll<HTMLButtonElement>('nav button')]
     .find((button) => button.textContent?.trim() === 'Preset');
-  await act(async () => {
-    presetButton!.click();
-    await new Promise((resolve) => window.setTimeout(resolve, 350));
-  });
+  expect(presetButton).toBeDefined();
+  await click(presetButton!);
+
+  for (let attempt = 0; attempt < 50 && !container.querySelector('[data-preset-grid]'); attempt += 1) {
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    });
+  }
+  expect(container.querySelector('[data-preset-grid]')).not.toBeNull();
 }
 
 beforeEach(async () => {
