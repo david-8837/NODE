@@ -180,5 +180,51 @@ describe('actionDispatcher: Unified Action Resolution and Dispatch', () => {
     // Even if execution object was not cleaned up, blank binding must not execute
     expect(resolveActionForGesture('r1c3', 'onTap', layerWithBlanks)).toBeNull();
   });
+
+  it('resolves Cheat-Sheet actions and dispatches toggle/hold/hide/show events', async () => {
+    const cheatSheetLayer: ActionDispatcherLayer = {
+      r1c1: { label: 'Show', binding: 'Show Cheat-Sheet', actionId: 'cs-show' },
+      r1c2: { label: 'Hold', binding: 'Show Cheat-Sheet Hold', actionId: 'cs-hold' },
+      r1c3: { label: 'Hide', binding: 'Hide Cheat-Sheet', actionId: 'cs-hide' },
+      r2c1: { label: 'Toggle', binding: 'Toggle Cheat-Sheet', actionId: 'cs-tog' },
+    };
+
+    const showAction = resolveActionForGesture('r1c1', 'onTap', cheatSheetLayer);
+    expect(showAction).toMatchObject({ type: 'CheatSheet', value: 'show' });
+
+    const holdAction = resolveActionForGesture('r1c2', 'onTap', cheatSheetLayer);
+    expect(holdAction).toMatchObject({ type: 'CheatSheet', value: 'hold' });
+
+    const hideAction = resolveActionForGesture('r1c3', 'onTap', cheatSheetLayer);
+    expect(hideAction).toMatchObject({ type: 'CheatSheet', value: 'hide' });
+
+    const toggleAction = resolveActionForGesture('r2c1', 'onTap', cheatSheetLayer);
+    expect(toggleAction).toMatchObject({ type: 'CheatSheet', value: 'toggle' });
+
+    const onCheatSheetToggle = vi.fn();
+    await dispatchResolvedAction(showAction!, {
+      source: 'hardware',
+      onCheatSheetToggle,
+    });
+    expect(onCheatSheetToggle).toHaveBeenCalledWith('show');
+
+    await dispatchResolvedAction(holdAction!, {
+      source: 'hardware',
+      onCheatSheetToggle,
+    });
+    expect(onCheatSheetToggle).toHaveBeenCalledWith('hold');
+
+    await dispatchResolvedAction(hideAction!, {
+      source: 'hardware',
+      onCheatSheetToggle,
+    });
+    expect(onCheatSheetToggle).toHaveBeenCalledWith('hide');
+
+    await dispatchResolvedAction(toggleAction!, {
+      source: 'hardware',
+      onCheatSheetToggle,
+    });
+    expect(onCheatSheetToggle).toHaveBeenCalledWith('toggle');
+  });
 });
 

@@ -1016,6 +1016,13 @@ app.whenReady().then(() => {
             mainWindow.webContents.send('trigger-reset-macropad-keys'),
         },
         {
+          label: 'Toggle Macropad Cheat-Sheet',
+          accelerator: 'CmdOrCtrl+H',
+          click: () =>
+            mainWindow &&
+            mainWindow.webContents.send('trigger-toggle-cheat-sheet'),
+        },
+        {
           label: 'Open Hardware Inspector',
           click: () =>
             mainWindow &&

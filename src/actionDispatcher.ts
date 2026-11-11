@@ -11,6 +11,7 @@ import { readAppSettings, type NativeActionResult } from './appSettings';
 
 export interface ActionDispatcherSlotEntry {
   id?: string;
+  actionId?: string;
   label?: string;
   binding?: string;
   actionType?: string;
@@ -28,6 +29,7 @@ export interface DispatchOptions {
   source: 'hardware' | 'simulation';
   host?: SimulationActionHost;
   onLayerChange?: (index: number) => boolean | void;
+  onCheatSheetToggle?: (mode: 'show' | 'hide' | 'toggle' | 'hold') => void;
   showToast?: (message: string) => void;
   allowTerminal?: boolean;
 }
@@ -173,6 +175,30 @@ function resolveEntryAction(
     };
   }
 
+  // Cheat-Sheet internal actions (Show, Hold, Hide, Toggle)
+  if (
+    /cheat-?sheet/i.test(binding) ||
+    /cheat-?sheet/i.test(label) ||
+    entry.actionId === 'cs-show' ||
+    entry.actionId === 'cs-hold' ||
+    entry.actionId === 'cs-hide' ||
+    entry.actionId === 'cs-tog'
+  ) {
+    let mode: 'show' | 'hold' | 'hide' | 'toggle' = 'toggle';
+    if (/hold/i.test(binding) || /hold/i.test(label) || entry.actionId === 'cs-hold') {
+      mode = 'hold';
+    } else if (/hide/i.test(binding) || /hide/i.test(label) || entry.actionId === 'cs-hide') {
+      mode = 'hide';
+    } else if (/show/i.test(binding) || /show/i.test(label) || entry.actionId === 'cs-show') {
+      mode = 'show';
+    }
+    return {
+      type: 'CheatSheet',
+      value: mode,
+      payload: { type: 'CheatSheet', mode },
+    };
+  }
+
   // Generic shortcut in parentheses
   const wrapped = binding.match(/\(([^)]+)\)/);
   const value = (wrapped ? wrapped[1].trim() : binding || label).trim();
@@ -191,6 +217,21 @@ export async function dispatchResolvedAction(
   action: ResolvedAction,
   options: DispatchOptions
 ): Promise<NativeActionResult> {
+  if (action.type === 'CheatSheet') {
+    const mode = (action.payload?.mode as 'show' | 'hide' | 'toggle' | 'hold') || 'toggle';
+    options.onCheatSheetToggle?.(mode);
+    options.showToast?.(
+      mode === 'show'
+        ? 'Cheat-Sheet Opened'
+        : mode === 'hide'
+        ? 'Cheat-Sheet Closed'
+        : mode === 'hold'
+        ? 'Cheat-Sheet (Hold to peek)'
+        : 'Cheat-Sheet Toggled'
+    );
+    return { success: true };
+  }
+
   const host = options.host ?? (typeof window !== 'undefined' ? (window as unknown as SimulationActionHost) : undefined);
   if (!host) {
     return { success: false, error: 'No action host is available' };

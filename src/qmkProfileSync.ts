@@ -233,6 +233,10 @@ function parseBinding(
     if (key) return { action: { t: 'keys', k: [key] } };
   }
 
+  if (/cheat-?sheet/i.test(clean) || /cheat-?sheet/i.test(label)) {
+    return { action: { t: 'none' } };
+  }
+
   return {
     action: null,
     warning: `"${clean}" has no key press the device can send yet`,

@@ -67,6 +67,7 @@ import {
   X,
   Search,
   RotateCcw,
+  RotateCw,
 } from 'lucide-react';
 
 declare const __APP_VERSION__: string;
@@ -81,6 +82,7 @@ type EncoderSubActionId = 'cw' | 'press' | 'ccw';
 interface EncoderSubBinding {
   label: string;
   binding: string;
+  actionId?: string;
   execution?: DesktopExecutionDefinition;
 }
 
@@ -1216,6 +1218,10 @@ export default function App() {
   const [encoderAngle, setEncoderAngle] = useState(45);
   const [activePhysicalPressedSlot, setActivePhysicalPressedSlot] = useState<string | null>(null);
 
+  // Macropad Cheat-Sheet HUD overlay states
+  const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
+  const cheatSheetHoldSlotRef = useRef<string | null>(null);
+
   const gestureEngineRef = useRef<GestureEngine | null>(null);
   if (!gestureEngineRef.current) {
     gestureEngineRef.current = new GestureEngine();
@@ -1248,12 +1254,26 @@ export default function App() {
               if (event.slotId) {
                 engine.buttonDown(event.slotId, 'hardware');
                 setActivePhysicalPressedSlot(event.slotId);
+                const slotEntry = currentLayerRef.current[event.slotId];
+                if (
+                  slotEntry &&
+                  (slotEntry.actionId === 'cs-hold' ||
+                    /cheat-?sheet hold/i.test(slotEntry.binding || '') ||
+                    /cheat-?sheet hold/i.test(slotEntry.label || ''))
+                ) {
+                  setCheatSheetOpen(true);
+                  cheatSheetHoldSlotRef.current = event.slotId;
+                }
               }
               break;
             case HardwareEventType.BUTTON_UP:
               if (event.slotId) {
                 engine.buttonUp(event.slotId);
                 setActivePhysicalPressedSlot((cur) => (cur === event.slotId ? null : cur));
+                if (cheatSheetHoldSlotRef.current === event.slotId) {
+                  setCheatSheetOpen(false);
+                  cheatSheetHoldSlotRef.current = null;
+                }
               }
               break;
             case HardwareEventType.ENC_CW:
@@ -1264,22 +1284,43 @@ export default function App() {
               engine.dialRotate('ccw', 'hardware');
               setEncoderAngle((prev) => (prev - 30 + 360) % 360);
               break;
-            case HardwareEventType.DIAL_DOWN:
+            case HardwareEventType.DIAL_DOWN: {
               engine.buttonDown(GRID_MACRO_ENCODER_SLOT, 'hardware');
               setActivePhysicalPressedSlot(GRID_MACRO_ENCODER_SLOT);
+              const encoderEntry =
+                currentLayerRef.current[GRID_MACRO_ENCODER_SLOT]?.encoderActions?.press;
+              if (
+                encoderEntry &&
+                (encoderEntry.actionId === 'cs-hold' ||
+                  /cheat-?sheet hold/i.test(encoderEntry.binding || '') ||
+                  /cheat-?sheet hold/i.test(encoderEntry.label || ''))
+              ) {
+                setCheatSheetOpen(true);
+                cheatSheetHoldSlotRef.current = GRID_MACRO_ENCODER_SLOT;
+              }
               break;
+            }
             case HardwareEventType.DIAL_UP:
               engine.buttonUp(GRID_MACRO_ENCODER_SLOT);
               setActivePhysicalPressedSlot((cur) => (cur === GRID_MACRO_ENCODER_SLOT ? null : cur));
+              if (cheatSheetHoldSlotRef.current === GRID_MACRO_ENCODER_SLOT) {
+                setCheatSheetOpen(false);
+                cheatSheetHoldSlotRef.current = null;
+              }
               break;
           }
         })
       : () => {};
 
+    const unsubscribeCheatSheet = window.electronAPI?.onToggleCheatSheet
+      ? window.electronAPI.onToggleCheatSheet(() => setCheatSheetOpen((v) => !v))
+      : undefined;
+
     return () => {
       active = false;
       unsubscribe();
       unsubscribeHardware();
+      unsubscribeCheatSheet?.();
     };
   }, []);
 
@@ -1505,6 +1546,11 @@ export default function App() {
         source,
         host: window,
         showToast,
+        onCheatSheetToggle: (mode) => {
+          if (mode === 'show') setCheatSheetOpen(true);
+          else if (mode === 'hide') setCheatSheetOpen(false);
+          else if (mode === 'toggle') setCheatSheetOpen((v) => !v);
+        },
         onLayerChange: (targetLayer) => {
           if (targetLayer >= profile.layers.length) {
             showToast(`Layer ${targetLayer + 1} is not available on this profile`);
@@ -1542,10 +1588,27 @@ export default function App() {
         source,
         host: window,
         showToast,
+        onCheatSheetToggle: (mode) => {
+          if (mode === 'show') setCheatSheetOpen(true);
+          else if (mode === 'hide') setCheatSheetOpen(false);
+          else if (mode === 'toggle') setCheatSheetOpen((v) => !v);
+        },
       });
     },
     [showToast]
   );
+
+  useEffect(() => {
+    if (!cheatSheetOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setCheatSheetOpen(false);
+        cheatSheetHoldSlotRef.current = null;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cheatSheetOpen]);
 
   useEffect(() => {
     const engine = gestureEngineRef.current;
@@ -2772,11 +2835,31 @@ export default function App() {
         } else {
           setActivePhysicalPressedSlot(GRID_MACRO_ENCODER_SLOT);
           gestureEngineRef.current?.buttonDown(GRID_MACRO_ENCODER_SLOT, 'simulation');
+          const encoderEntry = currentLayer[GRID_MACRO_ENCODER_SLOT]?.encoderActions?.press;
+          if (
+            encoderEntry &&
+            (encoderEntry.actionId === 'cs-hold' ||
+              /cheat-?sheet hold/i.test(encoderEntry.binding || '') ||
+              /cheat-?sheet hold/i.test(encoderEntry.label || ''))
+          ) {
+            setCheatSheetOpen(true);
+            cheatSheetHoldSlotRef.current = GRID_MACRO_ENCODER_SLOT;
+          }
         }
         return;
       }
       setActivePhysicalPressedSlot(slotId);
       gestureEngineRef.current?.buttonDown(slotId, 'simulation');
+      const slotEntry = currentLayer[slotId];
+      if (
+        slotEntry &&
+        (slotEntry.actionId === 'cs-hold' ||
+          /cheat-?sheet hold/i.test(slotEntry.binding || '') ||
+          /cheat-?sheet hold/i.test(slotEntry.label || ''))
+      ) {
+        setCheatSheetOpen(true);
+        cheatSheetHoldSlotRef.current = slotId;
+      }
       return;
     }
     // Drag encoder bindings from their CW / Press / CCW capsule, not the knob body.
@@ -2837,6 +2920,10 @@ export default function App() {
   ) => {
     if (!simulationMode) return;
     setActivePhysicalPressedSlot((cur) => (cur === slotId || (cur === GRID_MACRO_ENCODER_SLOT && slotId === GRID_MACRO_ENCODER_SLOT) ? null : cur));
+    if (cheatSheetHoldSlotRef.current === slotId) {
+      setCheatSheetOpen(false);
+      cheatSheetHoldSlotRef.current = null;
+    }
     lastSimPointerUpRef.current[slotId] = Date.now();
     if (slotId === GRID_MACRO_ENCODER_SLOT) {
       if (subAction === 'press' || !subAction) {
@@ -2853,6 +2940,10 @@ export default function App() {
   ) => {
     if (!simulationMode) return;
     setActivePhysicalPressedSlot((cur) => (cur === slotId || (cur === GRID_MACRO_ENCODER_SLOT && slotId === GRID_MACRO_ENCODER_SLOT) ? null : cur));
+    if (cheatSheetHoldSlotRef.current === slotId) {
+      setCheatSheetOpen(false);
+      cheatSheetHoldSlotRef.current = null;
+    }
     const targetSlot = slotId === GRID_MACRO_ENCODER_SLOT ? GRID_MACRO_ENCODER_SLOT : slotId;
     const state = gestureEngineRef.current?.getSlotState(targetSlot);
     if (state === 'PRESSED_1' || state === 'PRESSED_2') {
@@ -7967,6 +8058,22 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* MACROPAD CHEAT-SHEET HUD OVERLAY */}
+      <AnimatePresence>
+        {cheatSheetOpen && (
+          <CheatSheetModal
+            profile={currentProfile}
+            activeLayerIndex={activeLayerIndex}
+            onSelectLayer={setActiveLayerIndex}
+            activePhysicalSlot={activePhysicalPressedSlot}
+            onClose={() => {
+              setCheatSheetOpen(false);
+              cheatSheetHoldSlotRef.current = null;
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* SUBTLE FEEDBACK TOAST */}
       <AnimatePresence>
         {toastMessage && (
@@ -7989,6 +8096,308 @@ export default function App() {
 /* ========================================================================== */
 /* SUBCOMPONENTS                                                              */
 /* ========================================================================== */
+
+interface CheatSheetModalProps {
+  profile: ProfileData;
+  activeLayerIndex: number;
+  onSelectLayer: (layerIndex: number) => void;
+  activePhysicalSlot: string | null;
+  onClose: () => void;
+}
+
+function CheatSheetModal({
+  profile,
+  activeLayerIndex,
+  onSelectLayer,
+  activePhysicalSlot,
+  onClose,
+}: CheatSheetModalProps) {
+  const [selectedLayerIndex, setSelectedLayerIndex] = useState(activeLayerIndex);
+
+  useEffect(() => {
+    setSelectedLayerIndex(activeLayerIndex);
+  }, [activeLayerIndex]);
+
+  const layer = profile.layers[selectedLayerIndex] || profile.layers[0];
+  const encoderAssignment = layer[GRID_MACRO_ENCODER_SLOT];
+  const encoderActions = getEncoderActions(encoderAssignment);
+
+  return (
+    <motion.div
+      key="cheat-sheet-backdrop"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-[150] bg-black/65 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Macropad Cheat-Sheet"
+        initial={{ opacity: 0, scale: 0.94, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-[680px] bg-[#16161a]/95 text-white border border-white/10 rounded-2xl shadow-[0_25px_65px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.08)] p-5 sm:p-6 flex flex-col gap-5 overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#00e5ff] shadow-[0_0_8px_#00e5ff]" />
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold tracking-wide uppercase text-white/90">
+                  Cheat-Sheet HUD
+                </h2>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/70 font-mono">
+                  {profile.name}
+                </span>
+              </div>
+              <p className="text-[11px] text-white/50">
+                Live layout reference & real-time keypress monitoring
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Layer Tabs */}
+            <div className="flex items-center bg-black/40 p-1 rounded-lg border border-white/10">
+              {profile.layers.map((_, idx) => (
+                <button
+                  key={`layer-tab-${idx}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedLayerIndex(idx);
+                    onSelectLayer(idx);
+                  }}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all cursor-pointer ${
+                    selectedLayerIndex === idx
+                      ? 'bg-[#0051ff] text-white shadow-[0_0_10px_rgba(0,81,255,0.6)]'
+                      : 'text-white/60 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  Layer {idx + 1}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-7 h-7 rounded-lg border border-white/10 bg-white/5 hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              title="Close (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Rotary Dial Section */}
+        <div className="bg-black/35 border border-white/5 rounded-xl p-3.5 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold tracking-wider text-white/60 uppercase">
+              Rotary Encoder (EC11)
+            </span>
+            <span className="text-[10px] text-white/40">
+              Turn Left · Push Switch · Turn Right
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2.5">
+            {/* Turn CCW */}
+            <div className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 flex items-center gap-2.5 transition-colors">
+              <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center shrink-0">
+                <RotateCcw className="w-4 h-4 text-sky-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-sky-400/80 font-mono leading-none">Turn Left (CCW)</div>
+                <div className="text-xs font-semibold text-white/90 truncate mt-1">
+                  {encoderActions.ccw.label || encoderActions.ccw.binding || 'Blank'}
+                </div>
+                {encoderActions.ccw.binding && encoderActions.ccw.binding !== 'blank' && (
+                  <div className="text-[10px] text-white/45 truncate mt-0.5 font-mono">
+                    {encoderActions.ccw.binding}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Push Switch */}
+            <div
+              className={`border rounded-lg p-2.5 flex items-center gap-2.5 transition-all ${
+                activePhysicalSlot === GRID_MACRO_ENCODER_SLOT
+                  ? 'bg-[#0051ff]/30 border-[#00e5ff] scale-[0.98] shadow-[0_0_15px_rgba(0,229,255,0.4)]'
+                  : 'bg-white/5 hover:bg-white/10 border-white/5'
+              }`}
+            >
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0">
+                <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-400 flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-indigo-400/80 font-mono leading-none">Push Click</div>
+                <div className="text-xs font-semibold text-white/90 truncate mt-1">
+                  {encoderActions.press.label || encoderActions.press.binding || 'Blank'}
+                </div>
+                {encoderActions.press.binding && encoderActions.press.binding !== 'blank' && (
+                  <div className="text-[10px] text-white/45 truncate mt-0.5 font-mono">
+                    {encoderActions.press.binding}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Turn CW */}
+            <div className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 flex items-center gap-2.5 transition-colors">
+              <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center shrink-0">
+                <RotateCw className="w-4 h-4 text-sky-400" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-sky-400/80 font-mono leading-none">Turn Right (CW)</div>
+                <div className="text-xs font-semibold text-white/90 truncate mt-1">
+                  {encoderActions.cw.label || encoderActions.cw.binding || 'Blank'}
+                </div>
+                {encoderActions.cw.binding && encoderActions.cw.binding !== 'blank' && (
+                  <div className="text-[10px] text-white/45 truncate mt-0.5 font-mono">
+                    {encoderActions.cw.binding}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 3x3 Key Matrix Grid */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold tracking-wider text-white/60 uppercase">
+              3 × 3 Macropad Keycaps
+            </span>
+            <span className="text-[10px] text-white/40">
+              Keys 1–9 · Press physically or click to test
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2.5">
+            {GRID_MACRO_KEY_SLOTS.map((slotId, index) => {
+              const assignment = layer[slotId];
+              const isPressed = activePhysicalSlot === slotId;
+              const hasCustomIcon = Boolean(assignment?.iconId);
+              const isSmartAction =
+                assignment?.actionType === 'Smart Action' ||
+                assignment?.execution?.kind === 'smart';
+              const isMultiAction =
+                assignment?.actionType === 'Multi-step action' ||
+                assignment?.execution?.kind === 'multi';
+              const isCheatSheetAction =
+                assignment?.binding &&
+                /cs-show|cs-hold|cs-hide|cs-tog|cheat-?sheet/i.test(assignment.binding);
+              const isLayerCycle = assignment?.actionType === 'Layer Cycle';
+
+              return (
+                <div
+                  key={slotId}
+                  className={`relative p-3 rounded-xl border transition-all duration-100 flex flex-col justify-between min-h-[92px] ${
+                    isPressed
+                      ? 'bg-[#0051ff]/30 border-[#00e5ff] scale-[0.97] ring-2 ring-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.45)]'
+                      : 'bg-white/5 hover:bg-white/[0.08] border-white/10 shadow-[0_4px_12px_rgba(0,0,0,0.2)]'
+                  }`}
+                >
+                  {/* Top bar: Key Number + Badge */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-mono font-bold text-white/40 flex items-center gap-1">
+                      <span className="w-4 h-4 rounded-full bg-white/10 text-white/80 flex items-center justify-center text-[10px]">
+                        {index + 1}
+                      </span>
+                      <span className="text-[9px] uppercase tracking-wider text-white/30">
+                        {slotId}
+                      </span>
+                    </span>
+
+                    <div className="flex items-center gap-1">
+                      {isSmartAction && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                          Smart
+                        </span>
+                      )}
+                      {isMultiAction && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Multi
+                        </span>
+                      )}
+                      {isCheatSheetAction && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          HUD
+                        </span>
+                      )}
+                      {isLayerCycle && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          Layer
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Center: Icon + Label */}
+                  <div className="flex items-center gap-2.5 my-1.5">
+                    {hasCustomIcon ? (
+                      <div className="w-7 h-7 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center shrink-0 text-white">
+                        <CustomPickerIcon id={assignment.iconId!} size={18} />
+                      </div>
+                    ) : (
+                      <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center shrink-0 text-[11px] font-bold text-white/60">
+                        K{index + 1}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-white/95 truncate">
+                        {assignment?.label || 'Empty'}
+                      </div>
+                      <div className="text-[10px] text-white/50 truncate font-mono mt-0.5">
+                        {assignment?.binding && assignment.binding !== 'blank'
+                          ? assignment.binding
+                          : 'Unassigned'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom: Execution / Modifier preview */}
+                  <div className="text-[9px] text-white/40 truncate font-mono border-t border-white/5 pt-1 mt-0.5">
+                    {assignment?.actionType || 'Basic input'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer info bar */}
+        <div className="flex items-center justify-between text-[11px] text-white/50 border-t border-white/10 pt-3">
+          <div className="flex items-center gap-2">
+            <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/70 font-mono text-[10px]">
+              Esc
+            </span>
+            <span>Close HUD overlay</span>
+            <span className="text-white/20">·</span>
+            <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/70 font-mono text-[10px]">
+              Ctrl+H / ⌘H
+            </span>
+            <span>Toggle anywhere</span>
+          </div>
+
+          <div className="text-[10px] text-white/40 italic">
+            Assign &quot;Show Cheat-Sheet Hold&quot; for momentary peek
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
 
 function IsometricKeyIcon({
   type,
