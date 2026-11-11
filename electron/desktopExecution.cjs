@@ -677,21 +677,20 @@ function Set-DisplayBrightness([string]$direction) {
     $monitors = @(Get-CimInstance -Namespace 'root/WMI' -ClassName 'WmiMonitorBrightness' -ErrorAction Stop)
     $methods = @(Get-CimInstance -Namespace 'root/WMI' -ClassName 'WmiMonitorBrightnessMethods' -ErrorAction Stop)
     $controllableDisplays = 0
+    $step = 10
 
     foreach ($method in $methods) {
         $monitor = $monitors | Where-Object { [string]$_.InstanceName -eq [string]$method.InstanceName } | Select-Object -First 1
-        if ($null -eq $monitor) { continue }
+        if ($null -eq $monitor -or $null -eq $monitor.CurrentBrightness) { continue }
 
-        $levels = @($monitor.Levels | ForEach-Object { [int]$_ } | Sort-Object -Unique)
-        if ($levels.Count -eq 0) { continue }
         $controllableDisplays += 1
-        $current = [int]$monitor.CurrentBrightness
+        $current = [Math]::Max(0, [Math]::Min(100, [int]$monitor.CurrentBrightness))
         if ($direction -eq 'up') {
-            $target = $levels | Where-Object { $_ -gt $current } | Sort-Object | Select-Object -First 1
+            $target = [Math]::Min(100, $current + $step)
         } else {
-            $target = $levels | Where-Object { $_ -lt $current } | Sort-Object -Descending | Select-Object -First 1
+            $target = [Math]::Max(0, $current - $step)
         }
-        if ($null -eq $target) { continue }
+        if ($target -eq $current) { continue }
 
         $result = Invoke-CimMethod -InputObject $method -MethodName 'WmiSetBrightness' -Arguments @{
             Timeout = [uint32]1

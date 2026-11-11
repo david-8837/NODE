@@ -55,6 +55,11 @@ describe('installed application Smart Action picker', () => {
       apps: [
         { name: 'Visual Studio Code', shortcutPath },
         { name: 'Spotify', shortcutPath: 'C:\\Users\\tester\\Desktop\\Spotify.lnk' },
+        ...Array.from({ length: 125 }, (_, index) => ({
+          name: `Installed App ${index + 1}`,
+          shortcutPath: `D:\\Installed Apps\\App${index + 1}.lnk`,
+        })),
+        { name: 'Beach Buggy Racing', shortcutPath: 'D:\\Games\\Beach Buggy Racing.lnk' },
       ],
     });
     Object.defineProperty(window, 'electronAPI', {
@@ -69,6 +74,9 @@ describe('installed application Smart Action picker', () => {
     await click(findButton('App'), 350);
 
     expect(getInstalledApplications).toHaveBeenCalled();
+    const appOptions = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+    expect(appOptions).toHaveLength(128);
+    expect(appOptions.some((option) => option.textContent?.trim() === 'Beach Buggy Racing')).toBe(true);
     const option = container.querySelector<HTMLButtonElement>('[role="option"]');
     expect(option?.textContent?.trim()).toBe('Visual Studio Code');
     await click(option || undefined);

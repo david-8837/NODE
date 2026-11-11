@@ -4,7 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { DEVICE_KEYMAP_BACKUP_HISTORY_KEY } from '../src/deviceKeymapFiles';
-import { VIA_PROTOCOL_VERSION, type ViaKeymapSnapshot } from '../src/qmkViaBridge';
+import { PROFILE_FILE_STORAGE_KEY } from '../src/profileFiles';
+import { VIA_PROTOCOL_VERSION, type ViaConfiguration, type ViaKeymapSnapshot } from '../src/qmkViaBridge';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -62,13 +63,15 @@ afterEach(async () => {
 describe('production React app device sync', () => {
   it('backs up before writes, skips profile-metadata-only sync, and syncs again after reconnect', async () => {
     const statusListeners = new Set<(status: { state: string; device?: string; fw?: string }) => void>();
+    const writtenConfigurations: ViaConfiguration[] = [];
     let backupPresentAtWrite = false;
-    const request = vi.fn(async (payload: { cmd?: string }) => {
+    const request = vi.fn(async (payload: { cmd?: string; config?: ViaConfiguration }) => {
       if (payload.cmd === 'get_config') {
         return { ok: true, snapshot: deviceSnapshot(), warnings: [] };
       }
       if (payload.cmd === 'set_config') {
         backupPresentAtWrite ||= window.localStorage.getItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY) !== null;
+        if (payload.config) writtenConfigurations.push(payload.config);
         return { ok: true, warnings: [] };
       }
       return { ok: false, error: 'Unsupported request' };
@@ -107,6 +110,11 @@ describe('production React app device sync', () => {
     await emitStatus('connected');
     await waitForWriteCount(1);
     expect(request.mock.calls.map(([payload]) => payload.cmd)).toEqual(['get_config', 'set_config']);
+    expect(writtenConfigurations[0]?.layers[0]?.enc).toEqual({
+      cw: { t: 'none' },
+      press: { t: 'none' },
+      ccw: { t: 'none' },
+    });
     expect(backupPresentAtWrite).toBe(true);
     expect(window.localStorage.getItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY)).not.toBeNull();
     expect(bridge.putFile).toHaveBeenCalledOnce();
@@ -130,6 +138,61 @@ describe('production React app device sync', () => {
       'get_config', 'set_config', 'get_config', 'set_config',
     ]);
     expect(bridge.putFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps missing actions blank in saved empty layers and preserves explicit dial assignments', async () => {
+    window.localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify({
+      v: 1,
+      activeProfileIndex: 0,
+      profiles: [
+        { id: 'empty-profile', name: 'Empty layer', layers: [{}] },
+        {
+          id: 'assigned-profile',
+          name: 'Assigned dial',
+          layers: [{
+            'dial-tl': {
+              label: 'Custom dial',
+              binding: 'Custom dial',
+              encoderActions: {
+                cw: { label: 'Next', binding: 'next track' },
+              },
+            },
+          }],
+        },
+      ],
+    }));
+
+    await act(async () => root.render(createElement(App)));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    const savedState = JSON.parse(window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) || 'null') as {
+      profiles: Array<{ layers: Array<Record<string, unknown>> }>;
+    };
+    const emptyDial = savedState.profiles[0]?.layers[0]?.['dial-tl'] as {
+      label: string;
+      binding: string;
+      encoderActions: Record<'cw' | 'press' | 'ccw', { label: string; binding: string }>;
+    };
+    expect(emptyDial).toMatchObject({
+      label: '',
+      binding: 'blank',
+      encoderActions: {
+        cw: { label: '', binding: 'blank' },
+        press: { label: '', binding: 'blank' },
+        ccw: { label: '', binding: 'blank' },
+      },
+    });
+
+    const assignedDial = savedState.profiles[1]?.layers[0]?.['dial-tl'] as {
+      encoderActions: Record<'cw' | 'press' | 'ccw', { label: string; binding: string }>;
+    };
+    expect(assignedDial.encoderActions).toEqual({
+      cw: { label: 'Next', binding: 'next track' },
+      press: { label: '', binding: 'blank' },
+      ccw: { label: '', binding: 'blank' },
+    });
   });
 
   it('keeps the edited profile local when a pre-sync device read fails', async () => {

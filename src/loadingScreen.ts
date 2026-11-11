@@ -1,4 +1,4 @@
-const minimumVisibleMs = 4000;
+const minimumVisibleMs = 350;
 const APP_READY_EVENT = 'node:app-ready';
 
 const appRoot = document.getElementById('root');
@@ -22,6 +22,7 @@ if (appRoot && loadingScreen) {
     hidden = true;
     revealTimer = null;
     observer.disconnect();
+    loadingScreen.setAttribute('aria-busy', 'false');
     loadingScreen.classList.add('is-hidden');
     appRoot.classList.add('is-ready');
     window.dispatchEvent(new Event(APP_READY_EVENT));

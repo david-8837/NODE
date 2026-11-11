@@ -33,13 +33,15 @@ describe('Grid Macro 1 device layout', () => {
     expect(
       GRID_MACRO_KEY_SLOTS.map((slot) => INITIAL_LAYER_1[slot].binding)
     ).toEqual(Array(9).fill('blank'));
-    expect(INITIAL_LAYER_1[GRID_MACRO_ENCODER_SLOT].encoderActions).toEqual(
-      expect.objectContaining({
-        cw: expect.any(Object),
-        press: expect.any(Object),
-        ccw: expect.any(Object),
-      })
-    );
+    expect(INITIAL_LAYER_1[GRID_MACRO_ENCODER_SLOT]).toMatchObject({
+      label: '',
+      binding: 'blank',
+      encoderActions: {
+        cw: { label: '', binding: 'blank' },
+        press: { label: '', binding: 'blank' },
+        ccw: { label: '', binding: 'blank' },
+      },
+    });
   });
 
   it('normalizes every preset to the same 3x3 + single-encoder schema', () => {

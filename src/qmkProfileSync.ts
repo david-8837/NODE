@@ -122,11 +122,7 @@ const MEDIA_ACTIONS: Record<string, string> = {
   'brightness -': 'BRIGHTNESS_DECREMENT',
 };
 
-const DEFAULT_ENCODER_ACTIONS: Record<'cw' | 'press' | 'ccw', BindingEntry> = {
-  cw: { label: 'vol+', binding: 'volume +' },
-  press: { label: 'play', binding: 'play' },
-  ccw: { label: 'vol-', binding: 'volume -' },
-};
+const BLANK_ENCODER_ACTION: BindingEntry = { label: '', binding: 'blank' };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -350,10 +346,8 @@ export function buildViaConfiguration(
 
     const encoder: Record<string, ViaAction> = {};
     const encoderEntry = readEncoderEntry(sourceLayer);
-    const actions = encoderEntry?.encoderActions ?? DEFAULT_ENCODER_ACTIONS;
     for (const direction of ['cw', 'press', 'ccw'] as const) {
-      const entry = actions[direction];
-      if (!entry) continue;
+      const entry = encoderEntry?.encoderActions?.[direction] ?? BLANK_ENCODER_ACTION;
       const action = applyBinding(
         entry,
         os,

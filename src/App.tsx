@@ -67,6 +67,12 @@ interface EncoderSubBinding {
   execution?: DesktopExecutionDefinition;
 }
 
+const BLANK_ENCODER_ACTIONS: Record<EncoderSubActionId, EncoderSubBinding> = {
+  cw: { label: '', binding: 'blank' },
+  press: { label: '', binding: 'blank' },
+  ccw: { label: '', binding: 'blank' },
+};
+
 interface KeyAssignment {
   label: string;
   actionType:
@@ -83,7 +89,7 @@ interface KeyAssignment {
   encoderActions?: Record<EncoderSubActionId, EncoderSubBinding>;
 }
 
-type LayerKeymap = Record<KeySlotId, KeyAssignment>;
+type LayerKeymap = Record<KeySlotId, KeyAssignment> & { presetId?: string };
 
 function formatEncoderShortLabel(text: string): string {
   const clean = text.trim();
@@ -95,13 +101,7 @@ function formatEncoderShortLabel(text: string): string {
 function getEncoderActions(
   assignment: KeyAssignment
 ): Record<EncoderSubActionId, EncoderSubBinding> {
-  return (
-    assignment.encoderActions || {
-      cw: { label: 'vo...', binding: 'volume +' },
-      press: { label: 'pl...', binding: 'play' },
-      ccw: { label: 'vo...', binding: 'volume -' },
-    }
-  );
+  return assignment.encoderActions || BLANK_ENCODER_ACTIONS;
 }
 
 interface ProfileData {
@@ -109,6 +109,33 @@ interface ProfileData {
   name: string;
   color: string;
   layers: LayerKeymap[];
+}
+
+function isPresetInstalledInProfile(profile: ProfileData, presetId: string): boolean {
+  const preset = PRESET_CATALOG.find((entry) => entry.id === presetId);
+  const actionIdPrefix = `preset-${presetId}-`;
+  const minimumLegacyKeyMatches = Math.max(
+    2,
+    (preset?.keys.length ?? GRID_MACRO_KEY_SLOTS.length) - 1
+  );
+
+  return profile.layers.some((layer) => {
+    if (layer.presetId === presetId) return true;
+
+    const matchingKeyCount = GRID_MACRO_KEY_SLOTS.filter((slot) =>
+      layer[slot]?.actionId?.startsWith(actionIdPrefix)
+    ).length;
+    const hasLegacyDialSignature =
+      preset !== undefined &&
+      layer[GRID_MACRO_ENCODER_SLOT]?.binding === `${preset.title} Dial`;
+
+    // Pre-marker profiles are recognized by their dial preset binding, or by
+    // nearly all preset key IDs if the user has since edited the dial.
+    return (
+      matchingKeyCount > 0 &&
+      (hasLegacyDialSignature || matchingKeyCount >= minimumLegacyKeyMatches)
+    );
+  });
 }
 
 interface PresetItem {
@@ -170,7 +197,11 @@ function groupCustomItemsByPreset(
     });
   });
 
-  return [...groups.values()];
+  return [...groups.values()].sort((left, right) => {
+    if (!left.presetId && right.presetId) return -1;
+    if (left.presetId && !right.presetId) return 1;
+    return 0;
+  });
 }
 
 interface PersistedAppProfileState {
@@ -478,14 +509,10 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
 
 export const INITIAL_LAYER_1: LayerKeymap = {
   'dial-tl': {
-    label: 'Vol',
-    actionType: 'Shortcut',
-    binding: 'Volume / Play',
-    encoderActions: {
-      cw: { label: 'vo...', binding: 'volume +' },
-      press: { label: 'pl...', binding: 'play' },
-      ccw: { label: 'vo...', binding: 'volume -' },
-    },
+    label: '',
+    actionType: 'Basic input',
+    binding: 'blank',
+    encoderActions: BLANK_ENCODER_ACTIONS,
   },
   r1c1: { label: '', actionType: 'Basic input', binding: 'blank' },
   r1c2: { label: '', actionType: 'Basic input', binding: 'blank' },
@@ -1049,8 +1076,7 @@ export default function App() {
   const filteredInstalledApplications = useMemo(() => {
     const query = smartAppValue.trim().toLocaleLowerCase();
     return installedApplications
-      .filter((application) => application.name.toLocaleLowerCase().includes(query))
-      .slice(0, 100);
+      .filter((application) => application.name.toLocaleLowerCase().includes(query));
   }, [installedApplications, smartAppValue]);
 
   // Action editor states (Interactive keyboard recorder + Advance mode)
@@ -2982,12 +3008,21 @@ export default function App() {
   };
 
   const handleInstallPreset = (preset: PresetItem) => {
+    if (isPresetInstalledInProfile(currentProfile, preset.id)) {
+      showToast(`${preset.title} is already installed in this profile.`);
+      return;
+    }
     if (currentProfile.layers.length >= 8) {
       showToast('A profile can have up to 8 layers. Remove one first.');
       return;
     }
 
-    const clonedLayer: LayerKeymap = JSON.parse(JSON.stringify(preset.layerKeymap));
+    const clonedLayer: LayerKeymap = JSON.parse(
+      JSON.stringify({
+        ...preset.layerKeymap,
+        presetId: preset.id,
+      })
+    );
     const nextLayerIndex = currentProfile.layers.length;
     const nextProfiles = profiles.map((profile, index) => {
       if (index !== activeProfileIndex) return profile;
@@ -3026,7 +3061,11 @@ export default function App() {
       </div>
       <div className="space-y-[16px]">
         {groupCustomItemsByPreset(items, customGroupTitle).map((group) => (
-          <section key={group.id} data-preset-action-group={group.presetId}>
+          <section
+            key={group.id}
+            data-action-group={group.presetId ?? 'custom'}
+            data-preset-action-group={group.presetId}
+          >
             {group.presetId && (
               <div className="h-[20px] flex items-center gap-[7px] mb-[9px]">
                 <PresetAppIcon id={group.presetId} size={18} />
@@ -3047,7 +3086,14 @@ export default function App() {
                 )}
               </div>
             )}
-            <div className="grid grid-cols-5 gap-[6px] content-start">
+            <div
+              data-action-view={mappingViewMode}
+              className={
+                mappingViewMode === 'grid'
+                  ? 'grid grid-cols-5 gap-[6px] content-start'
+                  : 'flex flex-col gap-[6px]'
+              }
+            >
               {group.items.map((item) => {
                 const isBeingDragged = draggedTile?.item.id === item.id;
                 const isFlashed = flashedTileId === item.id;
@@ -3063,17 +3109,25 @@ export default function App() {
                       backgroundColor: `${group.presetColor}1A`,
                     }
                   : undefined;
+                const listIconStyle = group.presetColor
+                  ? presetIconStyle
+                  : { color: '#666666', backgroundColor: '#f1f1f1' };
+                const listDescription = item.listLabel || item.top || item.macropadLabel;
+                const layoutClasses = mappingViewMode === 'grid'
+                  ? 'h-[54px] rounded-[10px] flex-col justify-center px-1 text-center'
+                  : 'w-full min-h-[48px] rounded-[10px] flex-row justify-start gap-[10px] px-[9px] text-left';
 
                 return (
                   <button
                     key={item.id}
                     data-preset-action-item={group.presetId ? item.id : undefined}
+                    data-action-list-item={mappingViewMode === 'list' ? item.id : undefined}
                     onPointerDown={(e) => handleStartTileDrag(e, item, tab)}
                     onClick={() => handleAssignTileFromDrawer(item)}
                     onDoubleClick={() => handleOpenCreatorEditor(tab, item)}
                     title={`${item.main} (Click or drag onto key, double-click to edit)`}
                     style={presetTileStyle}
-                    className={`h-[54px] rounded-[10px] border-[1.5px] flex flex-col items-center justify-center px-1 text-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${
+                    className={`border-[1.5px] flex items-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${layoutClasses} ${
                       isFlashed
                         ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
                         : isBeingDragged
@@ -3081,28 +3135,66 @@ export default function App() {
                           : 'bg-white hover:bg-[#fafafa] text-[#444444] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
                     }`}
                   >
-                    {item.iconId ? (
-                      <span
-                        data-preset-action-icon={group.presetId ?? undefined}
-                        className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
-                        style={presetIconStyle}
-                      >
-                        <CustomPickerIcon id={item.iconId} size={20} />
-                      </span>
-                    ) : item.emoji ? (
-                      <span
-                        className="text-[20px] leading-none"
-                        style={group.presetColor ? { color: group.presetColor } : undefined}
-                      >
-                        {item.emoji}
-                      </span>
+                    {mappingViewMode === 'grid' ? (
+                      item.iconId ? (
+                        <span
+                          data-preset-action-icon={group.presetId ?? undefined}
+                          className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
+                          style={presetIconStyle}
+                        >
+                          <CustomPickerIcon id={item.iconId} size={20} />
+                        </span>
+                      ) : item.emoji ? (
+                        <span
+                          className="text-[20px] leading-none"
+                          style={group.presetColor ? { color: group.presetColor } : undefined}
+                        >
+                          {item.emoji}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-[10px] leading-[1.2] whitespace-pre-line"
+                          style={group.presetColor ? { color: group.presetColor } : undefined}
+                        >
+                          {formatCustomTileText(item.main)}
+                        </span>
+                      )
                     ) : (
-                      <span
-                        className="text-[10px] leading-[1.2] whitespace-pre-line"
-                        style={group.presetColor ? { color: group.presetColor } : undefined}
-                      >
-                        {formatCustomTileText(item.main)}
-                      </span>
+                      <>
+                        <span
+                          className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0"
+                          style={listIconStyle}
+                        >
+                          {item.iconId ? (
+                            <span
+                              data-preset-action-icon={group.presetId ?? undefined}
+                              className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
+                              style={presetIconStyle}
+                            >
+                              <CustomPickerIcon id={item.iconId} size={20} />
+                            </span>
+                          ) : item.emoji ? (
+                            <span className="text-[20px] leading-none">{item.emoji}</span>
+                          ) : (
+                            <span className="text-[10px] leading-[1.2] whitespace-pre-line">
+                              {formatCustomTileText(item.main)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className="block truncate text-[11px] font-medium"
+                            style={group.presetColor ? { color: group.presetColor } : undefined}
+                          >
+                            {item.main}
+                          </span>
+                          {listDescription && listDescription !== item.main && (
+                            <span className="block truncate text-[9.5px] leading-[1.3] text-[#888888]">
+                              {listDescription}
+                            </span>
+                          )}
+                        </span>
+                      </>
                     )}
                   </button>
                 );
@@ -3298,6 +3390,9 @@ export default function App() {
   const previewPresetDetails = previewPreset
     ? PRESET_CATALOG.find((preset) => preset.id === previewPreset.id)
     : undefined;
+  const isPreviewPresetInstalled = previewPreset
+    ? isPresetInstalledInProfile(currentProfile, previewPreset.id)
+    : false;
 
   const filteredBasicSections = BASIC_KEY_SECTIONS.map((sec) => ({
     ...sec,
@@ -6489,6 +6584,7 @@ export default function App() {
                         <button
                           onClick={() => setMappingViewMode('list')}
                           aria-label="List view"
+                          aria-pressed={mappingViewMode === 'list'}
                           className={`flex-1 h-full rounded-l-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center transition-all cursor-pointer ${
                             mappingViewMode === 'list'
                               ? 'bg-[#000000] text-white'
@@ -6533,6 +6629,7 @@ export default function App() {
                         <button
                           onClick={() => setMappingViewMode('grid')}
                           aria-label="Grid view"
+                          aria-pressed={mappingViewMode === 'grid'}
                           className={`flex-1 h-full rounded-r-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center transition-all cursor-pointer ${
                             mappingViewMode === 'grid'
                               ? 'bg-[#000000] text-white'
@@ -6940,7 +7037,8 @@ export default function App() {
           animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
           exit={{ opacity: 0, scale: 1.01, filter: 'blur(4px)' }}
           transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-          className="flex-1 overflow-y-auto w-full max-w-[732px] mx-auto pt-[54px] pb-[48px] px-4"
+          data-preset-screen
+          className="preset-screen-scroll flex-1 overflow-y-auto w-full max-w-[1440px] mx-auto pt-[54px] pb-[48px] px-4"
         >
           <div className="flex items-start justify-between">
             <div>
@@ -7010,61 +7108,79 @@ export default function App() {
             </div>
           </div>
 
-          <div className="mt-[36px] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-[17px]">
-            {filteredPresets.map((preset) => (
-              <div
-                key={preset.id}
-                className="bg-[#e3e3e3] rounded-[18px] p-[15px] flex flex-col justify-between min-h-[164px]"
-              >
-                <div>
-                  <div className="flex items-center gap-[10px]">
-                    <PresetAppIcon id={preset.id} />
-                    <div>
-                      <div className="text-[10px] text-[#6d6d6d] leading-none mb-[3px]">
-                        Layer preset
+          <div
+            data-preset-grid
+            className="mt-[36px] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-[17px]"
+          >
+            {filteredPresets.map((preset) => {
+              const isInstalled = isPresetInstalledInProfile(currentProfile, preset.id);
+              return (
+                <div
+                  key={preset.id}
+                  className="bg-[#e3e3e3] rounded-[18px] p-[15px] flex flex-col justify-between min-h-[164px]"
+                >
+                  <div>
+                    <div className="flex items-center gap-[10px]">
+                      <PresetAppIcon id={preset.id} />
+                      <div>
+                        <div className="text-[10px] text-[#6d6d6d] leading-none mb-[3px]">
+                          Layer preset
+                        </div>
+                        <div className="text-[15px] font-semibold text-[#111111] leading-none">
+                          {preset.title}
+                        </div>
                       </div>
-                      <div className="text-[15px] font-semibold text-[#111111] leading-none">
-                        {preset.title}
-                      </div>
+                    </div>
+
+                    <p className="mt-[11px] text-[10.5px] leading-[1.35] text-[#666666] min-h-[28px]">
+                      {preset.description}
+                    </p>
+
+                    <div className="mt-[6px] text-[10px] font-medium text-[#2b2b2b]">
+                      Author: {preset.author}
                     </div>
                   </div>
 
-                  <p className="mt-[11px] text-[10.5px] leading-[1.35] text-[#666666] min-h-[28px]">
-                    {preset.description}
-                  </p>
-
-                  <div className="mt-[6px] text-[10px] font-medium text-[#2b2b2b]">
-                    Author: {preset.author}
-                  </div>
-                </div>
-
-                <div className="mt-[10px]">
-                  {preset.hasPreview ? (
-                    <div className="grid grid-cols-2 gap-[8px]">
-                      <button
-                        onClick={() => setPreviewPreset(preset)}
-                        className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
-                      >
-                        Preview
-                      </button>
+                  <div className="mt-[10px]">
+                    {preset.hasPreview ? (
+                      <div className="grid grid-cols-2 gap-[8px]">
+                        <button
+                          onClick={() => setPreviewPreset(preset)}
+                          className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
+                        >
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => handleInstallPreset(preset)}
+                          disabled={isInstalled}
+                          aria-label={
+                            isInstalled
+                              ? `${preset.title} preset already installed on this profile`
+                              : `Install ${preset.title} preset`
+                          }
+                          className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
+                        >
+                          {isInstalled ? 'Installed' : 'Install'}
+                        </button>
+                      </div>
+                    ) : (
                       <button
                         onClick={() => handleInstallPreset(preset)}
-                        className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
+                        disabled={isInstalled}
+                        aria-label={
+                          isInstalled
+                            ? `${preset.title} preset already installed on this profile`
+                            : `Install ${preset.title} preset`
+                        }
+                        className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
                       >
-                        Install
+                        {isInstalled ? 'Installed' : 'Install'}
                       </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleInstallPreset(preset)}
-                      className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
-                    >
-                      Install
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </motion.main>
       )}
@@ -7298,11 +7414,16 @@ export default function App() {
                     </div>
                     <button
                       type="button"
-                      aria-label={`Install ${previewPreset.title} preset`}
+                      aria-label={
+                        isPreviewPresetInstalled
+                          ? `${previewPreset.title} preset already installed on this profile`
+                          : `Install ${previewPreset.title} preset`
+                      }
                       onClick={() => handleInstallPreset(previewPreset)}
-                      className="mt-[20px] w-full h-[39px] rounded-full bg-black hover:bg-[#0051ff] text-white text-[13px] font-medium transition-colors cursor-pointer"
+                      disabled={isPreviewPresetInstalled}
+                      className="mt-[20px] w-full h-[39px] rounded-full bg-black hover:bg-[#0051ff] text-white text-[13px] font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:bg-[#777777] disabled:hover:bg-[#777777]"
                     >
-                      Install
+                      {isPreviewPresetInstalled ? 'Installed' : 'Install'}
                     </button>
                   </div>
                   <div className="md:max-w-[540px] md:pt-[8px] md:text-right">

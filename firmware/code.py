@@ -156,12 +156,12 @@ DEFAULT_CONFIG = {
     "layers": [
         {
             "dial-tl": {
-                "label": "Vol",
-                "binding": "Volume / Play",
+                "label": "",
+                "binding": "blank",
                 "encoderActions": {
-                    "cw": {"label": "vo...", "binding": "volume +"},
-                    "press": {"label": "pl...", "binding": "play"},
-                    "ccw": {"label": "vo...", "binding": "volume -"}
+                    "cw": {"label": "", "binding": "blank"},
+                    "press": {"label": "", "binding": "blank"},
+                    "ccw": {"label": "", "binding": "blank"}
                 }
             },
             "r1c1": {"label": "Q", "binding": "q"},
@@ -362,12 +362,12 @@ while True:
         if diff > 0:  # Clockwise rotation
             pixel[0] = (0, 200, 255)
             send_serial_json({"event": "DIAL_ROTATED", "dir": "cw", "slot": "dial-tl"})
-            cw_action = enc_actions.get("cw", {}).get("binding", "volume +")
+            cw_action = enc_actions.get("cw", {}).get("binding", "blank")
             execute_binding(cw_action)
         else:  # Counter-clockwise rotation
             pixel[0] = (0, 200, 255)
             send_serial_json({"event": "DIAL_ROTATED", "dir": "ccw", "slot": "dial-tl"})
-            ccw_action = enc_actions.get("ccw", {}).get("binding", "volume -")
+            ccw_action = enc_actions.get("ccw", {}).get("binding", "blank")
             execute_binding(ccw_action)
 
         time.sleep(0.01)
@@ -382,7 +382,7 @@ while True:
             send_serial_json({"event": "DIAL_PRESS", "state": "down", "slot": "dial-tl"})
             dial_data = active_layer.get("dial-tl", {})
             enc_actions = dial_data.get("encoderActions", {})
-            press_action = enc_actions.get("press", {}).get("binding", "play")
+            press_action = enc_actions.get("press", {}).get("binding", "blank")
             execute_binding(press_action)
         else:  # Encoder released
             pixel[0] = (0, 81, 255)

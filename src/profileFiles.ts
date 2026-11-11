@@ -248,8 +248,16 @@ function normalizeProfile(input: unknown): JsonRecord {
   const layers = input.layers.map((layer, index) => {
     if (!isRecord(layer)) throw makeError(`Profile layer ${index + 1} must be an object`);
     const safeLayer = copyJson(layer) as JsonRecord;
+    if (
+      safeLayer.presetId !== undefined &&
+      (typeof safeLayer.presetId !== 'string' ||
+        !safeLayer.presetId.trim() ||
+        safeLayer.presetId.length > 256)
+    ) {
+      throw makeError(`Profile layer ${index + 1} has an invalid preset id`);
+    }
     for (const [slot, assignment] of Object.entries(safeLayer)) {
-      if (RESERVED_KEYS.has(slot)) continue;
+      if (slot === 'presetId' || RESERVED_KEYS.has(slot)) continue;
       if (!isRecord(assignment)) throw makeError(`Profile layer ${index + 1} has an invalid ${slot} assignment`);
       for (const field of ['label', 'binding', 'actionType', 'actionId', 'iconId', 'emoji']) {
         if (assignment[field] !== undefined && typeof assignment[field] !== 'string') {

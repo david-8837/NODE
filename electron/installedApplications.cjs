@@ -4,8 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const MAX_SCAN_DEPTH = 8;
-const MAX_SHORTCUTS_TO_INSPECT = 1500;
-const MAX_APPLICATIONS = 300;
+const MAX_SHORTCUTS_TO_INSPECT = 10000;
 
 function getWindowsApplicationRoots(env, pathApi = path.win32) {
   const roots = [
@@ -26,8 +25,10 @@ function getWindowsApplicationRoots(env, pathApi = path.win32) {
 function isFile(filePath, fsModule) {
   try {
     return fsModule.statSync(filePath).isFile();
-  } catch {
-    return false;
+  } catch (error) {
+    // Protected install directories (notably WindowsApps) may deny stat access
+    // even though Windows can still launch their registered shortcut.
+    return error?.code === 'EACCES' || error?.code === 'EPERM';
   }
 }
 
@@ -42,9 +43,9 @@ function normalizeName(shortcutPath, pathApi) {
 
 /**
  * Find launchable Windows applications from the user's and machine's Start Menu
- * and Desktop shortcuts. Reading shortcut metadata lets us omit stale links and
- * links to documents/websites while still launching Store-app shortcuts through
- * the Windows shell.
+ * and Desktop shortcuts. App package IDs are accepted for Store apps whose
+ * protected executable cannot be inspected, while ordinary links still need an
+ * existing executable target. Launching always goes through the original .lnk.
  */
 function listInstalledApplications({
   platform = process.platform,
@@ -98,16 +99,27 @@ function listInstalledApplications({
       inspectedShortcuts += 1;
       try {
         const details = readShortcutLink(entryPath);
-        if (!details || typeof details.target !== 'string' || !details.target.trim()) continue;
+        if (!details || typeof details !== 'object') continue;
 
-        const target = pathApi.normalize(details.target.trim());
-        if (!pathApi.isAbsolute(target) || pathApi.extname(target).toLowerCase() !== '.exe') continue;
-        if (excludedTargets.has(target.toLowerCase()) || !isFile(target, fsModule)) continue;
+        const target = typeof details.target === 'string' && details.target.trim()
+          ? pathApi.normalize(details.target.trim())
+          : '';
+        const appUserModelId = typeof details.appUserModelId === 'string'
+          ? details.appUserModelId.trim()
+          : '';
+        const hasExecutableTarget = Boolean(
+          target && pathApi.isAbsolute(target) && pathApi.extname(target).toLowerCase() === '.exe'
+        );
+        if (!appUserModelId && !hasExecutableTarget) continue;
+        if (hasExecutableTarget && excludedTargets.has(target.toLowerCase())) continue;
+        if (hasExecutableTarget && !appUserModelId && !isFile(target, fsModule)) continue;
 
         const name = normalizeName(entryPath, pathApi);
         if (!name) continue;
         const argumentsKey = typeof details.args === 'string' ? details.args.trim().toLowerCase() : '';
-        const launcherKey = `${target.toLowerCase()}\u0000${argumentsKey}`;
+        const launcherKey = appUserModelId
+          ? `app:${appUserModelId.toLowerCase()}`
+          : `${target.toLowerCase()}\u0000${argumentsKey}`;
         if (seenLaunchers.has(launcherKey)) continue;
         seenLaunchers.add(launcherKey);
 
@@ -130,7 +142,7 @@ function listInstalledApplications({
   applications.sort((left, right) =>
     left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
   );
-  return { ok: true, apps: applications.slice(0, MAX_APPLICATIONS) };
+  return { ok: true, apps: applications };
 }
 
 module.exports = {

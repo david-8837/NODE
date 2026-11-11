@@ -88,11 +88,27 @@
   <link rel="stylesheet" href="/src/loadingScreen.css" />
 </head>
   <body>
-    <div id="app-loading-screen" role="status" aria-live="polite">
+    <div id="app-loading-screen" role="status" aria-live="polite" aria-busy="true">
       <div class="node-loading-content">
-        <strong>NØDE</strong>
-        <span class="node-loading-spinner" aria-hidden="true"></span>
-        <span class="node-loading-label">Loading your studio…</span>
+        <div class="node-loading-mark" aria-hidden="true">
+          <span class="node-loading-key"></span>
+          <span class="node-loading-key"></span>
+          <span class="node-loading-key"></span>
+          <span class="node-loading-key"></span>
+          <span class="node-loading-key is-active"></span>
+          <span class="node-loading-key"></span>
+          <span class="node-loading-key"></span>
+          <span class="node-loading-key"></span>
+          <span class="node-loading-key"></span>
+        </div>
+        <div class="node-loading-brand">
+          <strong>NØDE</strong>
+          <span>GRID MACRO 1 STUDIO</span>
+        </div>
+        <div class="node-loading-status">
+          <span class="node-loading-progress" aria-hidden="true"><span></span></span>
+          <span class="node-loading-label">Preparing your workspace</span>
+        </div>
       </div>
     </div>
     <div id="root"></div>
