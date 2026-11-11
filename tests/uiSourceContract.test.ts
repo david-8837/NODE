@@ -68,22 +68,28 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(viteConfig).toContain('test: /node_modules/');
   });
 
-  it('keeps the startup loader visible for at least four seconds before revealing the app', () => {
+  it('shows a brief NØDE-branded loading screen until the app is ready', () => {
     expect(htmlContent).toContain('id="app-loading-screen"');
+    expect(htmlContent).toContain('role="status"');
     expect(htmlContent).toContain('src="/src/loadingScreen.ts"');
     expect(htmlContent).toContain('/src/loadingScreen.css');
-    expect(htmlContent).toContain('Loading your studio');
-    expect(loadingScript).toContain('const minimumVisibleMs = 4000');
+    expect(htmlContent).toContain('NØDE');
+    expect(htmlContent).toContain('GRID MACRO 1 STUDIO');
+    expect(htmlContent).toContain('Preparing your workspace');
+    expect((htmlContent.match(/class="node-loading-key(?: is-active)?"/g) ?? [])).toHaveLength(9);
+    expect(loadingScript).toContain('const minimumVisibleMs = 350');
+    expect(loadingScript).toContain("loadingScreen.setAttribute('aria-busy', 'false')");
     expect(loadingScript).toContain('new MutationObserver');
     expect(loadingScript).toContain('appRoot.childElementCount > 0');
     expect(loadingScript).toContain('hidden || appRoot.childElementCount === 0');
     expect(loadingScript).toContain("appRoot.classList.add('is-ready')");
     expect(loadingStyles).toContain('#app-loading-screen.is-hidden');
-    expect(loadingStyles).toContain('background: #fff;');
-    expect(loadingStyles).toContain('color: #222;');
+    expect(loadingStyles).toContain('#08090d');
+    expect(loadingStyles).toContain('.node-loading-key.is-active');
+    expect(loadingStyles).toContain('@keyframes node-progress-sweep');
     expect(loadingScript).toContain('window.dispatchEvent(new Event(APP_READY_EVENT))');
     expect(loadingStyles).toContain('#root.is-ready .app-shell::before');
-    expect(loadingStyles).toContain('transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1)');
+    expect(loadingStyles).toContain('transition: opacity 320ms cubic-bezier(0.22, 1, 0.36, 1)');
     expect(loadingStyles).toContain('@media (prefers-reduced-motion: reduce)');
   });
 
