@@ -239,6 +239,26 @@ export async function dispatchResolvedAction(
       return { success: true };
     }
 
+    if (action.type === 'Web') {
+      try {
+        const rawUrl = action.value.trim();
+        const fullUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+        if (typeof host.open === 'function') {
+          host.open(fullUrl, '_blank', 'noopener,noreferrer');
+          return { success: true };
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        options.showToast?.(`Invalid URL: ${msg}`);
+        return { success: false, error: msg };
+      }
+    }
+
+    if (action.type === 'App') {
+      options.showToast?.('Launching desktop apps requires the NØDE Studio desktop app.');
+      return { success: false, error: 'Launching desktop apps requires the NØDE Studio desktop app.' };
+    }
+
     if (typeof host.fetch === 'function') {
       const response = await host.fetch('/api/execute-action', {
         method: 'POST',
