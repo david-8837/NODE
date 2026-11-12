@@ -1,7 +1,5 @@
 export type EntrancePhase = 'waiting' | 'entering' | 'complete';
 
-export const APP_READY_EVENT = 'node:app-ready';
-
 export interface EntranceMotionOptions {
   delay?: number;
   duration?: number;

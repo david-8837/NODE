@@ -1,13 +1,40 @@
 /* keymap.c - Production VIA & Dynamic Keymap for Grid Macro 1 (RP2040-Zero) */
 #include QMK_KEYBOARD_H
+#include "raw_hid.h"
+
+#define NODE_HARDWARE_EVENT_MAGIC 0xEE
+#define NODE_HARDWARE_PROTOCOL_VERSION 0x01
+
+static uint8_t s_event_sequence = 0;
+static uint16_t s_matrix_state_mask = 0;
+
+static void send_hardware_event(uint8_t event_type, uint8_t slot_index) {
+    uint8_t report[32] = {0};
+    report[0] = NODE_HARDWARE_EVENT_MAGIC;
+    report[1] = NODE_HARDWARE_PROTOCOL_VERSION;
+    report[2] = event_type;
+    report[3] = slot_index;
+    report[4] = ++s_event_sequence;
+    report[5] = get_highest_layer(layer_state);
+    report[6] = (uint8_t)(s_matrix_state_mask & 0xFF);
+    report[7] = (uint8_t)((s_matrix_state_mask >> 8) & 0x03);
+
+    uint8_t checksum = 0;
+    for (uint8_t i = 0; i < 31; i++) {
+        checksum ^= report[i];
+    }
+    report[31] = checksum;
+
+    raw_hid_send(report, 32);
+}
 
 /* Dynamic EEPROM Layers (Configurable live via VIA / Web App) */
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [0] = LAYOUT_grid_macro_1(
-        KC_MPLY,
-        KC_Q,       KC_W,       KC_E,
-        KC_A,       KC_S,       KC_D,
-        KC_Z,       KC_X,       MO(1)
+        KC_NO,
+        KC_NO,      KC_NO,      KC_NO,
+        KC_NO,      KC_NO,      KC_NO,
+        KC_NO,      KC_NO,      KC_NO
     ),
     [1] = LAYOUT_grid_macro_1(
         KC_MUTE,
@@ -53,3 +80,40 @@ void keyboard_post_init_user(void) {
     rgblight_enable_noeeprom();
     rgblight_setrgb_at(0, 81, 255, 0);
 }
+
+bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    uint8_t row = record->event.key.row;
+    uint8_t col = record->event.key.col;
+    uint8_t slot_index = 255;
+
+    if (row < 3 && col < 3) {
+        slot_index = row * 3 + col; // 0..8 for 3x3 keys
+    } else if (row == 3 && col == 0) {
+        slot_index = 9; // 9 for dial push switch
+    }
+
+    if (slot_index < 10) {
+        if (record->event.pressed) {
+            s_matrix_state_mask |= (1 << slot_index);
+            send_hardware_event(slot_index == 9 ? 0x05 : 0x01, slot_index);
+        } else {
+            s_matrix_state_mask &= ~(1 << slot_index);
+            send_hardware_event(slot_index == 9 ? 0x06 : 0x02, slot_index);
+        }
+    }
+
+    // If keycode is KC_NO (0x0000) or in dedicated Smart Action range (0x7E00..0x7E09), suppress normal USB typing
+    if (keycode == KC_NO || (keycode >= 0x7E00 && keycode <= 0x7E09)) {
+        return false;
+    }
+
+    return true;
+}
+
+bool encoder_update_user(uint8_t index, bool clockwise) {
+    if (index == 0) {
+        send_hardware_event(clockwise ? 0x03 : 0x04, 0xFF);
+    }
+    return true;
+}
+

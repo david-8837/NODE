@@ -56,6 +56,19 @@ Copy `boot.py` and `code.py` from this `firmware/` directory into the root of yo
 
 ---
 
+## 🚀 QMK / VIA Native Firmware (v1.0.7)
+
+For zero-latency, hardware-native debounced USB HID execution, use the pre-built UF2 binaries:
+- **`firmware/grid_macro_1_via_rawhid.uf2`**: Production QMK firmware with 10 ms symmetric deferred debouncing (`sym_defer_pk`), 32-byte bidirectional raw HID hardware event protocol, and live VIA EEPROM dynamic remapping.
+- **`firmware/grid_macro_1_via.uf2`**: Standard QMK VIA firmware.
+
+### How to Flash:
+1. Hold the **BOOT** button on the RP2040-Zero and connect USB-C (or press `BOOT` + `RESET`).
+2. Drag-and-drop `firmware/grid_macro_1_via_rawhid.uf2` onto the **`RPI-RP2`** drive.
+3. The RP2040 will automatically reboot into Grid Macro 1 mode with WS2812 status LED illuminated in Electric Blue.
+
+---
+
 ## 🌐 Web Serial Live Sync & Configuration
 1. Open this **Grid Macro 1 Studio** web app in Google Chrome, Edge, or Opera.
 2. Click **Connect RP2040** on the top right navigation badge or in the **Settings** tab.

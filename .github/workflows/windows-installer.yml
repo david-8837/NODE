@@ -86,9 +86,9 @@ jobs:
           $env:NODE_GRID_VISUAL_SMOKE_SCREENSHOT = $screenshot
           $env:NODE_GRID_VISUAL_SMOKE_DIAGNOSTICS = $diagnostics
           $appProcess = Start-Process -FilePath $app.FullName -ArgumentList '--visual-smoke-test' -PassThru
-          if (-not $appProcess.WaitForExit(90000)) {
+          if (-not $appProcess.WaitForExit(150000)) {
             Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue
-            throw 'Packaged app did not finish its visual smoke test within 90 seconds'
+            throw 'Packaged app did not finish its visual and memory smoke test within 150 seconds'
           }
           $appProcess.Refresh()
           if ($appProcess.ExitCode -ne 0) { throw "Packaged app visual smoke test exited with code $($appProcess.ExitCode)" }
@@ -103,6 +103,32 @@ jobs:
           if ($width -lt 640 -or $height -lt 520) { throw "Screenshot dimensions are unexpectedly small: ${width}x${height}" }
           Write-Host "Packaged Windows UI screenshot validated: ${width}x${height}, $($png.Length) bytes"
           Copy-Item $screenshot 'dist_electron/packaged-ui-visual-smoke.png' -Force
+
+          if (-not (Test-Path $diagnostics)) { throw 'Packaged app did not write browser smoke diagnostics' }
+          $smokeReport = Get-Content -Path $diagnostics -Raw | ConvertFrom-Json
+          if ($smokeReport.stage -ne 'browser-smoke-passed') { throw 'Packaged Chromium icon-picker smoke did not report success' }
+          if ($smokeReport.browserSmokeResult.initialLazyAssetCount -ne 0) {
+            throw 'A deferred icon asset was requested before the icon picker opened'
+          }
+          if (-not $smokeReport.browserSmokeResult.fullIconCatalogAvailable -or
+              -not $smokeReport.browserSmokeResult.iconSearchSelected -or
+              -not $smokeReport.browserSmokeResult.emojiSearchSelected) {
+            throw 'Packaged Chromium did not verify full icon browsing, search, and emoji selection'
+          }
+          $memorySoak = $smokeReport.browserSmokeResult.memorySoak
+          if (-not $memorySoak -or -not $memorySoak.passed -or -not $memorySoak.gcAvailable) {
+            throw 'Packaged Chromium renderer memory soak did not pass with forced garbage collection'
+          }
+          if ($memorySoak.iterations -ne 30 -or
+              $memorySoak.maxCheckpointGrowthBytes -gt $memorySoak.maxRetainedHeapGrowthBytes) {
+            throw 'Packaged Chromium renderer heap growth exceeded the 8 MiB retained-growth budget'
+          }
+          if (-not $memorySoak.rendererProcess.before -or -not $memorySoak.rendererProcess.after) {
+            throw 'Electron renderer process memory samples are missing'
+          }
+          Copy-Item $diagnostics 'dist_electron/packaged-ui-visual-smoke-diagnostics.json' -Force
+          Write-Host "Packaged Chromium icon-picker checks passed: $($smokeReport.browserSmokeResult | ConvertTo-Json -Compress)"
+          Write-Host "Renderer heap after GC grew $($memorySoak.retainedHeapGrowthMiB) MiB across $($memorySoak.iterations) measured picker/screen cycles (budget $([math]::Round($memorySoak.maxRetainedHeapGrowthBytes / 1MB, 1)) MiB); process private-byte delta: $($memorySoak.rendererProcess.deltaKb.privateBytes) KiB"
 
       - name: Verify installed-app Settings/profile persistence and uninstall behavior
         shell: pwsh
@@ -256,6 +282,7 @@ jobs:
             dist_electron/*.exe
             dist_electron/*.zip
             dist_electron/packaged-ui-visual-smoke.png
+            dist_electron/packaged-ui-visual-smoke-diagnostics.json
             dist_electron/installed-app-persistence-smoke.json
           if-no-files-found: error
           retention-days: 14

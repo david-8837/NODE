@@ -1,0 +1,437 @@
+import {
+  type GridMacroSlotId,
+  GRID_MACRO_ENCODER_SLOT,
+} from './deviceLayout';
+import type { GestureType } from './gestureEngine';
+import {
+  type DesktopExecutionDefinition,
+  type SimulationActionHost,
+} from './actionExecution';
+import { readAppSettings, type NativeActionResult } from './appSettings';
+
+export interface ActionDispatcherSlotEntry {
+  id?: string;
+  actionId?: string;
+  label?: string;
+  binding?: string;
+  actionType?: string;
+  execution?: DesktopExecutionDefinition;
+  encoderActions?: {
+    cw?: ActionDispatcherSlotEntry;
+    ccw?: ActionDispatcherSlotEntry;
+    press?: ActionDispatcherSlotEntry;
+  };
+}
+
+export type ActionDispatcherLayer = Record<string, ActionDispatcherSlotEntry>;
+
+export interface DispatchOptions {
+  source: 'hardware' | 'simulation';
+  host?: SimulationActionHost;
+  onLayerChange?: (index: number) => boolean | void;
+  onProfileChange?: (index: number) => boolean | void;
+  onCheatSheetToggle?: (mode: 'show' | 'hide' | 'toggle' | 'hold') => void;
+  showToast?: (message: string) => void;
+  allowTerminal?: boolean;
+}
+
+export interface ResolvedAction {
+  type: string;
+  value: string;
+  payload: Record<string, unknown>;
+  requiresConsent?: boolean;
+}
+
+export function resolveActionForGesture(
+  slot: GridMacroSlotId,
+  gesture: GestureType,
+  layer: ActionDispatcherLayer
+): ResolvedAction | null {
+  const entry = layer[slot];
+  if (!entry) return null;
+
+  if (slot === GRID_MACRO_ENCODER_SLOT) {
+    const pressEntry = entry.encoderActions?.press || entry;
+    return resolveEntryAction(pressEntry, gesture);
+  }
+
+  return resolveEntryAction(entry, gesture);
+}
+
+export function resolveActionForDial(
+  direction: 'cw' | 'ccw',
+  layer: ActionDispatcherLayer
+): ResolvedAction | null {
+  const entry = layer[GRID_MACRO_ENCODER_SLOT];
+  if (!entry) return null;
+
+  const subEntry = entry.encoderActions?.[direction];
+  if (!subEntry || subEntry.binding === 'blank' || subEntry.label === '—') {
+    return null;
+  }
+
+  return resolveEntryAction(subEntry, 'onTap');
+}
+
+function resolveEntryAction(
+  entry: ActionDispatcherSlotEntry,
+  gesture: GestureType
+): ResolvedAction | null {
+  if (!entry) return null;
+
+  const binding = (entry.binding || '').trim();
+  const label = (entry.label || '').trim();
+
+  // If the key is blank, cleared, unassigned, or set to placeholder '—', never execute any action
+  if (!binding || binding === 'blank' || binding === '—' || label === '—') {
+    return null;
+  }
+
+  const execution = entry.execution;
+
+  if (execution) {
+    if (execution.kind === 'multi') {
+      const targetShortcut = execution.gestures?.[gesture]?.trim();
+      if (!targetShortcut) return null;
+      return {
+        type: 'Shortcut',
+        value: targetShortcut,
+        payload: { type: 'Shortcut', value: targetShortcut },
+      };
+    }
+
+    if (execution.kind === 'smart') {
+      // Smart Action executes on onTap (or single interaction)
+      if (gesture !== 'onTap') return null;
+      return {
+        type: execution.actionType,
+        value: execution.value,
+        payload: {
+          execution: {
+            kind: 'smart',
+            actionType: execution.actionType,
+            value: execution.value,
+            requiresConsent: execution.requiresConsent === true,
+            ...(execution.applicationShortcutPath
+              ? { applicationShortcutPath: execution.applicationShortcutPath }
+              : {}),
+          },
+        },
+        requiresConsent: execution.requiresConsent,
+      };
+    }
+
+    if (execution.kind === 'text') {
+      if (gesture !== 'onTap') return null;
+      return {
+        type: 'Text',
+        value: execution.value,
+        payload: { type: 'Text', value: execution.value },
+      };
+    }
+
+    if (execution.kind === 'sequence') {
+      if (gesture !== 'onTap') return null;
+      return {
+        type: 'Sequence',
+        value: `Sequence (${execution.steps.length} steps)`,
+        payload: { execution },
+      };
+    }
+
+    if (execution.kind === 'shortcut') {
+      if (gesture !== 'onTap') return null;
+      return {
+        type: 'Shortcut',
+        value: execution.value,
+        payload: { type: 'Shortcut', value: execution.value },
+      };
+    }
+  }
+
+  // Fallback to binding or label string if no execution object exists
+  if (gesture !== 'onTap') return null;
+
+  // Smart action pattern in binding string: (Web: ...), (App: ...), etc.
+  const smartMatch = binding.match(/\((Web|App|Cmd|Text):\s*([^)]+)\)/i);
+  if (smartMatch) {
+    const actionType = smartMatch[1];
+    const value = smartMatch[2].trim();
+    return {
+      type: actionType,
+      value,
+      payload: { type: actionType, value },
+    };
+  }
+
+  // Multiaction pattern in binding string: (onTap: ..., doubleTap: ...)
+  const gesturePattern = new RegExp(`${gesture}:\\s*([^,)]+)`, 'i');
+  const multiMatch = binding.match(gesturePattern);
+  if (multiMatch) {
+    const value = multiMatch[1].trim();
+    return {
+      type: 'Shortcut',
+      value,
+      payload: { type: 'Shortcut', value },
+    };
+  }
+
+  // Layer switching actions (Layer 1..8, Temp Layer 1..8, Layer Cycle)
+  const isLayerAction =
+    entry.actionId?.startsWith('lyr-') ||
+    entry.actionId?.startsWith('tlyr-') ||
+    entry.actionType === 'Layer Cycle' ||
+    /^layer\s*\d+/i.test(binding) ||
+    /^temp\s*layer\s*\d+/i.test(binding) ||
+    /layer\s*cycle/i.test(binding) ||
+    /layer\s*cycle/i.test(label);
+
+  if (isLayerAction) {
+    if (
+      entry.actionType === 'Layer Cycle' ||
+      /layer\s*cycle/i.test(binding) ||
+      /layer\s*cycle/i.test(label) ||
+      entry.actionId === 'lyr-cycle'
+    ) {
+      return {
+        type: 'Layer',
+        value: 'Layer Cycle',
+        payload: { type: 'Layer', op: 'next' },
+      };
+    }
+
+    const tempMatch = binding.match(/^temp\s*layer\s*(\d+)/i) || entry.actionId?.match(/^tlyr-(\d+)/i);
+    if (tempMatch) {
+      const targetLayer = Number.parseInt(tempMatch[1], 10) - 1;
+      return {
+        type: 'Layer',
+        value: `Temp Layer ${targetLayer + 1}`,
+        payload: { type: 'Layer', op: 'hold', targetLayer },
+      };
+    }
+
+    const layerMatch = binding.match(/^layer\s*(\d+)/i) || entry.actionId?.match(/^lyr-(\d+)/i);
+    if (layerMatch) {
+      const targetLayer = Number.parseInt(layerMatch[1], 10) - 1;
+      return {
+        type: 'Layer',
+        value: `Layer ${targetLayer + 1}`,
+        payload: { type: 'Layer', op: 'set', targetLayer },
+      };
+    }
+  }
+
+  // Profile switching actions (Profile 1..8, Profile Cycle)
+  const isProfileAction =
+    entry.actionId?.startsWith('prf-') ||
+    /^profile\s*\d+/i.test(binding) ||
+    /profile\s*cycle/i.test(binding) ||
+    /profile\s*cycle/i.test(label);
+
+  if (isProfileAction) {
+    if (/profile\s*cycle/i.test(binding) || /profile\s*cycle/i.test(label) || entry.actionId === 'prf-cycle') {
+      return {
+        type: 'Profile',
+        value: 'Profile Cycle',
+        payload: { type: 'Profile', op: 'next' },
+      };
+    }
+
+    const profileMatch = binding.match(/^profile\s*(\d+)/i) || entry.actionId?.match(/^prf-(\d+)/i);
+    if (profileMatch) {
+      const targetProfile = Number.parseInt(profileMatch[1], 10) - 1;
+      return {
+        type: 'Profile',
+        value: `Profile ${targetProfile + 1}`,
+        payload: { type: 'Profile', op: 'set', targetProfile },
+      };
+    }
+  }
+
+  // Cheat-Sheet internal actions (Show, Hold, Hide, Toggle)
+  if (
+    /cheat-?sheet/i.test(binding) ||
+    /cheat-?sheet/i.test(label) ||
+    entry.actionId === 'cs-show' ||
+    entry.actionId === 'cs-hold' ||
+    entry.actionId === 'cs-hide' ||
+    entry.actionId === 'cs-tog'
+  ) {
+    let mode: 'show' | 'hold' | 'hide' | 'toggle' = 'toggle';
+    if (/hold/i.test(binding) || /hold/i.test(label) || entry.actionId === 'cs-hold') {
+      mode = 'hold';
+    } else if (/hide/i.test(binding) || /hide/i.test(label) || entry.actionId === 'cs-hide') {
+      mode = 'hide';
+    } else if (/show/i.test(binding) || /show/i.test(label) || entry.actionId === 'cs-show') {
+      mode = 'show';
+    }
+    return {
+      type: 'CheatSheet',
+      value: mode,
+      payload: { type: 'CheatSheet', mode },
+    };
+  }
+
+  // Generic shortcut in parentheses
+  const wrapped = binding.match(/\(([^)]+)\)/);
+  const value = (wrapped ? wrapped[1].trim() : binding || label).trim();
+  if (value && value !== 'blank' && value !== '—') {
+    return {
+      type: 'Shortcut',
+      value,
+      payload: { type: 'Shortcut', value },
+    };
+  }
+
+  return null;
+}
+
+export async function dispatchResolvedAction(
+  action: ResolvedAction,
+  options: DispatchOptions
+): Promise<NativeActionResult> {
+  if (action.type === 'CheatSheet') {
+    const mode = (action.payload?.mode as 'show' | 'hide' | 'toggle' | 'hold') || 'toggle';
+    options.onCheatSheetToggle?.(mode);
+    options.showToast?.(
+      mode === 'show'
+        ? 'Cheat-Sheet Opened'
+        : mode === 'hide'
+        ? 'Cheat-Sheet Closed'
+        : mode === 'hold'
+        ? 'Cheat-Sheet (Hold to peek)'
+        : 'Cheat-Sheet Toggled'
+    );
+    return { success: true };
+  }
+
+  if (action.type === 'Layer') {
+    const op = action.payload?.op;
+    const targetLayer = action.payload?.targetLayer as number | undefined;
+    if (op === 'set' && typeof targetLayer === 'number') {
+      options.onLayerChange?.(targetLayer);
+    } else if (op === 'hold' && typeof targetLayer === 'number') {
+      options.onLayerChange?.(targetLayer);
+    } else if (op === 'next') {
+      options.onLayerChange?.(-1);
+    }
+    return { success: true };
+  }
+
+  if (action.type === 'Profile') {
+    const op = action.payload?.op;
+    const targetProfile = action.payload?.targetProfile as number | undefined;
+    if (op === 'set' && typeof targetProfile === 'number') {
+      options.onProfileChange?.(targetProfile);
+    } else if (op === 'next') {
+      options.onProfileChange?.(-1);
+    }
+    return { success: true };
+  }
+
+  const host = options.host ?? (typeof window !== 'undefined' ? (window as unknown as SimulationActionHost) : undefined);
+  if (!host) {
+    return { success: false, error: 'No action host is available' };
+  }
+
+  const payload: Record<string, unknown> = {
+    ...action.payload,
+    executionSource: options.source,
+  };
+
+  const settings = host.nodeStudioAppSettings?.read() ?? readAppSettings(host);
+  if (action.type.toLowerCase() === 'cmd' && settings.allowTerminalSmartActions !== true) {
+    options.showToast?.('Terminal commands are disabled in Settings');
+    return { success: false, error: 'Terminal commands are disabled in Settings' };
+  }
+
+  if (action.requiresConsent) {
+    let confirmed = false;
+    try {
+      confirmed =
+        typeof host.confirm === 'function' &&
+        host.confirm(
+          'This profile contains a terminal command. Run it only if you trust its contents.'
+        );
+    } catch {}
+    if (!confirmed) {
+      options.showToast?.('Imported terminal command was not run');
+      return { success: false, error: 'Terminal command not confirmed' };
+    }
+    payload.commandConsent = true;
+  }
+
+  if (action.type.toLowerCase() === 'cmd') {
+    payload.allowTerminal = settings.allowTerminalSmartActions === true;
+  }
+
+  options.showToast?.(
+    action.type === 'Sequence'
+      ? `Executed sequence: ${action.value}`
+      : `Executed ${action.type}: ${action.value}`
+  );
+
+  const electronApi = host.electronAPI;
+  try {
+    if (electronApi?.executeSmartAction) {
+      const result = await electronApi.executeSmartAction(payload);
+      if (result && typeof result.success === 'boolean') {
+        if (!result.success) {
+          options.showToast?.(`Action failed: ${result.error || 'unknown error'}`);
+        }
+        return result;
+      }
+      return { success: true };
+    }
+
+    if (action.type === 'Web') {
+      try {
+        const rawUrl = action.value.trim();
+        const fullUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+        if (typeof host.open === 'function') {
+          host.open(fullUrl, '_blank', 'noopener,noreferrer');
+          return { success: true };
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        options.showToast?.(`Invalid URL: ${msg}`);
+        return { success: false, error: msg };
+      }
+    }
+
+    if (action.type === 'App') {
+      options.showToast?.('Launching desktop apps requires the NØDE Studio desktop app.');
+      return { success: false, error: 'Launching desktop apps requires the NØDE Studio desktop app.' };
+    }
+
+    if (typeof host.fetch === 'function') {
+      const response = await host.fetch('/api/execute-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      let jsonResult: unknown;
+      try {
+        jsonResult = await response.json();
+      } catch {
+        jsonResult = null;
+      }
+      if (
+        jsonResult !== null &&
+        typeof jsonResult === 'object' &&
+        typeof (jsonResult as { success?: unknown }).success === 'boolean'
+      ) {
+        return jsonResult as NativeActionResult;
+      }
+      return response.ok
+        ? { success: true }
+        : { success: false, error: 'Action endpoint rejected request' };
+    }
+
+    return { success: false, error: 'No execution transport available' };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Desktop action failed';
+    options.showToast?.(`Action failed: ${errorMsg}`);
+    return { success: false, error: errorMsg };
+  }
+}
