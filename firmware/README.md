@@ -56,7 +56,7 @@ Copy `boot.py` and `code.py` from this `firmware/` directory into the root of yo
 
 ---
 
-## 🚀 QMK / VIA Native Firmware (v1.0.6)
+## 🚀 QMK / VIA Native Firmware (v1.0.7)
 
 For zero-latency, hardware-native debounced USB HID execution, use the pre-built UF2 binaries:
 - **`firmware/grid_macro_1_via_rawhid.uf2`**: Production QMK firmware with 10 ms symmetric deferred debouncing (`sym_defer_pk`), 32-byte bidirectional raw HID hardware event protocol, and live VIA EEPROM dynamic remapping.

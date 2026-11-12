@@ -110,7 +110,7 @@ void raw_hid_receive_cb(uint8_t report_id, hid_report_type_t report_type, uint8_
     rsp[2] = NUM_LAYERS;
     rsp[3] = current_layer;
     rsp[4] = 0x01; // Firmware Version Major
-    rsp[5] = 0x02; // Firmware Version Minor
+    rsp[5] = 0x07; // Firmware Version Minor (v1.0.7)
     usb_hid.sendReport(3, rsp, sizeof(rsp));
   } else if (cmd == 0x02) { // CMD_SET_LAYER
     if (bufsize >= 2) {

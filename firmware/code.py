@@ -167,7 +167,7 @@ MEDIA_MAP = {
 # DEFAULT CONFIGURATION
 # ---------------------------------------------------------------------------
 DEFAULT_CONFIG = {
-    "version": "1.0.2",
+    "version": "1.0.7",
     "deviceName": "Grid macro 1",
     "activeLayerIndex": 0,
     "layers": [
@@ -341,7 +341,7 @@ def handle_serial_input():
                 "status": "OK",
                 "device": "Grid macro 1",
                 "mcu": "RP2040-Zero",
-                "version": current_config.get("version", "1.0.2"),
+                "version": current_config.get("version", "1.0.7"),
                 "activeLayer": active_layer_idx,
                 "layerCount": len(current_config.get("layers", []))
             })
