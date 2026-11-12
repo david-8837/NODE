@@ -64,4 +64,19 @@ describe('Grid Macro 1 QMK definition preflight', () => {
       expect(keymap).toContain('UG_VALU');
     }
   });
+
+  it('validates the checked-in compiled grid_macro_1_via.uf2 firmware binary', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { validateRp2040Uf2 } = require('../electron/uf2Validator.cjs');
+    const uf2Path = join(process.cwd(), 'firmware/grid_macro_1_via.uf2');
+    const uf2Bytes = readFileSync(uf2Path);
+    const validation = validateRp2040Uf2(uf2Bytes);
+    expect(validation.ok).toBe(true);
+    expect(validation.blockCount).toBeGreaterThan(0);
+    expect(validation.byteLength).toBe(uf2Bytes.byteLength);
+
+    // Verify USB descriptor strings in the binary payload
+    const utf16Text = uf2Bytes.toString('utf16le');
+    expect(utf16Text).toContain('Grid Macro 1');
+  });
 });

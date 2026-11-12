@@ -439,4 +439,36 @@ describe('QMK/VIA WebHID bridge', () => {
     expect(setItem).toHaveBeenCalledWith('cm2.state.v2', state);
     await expect(bridge.getFile('app_state')).resolves.toMatchObject({ ok: false });
   });
+
+  it('receives unsolicited hardware events and dispatches them without waiting for pending commands', async () => {
+    const { encodeHardwareReport, HardwareEventType } = await import('../src/hardwareEventProtocol');
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+
+    const receivedEvents: any[] = [];
+    bridge.onHardwareEvent((event) => receivedEvents.push(event));
+
+    // Simulate an unsolicited hardware report from the device (Button 0 down)
+    const reportBytes = encodeHardwareReport({
+      type: HardwareEventType.BUTTON_DOWN,
+      slotIndex: 0,
+      sequence: 1,
+      matrixStateMask: 1,
+    });
+
+    const reportEvent = Object.assign(new Event('inputreport'), {
+      device: hid.device,
+      reportId: 0,
+      data: new DataView(reportBytes.buffer),
+    });
+    hid.device.dispatchEvent(reportEvent);
+
+    expect(receivedEvents).toHaveLength(1);
+    expect(receivedEvents[0]).toMatchObject({
+      slotId: 'r1c1',
+      isPressed: true,
+      sequence: 1,
+    });
+  });
 });

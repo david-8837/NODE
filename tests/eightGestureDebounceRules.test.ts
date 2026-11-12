@@ -424,3 +424,4 @@ describe('Validation of the 8 Button Debouncing & Gesture Recognition Rules', ()
     ]);
   });
 });
+

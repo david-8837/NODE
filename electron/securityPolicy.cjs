@@ -5,14 +5,26 @@ const { fileURLToPath } = require('node:url');
 
 const APP_PERMISSIONS = new Set(['hid', 'notifications', 'serial']);
 
+function resolveFileUrlPath(url, platform) {
+  if (platform !== 'win32') {
+    return path.posix.resolve(decodeURIComponent(url.pathname));
+  }
+  try {
+    return path.win32.resolve(fileURLToPath(url));
+  } catch {
+    const decoded = decodeURIComponent(url.pathname.replace(/^\/([a-zA-Z]:)/, '$1'));
+    return path.win32.resolve(decoded);
+  }
+}
+
 function isTrustedAppUrl(rawUrl, expectedUrl, { packaged = false, platform = process.platform } = {}) {
   try {
     const requestedUrl = new URL(rawUrl);
     const appEntryUrl = new URL(expectedUrl);
     if (packaged) {
       if (requestedUrl.protocol !== 'file:' || appEntryUrl.protocol !== 'file:') return false;
-      const requestedPath = path.resolve(fileURLToPath(requestedUrl));
-      const expectedPath = path.resolve(fileURLToPath(appEntryUrl));
+      const requestedPath = resolveFileUrlPath(requestedUrl, platform);
+      const expectedPath = resolveFileUrlPath(appEntryUrl, platform);
       return platform === 'win32'
         ? requestedPath.toLowerCase() === expectedPath.toLowerCase()
         : requestedPath === expectedPath;
