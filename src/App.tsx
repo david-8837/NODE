@@ -4087,7 +4087,7 @@ export default function App() {
   })).filter((sec) => sec.items.length > 0);
 
   return (
-    <div className="h-screen w-full relative">
+    <>
     <div inert={deviceStatus.state !== 'connected'} aria-hidden={deviceStatus.state !== 'connected' ? true : undefined} className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
       {(profileLoadFailed || profileSaveError || syncIssue) && (
         <div role="alert" className="bg-amber-100 text-amber-950 px-4 py-2 text-xs flex flex-wrap items-center gap-3">
@@ -8446,7 +8446,7 @@ export default function App() {
         </div>
       </section>
     )}
-    </div>
+    </>
   );
 }
 
