@@ -1542,6 +1542,37 @@ export default function App() {
       );
       if (!action) return;
 
+      // If this action was triggered by physical hardware, check whether the slot is handled
+      // natively by QMK firmware over USB HID. If it is a native key (e.g. Basic key or standard
+      // shortcut), QMK already sent it over USB HID, so avoid re-dispatching to prevent duplicate keystrokes!
+      const isMultiAction =
+        slotAssignment?.actionType === 'Multi-step action' ||
+        slotAssignment?.execution?.kind === 'multi' ||
+        /(?:onTap|doubleTap|onHold|tapHold):/i.test(slotAssignment?.binding || '');
+      const isSmartAction =
+        slotAssignment?.actionType === 'Smart Action' ||
+        slotAssignment?.execution?.kind === 'smart' ||
+        /\((?:Text|Cmd|Web|App):/i.test(slotAssignment?.binding || '');
+      const isSequence =
+        slotAssignment?.execution?.kind === 'sequence' &&
+        slotAssignment.execution.steps.length > 1;
+      const isCheatSheet =
+        action.type === 'CheatSheet' ||
+        /cheat-?sheet/i.test(slotAssignment?.binding || '');
+
+      const isDesktopHandledAction =
+        isMultiAction || isSmartAction || isSequence || isCheatSheet || action.type === 'Layer Cycle';
+
+      if (source === 'hardware' && !isDesktopHandledAction) {
+        debounceEngineRef.current?.logDiagnostic({
+          category: 'HID_EXECUTION',
+          slot,
+          detail: `Suppressed desktop injection for hardware-native key: ${action.value} [${source}]`,
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
       debounceEngineRef.current?.logDiagnostic({
         category: 'HID_EXECUTION',
         slot,
@@ -1600,6 +1631,25 @@ export default function App() {
         layer as ActionDispatcherLayer
       );
       if (!action) return;
+
+      const dialEntry = layer[GRID_MACRO_ENCODER_SLOT];
+      const subEntry = dialEntry?.encoderActions?.[direction];
+      const isSmart =
+        subEntry?.actionType === 'Smart Action' ||
+        subEntry?.execution?.kind === 'smart' ||
+        /\((?:Text|Cmd|Web|App):/i.test(subEntry?.binding || '');
+      const isSequence =
+        subEntry?.execution?.kind === 'sequence' &&
+        subEntry.execution.steps.length > 1;
+      const isCheatSheet =
+        action.type === 'CheatSheet' ||
+        /cheat-?sheet/i.test(subEntry?.binding || '');
+
+      const isDesktopHandled = isSmart || isSequence || isCheatSheet;
+      if (source === 'hardware' && !isDesktopHandled) {
+        // Handled natively by QMK firmware encoder map over USB HID!
+        return;
+      }
 
       void dispatchResolvedAction(action, {
         source,

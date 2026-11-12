@@ -139,13 +139,13 @@ describe('QMK profile-to-VIA configuration', () => {
 
     const { config, warnings } = buildViaConfiguration(profile, 'win');
     expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'keys', k: ['CONTROL', 'A'] });
-    expect(config.layers[0]?.keys).not.toHaveProperty('r1c2');
-    expect(config.layers[0]?.keys).not.toHaveProperty('r1c3');
-    expect(config.layers[0]?.keys?.r2c1).toEqual({ t: 'keys', k: ['CONTROL', 'C'] });
+    expect(config.layers[0]?.keys?.r1c2).toEqual({ t: 'none' });
+    expect(config.layers[0]?.keys?.r1c3).toEqual({ t: 'none' });
+    expect(config.layers[0]?.keys?.r2c1).toEqual({ t: 'none' });
     expect(warnings).toEqual(expect.arrayContaining([
       expect.stringContaining('Multi-step sequences cannot be represented'),
       expect.stringContaining('Smart Actions run on the desktop'),
-      expect.stringContaining('doubleTap'),
+      expect.stringContaining('Multiactions are handled by desktop software'),
     ]));
   });
 

@@ -14,6 +14,7 @@ import {
   type ActionDispatcherLayer,
 } from '../src/actionDispatcher';
 import { GRID_MACRO_ENCODER_SLOT } from '../src/deviceLayout';
+import { buildViaConfiguration } from '../src/qmkProfileSync';
 
 describe('RP2040 Micro Pad Button Debouncing System (Phase 6 Verification)', () => {
   let currentTime = 1000;
@@ -553,4 +554,138 @@ describe('RP2040 Micro Pad Button Debouncing System (Phase 6 Verification)', () 
     drainTimersUntil(currentTime + 15);
     expect(validatedPress).toBe(true);
   });
+
+  it('12. Multi Action gesture execution produces pristine single keystrokes without dual emission or auto-repeat', () => {
+    const executedHostActions: string[] = [];
+    const mockHost: any = {
+      electronAPI: {
+        executeSmartAction: vi.fn(async (payload: any) => {
+          executedHostActions.push(`${payload.type || payload.actionType}:${payload.value}`);
+          return { success: true };
+        }),
+      },
+      nodeStudioAppSettings: { read: () => ({ allowTerminalSmartActions: true }) },
+    };
+
+    const multiActionLayer: ActionDispatcherLayer = {
+      r1c1: {
+        label: 'A',
+        binding: 'A',
+        actionType: 'Basic input',
+      },
+      r1c2: {
+        label: 'Multi',
+        binding: 'My Multiaction (onTap: A, doubleTap: B, onHold: C, tapHold: D)',
+        actionType: 'Multi-step action',
+        execution: {
+          kind: 'multi',
+          gestures: {
+            onTap: 'A',
+            doubleTap: 'B',
+            onHold: 'C',
+            tapHold: 'D',
+          },
+          tappingTermMs: 180,
+        },
+      },
+    };
+
+    // Test buildViaConfiguration sets KC_NO for r1c2
+    const { config } = buildViaConfiguration({ layers: [multiActionLayer] }, 'win');
+    expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'keys', k: ['A'] });
+    expect(config.layers[0]?.keys?.r1c2).toEqual({ t: 'none' }); // KC_NO in hardware!
+
+    const gestureEngine = new GestureEngine({
+      now: () => currentTime,
+      setTimeoutFn: mockSetTimeout,
+      clearTimeoutFn: mockClearTimeout,
+      onGesture: (event) => {
+        const slotAssignment = multiActionLayer[event.slot];
+        const action = resolveActionForGesture(event.slot, event.gesture, multiActionLayer);
+        if (!action) return;
+
+        const isMultiAction =
+          slotAssignment?.actionType === 'Multi-step action' ||
+          slotAssignment?.execution?.kind === 'multi' ||
+          /(?:onTap|doubleTap|onHold|tapHold):/i.test(slotAssignment?.binding || '');
+
+        // Hardware-native basic keys are emitted by QMK hardware directly over USB HID.
+        // Desktop injection is suppressed for hardware-native keys to prevent duplicate typing!
+        if (event.source === 'hardware' && !isMultiAction) {
+          return;
+        }
+
+        void dispatchResolvedAction(action, { source: event.source as any, host: mockHost });
+      },
+    });
+
+    gestureEngine.configureSlot('r1c2', {
+      hasDoubleTap: true,
+      hasHold: true,
+      hasTapHold: true,
+      tappingTermMs: 180,
+      holdThresholdMs: 400,
+    });
+
+    const debouncer = new DebounceEngine({
+      debounceIntervalMs: 10,
+      now: () => currentTime,
+      setTimeoutFn: mockSetTimeout,
+      clearTimeoutFn: mockClearTimeout,
+      onPress: (slot) => gestureEngine.buttonDown(slot, 'hardware'),
+      onRelease: (slot) => gestureEngine.buttonUp(slot),
+    });
+
+    // 1. Single tap on r1c2: user taps button once
+    simulateSwitchBounce(debouncer, 'r1c2', true, 4, 6);
+    drainTimersUntil(currentTime + 50);
+    simulateSwitchBounce(debouncer, 'r1c2', false, 4, 6);
+    drainTimersUntil(currentTime + 200); // drain tapping term
+    expect(executedHostActions).toEqual(['Shortcut:A']); // Exactly 1 'A', NOT 'AA'!
+
+    executedHostActions.length = 0;
+
+    // 2. Double tap on r1c2: tap twice within tapping term
+    simulateSwitchBounce(debouncer, 'r1c2', true, 4, 6);
+    drainTimersUntil(currentTime + 40);
+    simulateSwitchBounce(debouncer, 'r1c2', false, 4, 6);
+    drainTimersUntil(currentTime + 40);
+    simulateSwitchBounce(debouncer, 'r1c2', true, 4, 6);
+    drainTimersUntil(currentTime + 40);
+    simulateSwitchBounce(debouncer, 'r1c2', false, 4, 6);
+    drainTimersUntil(currentTime + 250);
+    expect(executedHostActions).toEqual(['Shortcut:B']); // Exactly 1 'B', NOT 'AAB'!
+
+    executedHostActions.length = 0;
+
+    // 3. Hold on r1c2: press and hold for 500ms
+    simulateSwitchBounce(debouncer, 'r1c2', true, 4, 6);
+    drainTimersUntil(currentTime + 450); // triggers hold
+    expect(executedHostActions).toEqual(['Shortcut:C']); // Exactly 1 'C', NO auto-repeating 'A'!
+    simulateSwitchBounce(debouncer, 'r1c2', false, 4, 6);
+    drainTimersUntil(currentTime + 50);
+
+    executedHostActions.length = 0;
+
+    // 4. Tap + Hold on r1c2: tap once, then press and hold
+    simulateSwitchBounce(debouncer, 'r1c2', true, 4, 6);
+    drainTimersUntil(currentTime + 40);
+    simulateSwitchBounce(debouncer, 'r1c2', false, 4, 6);
+    drainTimersUntil(currentTime + 40);
+    simulateSwitchBounce(debouncer, 'r1c2', true, 4, 6);
+    drainTimersUntil(currentTime + 450); // triggers tapHold
+    expect(executedHostActions).toEqual(['Shortcut:D']); // Exactly 1 'D', NOT 'AADAAAAAAA'!
+    simulateSwitchBounce(debouncer, 'r1c2', false, 4, 6);
+    drainTimersUntil(currentTime + 50);
+
+    executedHostActions.length = 0;
+
+    // 5. Basic key r1c1: physical press is typed by QMK hardware; desktop suppresses duplicate injection
+    simulateSwitchBounce(debouncer, 'r1c1', true, 4, 6);
+    drainTimersUntil(currentTime + 50);
+    simulateSwitchBounce(debouncer, 'r1c1', false, 4, 6);
+    drainTimersUntil(currentTime + 50);
+    expect(executedHostActions).toEqual([]); // Suppressed in desktop to avoid duplicate keystroke!
+  });
 });
+
