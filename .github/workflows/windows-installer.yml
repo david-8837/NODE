@@ -297,7 +297,7 @@ jobs:
   build-qmk-for-release:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.8'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.9'))
     uses: ./.github/workflows/qmk-build.yml
     permissions:
       contents: read
@@ -305,7 +305,7 @@ jobs:
   publish-verified-builds:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.8'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.9'))
     needs: [package-windows, build-qmk-for-release]
     runs-on: ubuntu-latest
     permissions:
@@ -339,6 +339,8 @@ jobs:
           mapfile -d '' zips < <(find release/windows -maxdepth 1 -type f -name '*.zip' -print0)
           [[ ${#installers[@]} == 1 && ${#zips[@]} == 1 ]]
           cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          The app disables background renderer throttling and avoids duplicate desktop dispatch of native QMK layer keys. Background and physical-device behavior require validation on the target system; the app must remain running and the device keymap must match the profile. Enable Launch app at startup in Settings if desired.
+
           Windows installer and portable build are unsigned. The QMK/VIA UF2 targets the repository's RP2040-Zero configuration and was compiled in CI, but has not been validated on a physical board. Verify board revision, wiring, USB identity and recovery procedure before flashing. The previous checked-in firmware manifest mismatch remains a historical provenance issue; use the checksum and build information attached to this release for this newly built UF2.
           NOTES
           gh release create "$tag" --target "$GITHUB_SHA" --draft --title "NØDE Grid Macro 1 Studio $tag" --notes-file "$RUNNER_TEMP/release-notes.md" "${installers[0]}" "${zips[0]}" release/firmware/grid_macro_1_via.uf2 release/firmware/SHA256SUMS.txt release/firmware/BUILD-INFO.txt

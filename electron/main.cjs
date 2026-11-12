@@ -615,6 +615,10 @@ function createWindow() {
     },
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      // The renderer owns WebHID, debounce, and gesture timers even when the
+      // window is minimized or hidden to the tray. Throttling can delay or
+      // collapse those events and prevent desktop actions from firing.
+      backgroundThrottling: false,
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,

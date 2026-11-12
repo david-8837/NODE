@@ -1238,6 +1238,9 @@ export default function App() {
       if (active) setDeviceStatus(status);
     });
 
+    // Native QMK layer keys are executed by the device, not by the gesture engine.
+    // Remember ownership from key-down: key-up reports the destination layer.
+    const nativeLayerPresses = new Set<KeySlotId>();
     const unsubscribeHardware = bridge.onHardwareEvent
       ? bridge.onHardwareEvent((event: DecodedHardwareEvent) => {
           if (!active) return;
@@ -1250,7 +1253,24 @@ export default function App() {
             event.activeLayer < currentProfileRef.current.layers.length &&
             event.activeLayer !== activeLayerIndexRef.current
           ) {
+            activeLayerIndexRef.current = event.activeLayer;
+            currentLayerRef.current = currentProfileRef.current.layers[event.activeLayer];
             setActiveLayerIndex(event.activeLayer);
+          }
+
+          const isDown = event.type === HardwareEventType.BUTTON_DOWN || event.type === HardwareEventType.DIAL_DOWN;
+          const isUp = event.type === HardwareEventType.BUTTON_UP || event.type === HardwareEventType.DIAL_UP;
+          if (event.slotId && isDown && !nativeLayerPresses.has(event.slotId)) {
+            const layer = buildViaConfiguration(currentProfileRef.current, 'win').config.layers[event.activeLayer];
+            const mapped = event.slotId === GRID_MACRO_ENCODER_SLOT
+              ? layer?.enc?.press : layer?.keys?.[event.slotId];
+            if (mapped?.t === 'layer' && (mapped.op === 'set' || mapped.op === 'hold')) {
+              nativeLayerPresses.add(event.slotId);
+            }
+          }
+          if (event.slotId && nativeLayerPresses.has(event.slotId) && (isDown || isUp)) {
+            if (isUp) nativeLayerPresses.delete(event.slotId);
+            return;
           }
 
           switch (event.type) {
