@@ -84,6 +84,7 @@ interface EncoderSubBinding {
   label: string;
   binding: string;
   actionId?: string;
+  actionType?: KeyAssignment['actionType'];
   execution?: DesktopExecutionDefinition;
 }
 
