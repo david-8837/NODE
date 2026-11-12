@@ -6,7 +6,7 @@
 #define MATRIX_COLS 3
 
 #define USB_POLLING_INTERVAL_MS 1
-#define DEBOUNCE 3
+#define DEBOUNCE 10
 
 /* EC11 encoder direction is reversed by the board's wiring. */
 #define ENCODER_DIRECTION_FLIP

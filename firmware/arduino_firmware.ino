@@ -41,8 +41,9 @@ uint16_t encoder_map[NUM_LAYERS][2] = {
 
 uint8_t current_layer = 0;
 bool key_states[TOTAL_KEYS] = { false };
-unsigned long last_debounce_time[TOTAL_KEYS] = { 0 };
-const unsigned long DEBOUNCE_DELAY_MS = 5;
+bool raw_key_states[TOTAL_KEYS] = { false };
+unsigned long last_raw_change_time[TOTAL_KEYS] = { 0 };
+unsigned long debounce_interval_ms = 10; // Default 10ms, configurable up to 25ms
 
 // Robust Quadrature Encoder Gray Code State Machine
 // 4-state transition table to completely eliminate contact bounce & direction misreads
@@ -71,7 +72,8 @@ void setup() {
   for (int i = 0; i < 9; i++) {
     pinMode(KEY_PINS[i], INPUT_PULLUP);
     key_states[i] = false;
-    last_debounce_time[i] = 0;
+    raw_key_states[i] = false;
+    last_raw_change_time[i] = 0;
   }
 
   // Rotary Encoder Pins
@@ -79,16 +81,18 @@ void setup() {
   pinMode(ENC_B, INPUT_PULLUP);
   pinMode(ENC_SW, INPUT_PULLUP);
   key_states[9] = false;
-  last_debounce_time[9] = 0;
+  raw_key_states[9] = false;
+  last_raw_change_time[9] = 0;
 
   enc_state = (digitalRead(ENC_A) << 1) | digitalRead(ENC_B);
 
-  // Load Non-Volatile Dynamic Keymaps from Flash/EEPROM
+  // Load Non-Volatile Dynamic Keymaps & Encoder Maps from Flash/EEPROM
   EEPROM.begin(512);
   uint32_t magic = 0;
   EEPROM.get(0, magic);
   if (magic == EEPROM_MAGIC) {
     EEPROM.get(4, keymaps);
+    EEPROM.get(4 + sizeof(keymaps), encoder_map);
   }
 }
 
@@ -139,16 +143,33 @@ void raw_hid_receive_cb(uint8_t report_id, hid_report_type_t report_type, uint8_
   } else if (cmd == 0x04) { // CMD_SAVE_FLASH
     EEPROM.put(0, (uint32_t)EEPROM_MAGIC);
     EEPROM.put(4, keymaps);
+    EEPROM.put(4 + sizeof(keymaps), encoder_map);
     EEPROM.commit();
     uint8_t ack[64];
     memset(ack, 0, sizeof(ack));
     ack[0] = 0x04;
     ack[1] = 0x01; // Success status
     usb_hid.sendReport(3, ack, sizeof(ack));
+  } else if (cmd == 0x05) { // CMD_SET_ENCODER: [0x05, layer, dir(0=CCW,1=CW), keycode_lo, keycode_hi]
+    if (bufsize >= 5) {
+      uint8_t layer = buffer[1];
+      uint8_t dir = buffer[2];
+      uint16_t keycode = (uint16_t)buffer[3] | ((uint16_t)buffer[4] << 8);
+
+      if (layer < NUM_LAYERS && dir < 2) {
+        encoder_map[layer][dir] = keycode;
+        uint8_t ack[64];
+        memset(ack, 0, sizeof(ack));
+        ack[0] = 0x05;
+        ack[1] = layer;
+        ack[2] = dir;
+        usb_hid.sendReport(3, ack, sizeof(ack));
+      }
+    }
   }
 }
 
-void fire_keycode(uint16_t keycode) {
+void press_keycode(uint16_t keycode, uint8_t slot_index) {
   if (keycode == 0x0000) return;
 
   // Smart Action (0x8000 range): Notify Web App via Raw HID
@@ -156,8 +177,10 @@ void fire_keycode(uint16_t keycode) {
     uint8_t report[64];
     memset(report, 0, sizeof(report));
     report[0] = 0xEE;
-    report[1] = (uint8_t)(keycode & 0xFF);
-    report[2] = current_layer;
+    report[1] = 0x01; // BUTTON_DOWN
+    report[2] = slot_index;
+    report[3] = (uint8_t)(keycode & 0xFF);
+    report[4] = current_layer;
     usb_hid.sendReport(3, report, sizeof(report));
     return;
   }
@@ -165,8 +188,6 @@ void fire_keycode(uint16_t keycode) {
   // Consumer / Media Key (0xE000 range)
   if ((keycode & 0xE000) == 0xE000) {
     usb_hid.sendReport16(2, keycode & 0x0FFF);
-    delay(10);
-    usb_hid.sendReport16(2, 0); // Release
     return;
   }
 
@@ -179,8 +200,35 @@ void fire_keycode(uint16_t keycode) {
 
   uint8_t key_report[6] = { (uint8_t)(keycode & 0xFF), 0, 0, 0, 0, 0 };
   usb_hid.keyboardReport(1, modifier, key_report);
-  delay(10);
+}
+
+void release_keycode(uint16_t keycode, uint8_t slot_index) {
+  if (keycode == 0x0000) return;
+
+  if ((keycode & 0x8000) != 0) {
+    uint8_t report[64];
+    memset(report, 0, sizeof(report));
+    report[0] = 0xEE;
+    report[1] = 0x02; // BUTTON_UP
+    report[2] = slot_index;
+    report[3] = (uint8_t)(keycode & 0xFF);
+    report[4] = current_layer;
+    usb_hid.sendReport(3, report, sizeof(report));
+    return;
+  }
+
+  if ((keycode & 0xE000) == 0xE000) {
+    usb_hid.sendReport16(2, 0);
+    return;
+  }
+
   usb_hid.keyboardRelease(1);
+}
+
+void fire_encoder_pulse(uint16_t keycode) {
+  if (keycode == 0x0000) return;
+  press_keycode(keycode, 0xFF);
+  release_keycode(keycode, 0xFF);
 }
 
 void loop() {
@@ -188,29 +236,33 @@ void loop() {
 
   unsigned long now = millis();
 
-  // 1. Scan 9 Direct Keys with 5ms Integration Debouncing
+  // 1. Scan 9 Direct Keys with Non-Blocking Symmetric Timestamp Debounce
   for (int i = 0; i < 9; i++) {
     bool raw_pressed = (digitalRead(KEY_PINS[i]) == LOW);
-    if (raw_pressed != key_states[i]) {
-      if (now - last_debounce_time[i] >= DEBOUNCE_DELAY_MS) {
-        key_states[i] = raw_pressed;
-        last_debounce_time[i] = now;
-        if (raw_pressed) {
-          fire_keycode(keymaps[current_layer][i]);
-        }
+    if (raw_pressed != raw_key_states[i]) {
+      raw_key_states[i] = raw_pressed;
+      last_raw_change_time[i] = now;
+    } else if (raw_key_states[i] != key_states[i] && (now - last_raw_change_time[i] >= debounce_interval_ms)) {
+      key_states[i] = raw_key_states[i];
+      if (key_states[i]) {
+        press_keycode(keymaps[current_layer][i], i);
+      } else {
+        release_keycode(keymaps[current_layer][i], i);
       }
     }
   }
 
-  // 2. Scan Encoder Push Switch (Key 10) with Debounce
+  // 2. Scan Encoder Push Switch (Key 10 / index 9) with Non-Blocking Debounce
   bool raw_sw = (digitalRead(ENC_SW) == LOW);
-  if (raw_sw != key_states[9]) {
-    if (now - last_debounce_time[9] >= DEBOUNCE_DELAY_MS) {
-      key_states[9] = raw_sw;
-      last_debounce_time[9] = now;
-      if (raw_sw) {
-        fire_keycode(keymaps[current_layer][9]);
-      }
+  if (raw_sw != raw_key_states[9]) {
+    raw_key_states[9] = raw_sw;
+    last_raw_change_time[9] = now;
+  } else if (raw_key_states[9] != key_states[9] && (now - last_raw_change_time[9] >= debounce_interval_ms)) {
+    key_states[9] = raw_key_states[9];
+    if (key_states[9]) {
+      press_keycode(keymaps[current_layer][9], 9);
+    } else {
+      release_keycode(keymaps[current_layer][9], 9);
     }
   }
 
@@ -221,10 +273,10 @@ void loop() {
   if (step != 0) {
     enc_counter += step;
     if (enc_counter >= 4) { // 1 complete detent CW
-      fire_keycode(encoder_map[current_layer][1]);
+      fire_encoder_pulse(encoder_map[current_layer][1]);
       enc_counter = 0;
     } else if (enc_counter <= -4) { // 1 complete detent CCW
-      fire_keycode(encoder_map[current_layer][0]);
+      fire_encoder_pulse(encoder_map[current_layer][0]);
       enc_counter = 0;
     }
   }

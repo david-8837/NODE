@@ -26,6 +26,7 @@ import {
   type RecognizedGestureEvent,
   type RecognizedDialEvent,
 } from './gestureEngine';
+import { DebounceEngine } from './debounceEngine';
 import {
   resolveActionForGesture,
   resolveActionForDial,
@@ -1228,6 +1229,42 @@ export default function App() {
   }
   const lastSimPointerUpRef = useRef<Record<string, number>>({});
 
+  const debounceEngineRef = useRef<DebounceEngine | null>(null);
+  if (!debounceEngineRef.current) {
+    debounceEngineRef.current = new DebounceEngine({
+      debounceIntervalMs: 10,
+      onPress: (slotId, _timestamp, source) => {
+        gestureEngineRef.current?.buttonDown(slotId, source);
+        setActivePhysicalPressedSlot(slotId);
+        const slotEntry =
+          slotId === GRID_MACRO_ENCODER_SLOT
+            ? currentLayerRef.current[GRID_MACRO_ENCODER_SLOT]?.encoderActions?.press
+            : currentLayerRef.current[slotId];
+        if (
+          slotEntry &&
+          (slotEntry.actionId === 'cs-hold' ||
+            /cheat-?sheet hold/i.test(slotEntry.binding || '') ||
+            /cheat-?sheet hold/i.test(slotEntry.label || ''))
+        ) {
+          setCheatSheetOpen(true);
+          cheatSheetHoldSlotRef.current = slotId;
+        }
+      },
+      onRelease: (slotId) => {
+        gestureEngineRef.current?.buttonUp(slotId);
+        setActivePhysicalPressedSlot((cur) => (cur === slotId || (cur === GRID_MACRO_ENCODER_SLOT && slotId === GRID_MACRO_ENCODER_SLOT) ? null : cur));
+        if (cheatSheetHoldSlotRef.current === slotId) {
+          setCheatSheetOpen(false);
+          cheatSheetHoldSlotRef.current = null;
+        }
+      },
+    });
+    if (typeof window !== 'undefined') {
+      (window as unknown as { macropadDebounceEngine?: DebounceEngine }).macropadDebounceEngine =
+        debounceEngineRef.current;
+    }
+  }
+
   useEffect(() => {
     const bridge = window.macropad;
     if (!bridge) {
@@ -1252,28 +1289,12 @@ export default function App() {
           switch (event.type) {
             case HardwareEventType.BUTTON_DOWN:
               if (event.slotId) {
-                engine.buttonDown(event.slotId, 'hardware');
-                setActivePhysicalPressedSlot(event.slotId);
-                const slotEntry = currentLayerRef.current[event.slotId];
-                if (
-                  slotEntry &&
-                  (slotEntry.actionId === 'cs-hold' ||
-                    /cheat-?sheet hold/i.test(slotEntry.binding || '') ||
-                    /cheat-?sheet hold/i.test(slotEntry.label || ''))
-                ) {
-                  setCheatSheetOpen(true);
-                  cheatSheetHoldSlotRef.current = event.slotId;
-                }
+                debounceEngineRef.current?.handleRawInput(event.slotId, true, undefined, 'hardware');
               }
               break;
             case HardwareEventType.BUTTON_UP:
               if (event.slotId) {
-                engine.buttonUp(event.slotId);
-                setActivePhysicalPressedSlot((cur) => (cur === event.slotId ? null : cur));
-                if (cheatSheetHoldSlotRef.current === event.slotId) {
-                  setCheatSheetOpen(false);
-                  cheatSheetHoldSlotRef.current = null;
-                }
+                debounceEngineRef.current?.handleRawInput(event.slotId, false, undefined, 'hardware');
               }
               break;
             case HardwareEventType.ENC_CW:
@@ -1284,29 +1305,11 @@ export default function App() {
               engine.dialRotate('ccw', 'hardware');
               setEncoderAngle((prev) => (prev - 30 + 360) % 360);
               break;
-            case HardwareEventType.DIAL_DOWN: {
-              engine.buttonDown(GRID_MACRO_ENCODER_SLOT, 'hardware');
-              setActivePhysicalPressedSlot(GRID_MACRO_ENCODER_SLOT);
-              const encoderEntry =
-                currentLayerRef.current[GRID_MACRO_ENCODER_SLOT]?.encoderActions?.press;
-              if (
-                encoderEntry &&
-                (encoderEntry.actionId === 'cs-hold' ||
-                  /cheat-?sheet hold/i.test(encoderEntry.binding || '') ||
-                  /cheat-?sheet hold/i.test(encoderEntry.label || ''))
-              ) {
-                setCheatSheetOpen(true);
-                cheatSheetHoldSlotRef.current = GRID_MACRO_ENCODER_SLOT;
-              }
+            case HardwareEventType.DIAL_DOWN:
+              debounceEngineRef.current?.handleRawInput(GRID_MACRO_ENCODER_SLOT, true, undefined, 'hardware');
               break;
-            }
             case HardwareEventType.DIAL_UP:
-              engine.buttonUp(GRID_MACRO_ENCODER_SLOT);
-              setActivePhysicalPressedSlot((cur) => (cur === GRID_MACRO_ENCODER_SLOT ? null : cur));
-              if (cheatSheetHoldSlotRef.current === GRID_MACRO_ENCODER_SLOT) {
-                setCheatSheetOpen(false);
-                cheatSheetHoldSlotRef.current = null;
-              }
+              debounceEngineRef.current?.handleRawInput(GRID_MACRO_ENCODER_SLOT, false, undefined, 'hardware');
               break;
           }
         })
@@ -1525,12 +1528,26 @@ export default function App() {
         return;
       }
 
+      debounceEngineRef.current?.logDiagnostic({
+        category: 'GESTURE',
+        slot,
+        detail: `Recognized gesture: ${gesture} [${source}]`,
+        timestamp: event.timestamp || Date.now(),
+      });
+
       const action = resolveActionForGesture(
         slot,
         gesture,
         layer as ActionDispatcherLayer
       );
       if (!action) return;
+
+      debounceEngineRef.current?.logDiagnostic({
+        category: 'HID_EXECUTION',
+        slot,
+        detail: `Executing action: ${action.type} -> ${action.value} [${source}]`,
+        timestamp: Date.now(),
+      });
 
       if (action.type === 'Layer Cycle') {
         const nextLayer = (layerIdx + 1) % profile.layers.length;
@@ -2833,33 +2850,11 @@ export default function App() {
         } else if (subAction === 'ccw') {
           gestureEngineRef.current?.dialRotate('ccw', 'simulation');
         } else {
-          setActivePhysicalPressedSlot(GRID_MACRO_ENCODER_SLOT);
-          gestureEngineRef.current?.buttonDown(GRID_MACRO_ENCODER_SLOT, 'simulation');
-          const encoderEntry = currentLayer[GRID_MACRO_ENCODER_SLOT]?.encoderActions?.press;
-          if (
-            encoderEntry &&
-            (encoderEntry.actionId === 'cs-hold' ||
-              /cheat-?sheet hold/i.test(encoderEntry.binding || '') ||
-              /cheat-?sheet hold/i.test(encoderEntry.label || ''))
-          ) {
-            setCheatSheetOpen(true);
-            cheatSheetHoldSlotRef.current = GRID_MACRO_ENCODER_SLOT;
-          }
+          debounceEngineRef.current?.handleRawInput(GRID_MACRO_ENCODER_SLOT, true, undefined, 'simulation');
         }
         return;
       }
-      setActivePhysicalPressedSlot(slotId);
-      gestureEngineRef.current?.buttonDown(slotId, 'simulation');
-      const slotEntry = currentLayer[slotId];
-      if (
-        slotEntry &&
-        (slotEntry.actionId === 'cs-hold' ||
-          /cheat-?sheet hold/i.test(slotEntry.binding || '') ||
-          /cheat-?sheet hold/i.test(slotEntry.label || ''))
-      ) {
-        setCheatSheetOpen(true);
-        cheatSheetHoldSlotRef.current = slotId;
-      }
+      debounceEngineRef.current?.handleRawInput(slotId, true, undefined, 'simulation');
       return;
     }
     // Drag encoder bindings from their CW / Press / CCW capsule, not the knob body.
@@ -2919,19 +2914,14 @@ export default function App() {
     subAction?: EncoderSubActionId
   ) => {
     if (!simulationMode) return;
-    setActivePhysicalPressedSlot((cur) => (cur === slotId || (cur === GRID_MACRO_ENCODER_SLOT && slotId === GRID_MACRO_ENCODER_SLOT) ? null : cur));
-    if (cheatSheetHoldSlotRef.current === slotId) {
-      setCheatSheetOpen(false);
-      cheatSheetHoldSlotRef.current = null;
-    }
     lastSimPointerUpRef.current[slotId] = Date.now();
     if (slotId === GRID_MACRO_ENCODER_SLOT) {
       if (subAction === 'press' || !subAction) {
-        gestureEngineRef.current?.buttonUp(GRID_MACRO_ENCODER_SLOT);
+        debounceEngineRef.current?.handleRawInput(GRID_MACRO_ENCODER_SLOT, false, undefined, 'simulation');
       }
       return;
     }
-    gestureEngineRef.current?.buttonUp(slotId);
+    debounceEngineRef.current?.handleRawInput(slotId, false, undefined, 'simulation');
   };
 
   const handleKeyPointerLeave = (
@@ -2939,16 +2929,11 @@ export default function App() {
     slotId: KeySlotId
   ) => {
     if (!simulationMode) return;
-    setActivePhysicalPressedSlot((cur) => (cur === slotId || (cur === GRID_MACRO_ENCODER_SLOT && slotId === GRID_MACRO_ENCODER_SLOT) ? null : cur));
-    if (cheatSheetHoldSlotRef.current === slotId) {
-      setCheatSheetOpen(false);
-      cheatSheetHoldSlotRef.current = null;
-    }
     const targetSlot = slotId === GRID_MACRO_ENCODER_SLOT ? GRID_MACRO_ENCODER_SLOT : slotId;
     const state = gestureEngineRef.current?.getSlotState(targetSlot);
     if (state === 'PRESSED_1' || state === 'PRESSED_2') {
       lastSimPointerUpRef.current[targetSlot] = Date.now();
-      gestureEngineRef.current?.buttonUp(targetSlot);
+      debounceEngineRef.current?.handleRawInput(targetSlot, false, undefined, 'simulation');
     }
   };
 

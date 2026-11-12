@@ -49,6 +49,23 @@ NEOPIXEL_PIN = board.GP16
 NEOPIXEL_COUNT = 1
 
 # ---------------------------------------------------------------------------
+# DEBOUNCE AND INPUT SAFETY CONSTANTS
+# ---------------------------------------------------------------------------
+DEBOUNCE_MS = 10            # Key/encoder press debounce window (milliseconds, 10-25ms)
+MAX_SERIAL_LINE_BYTES = 8192  # Maximum bytes per incoming serial line
+MAX_CONFIG_KEYS = 64        # Maximum top-level keys in a config object
+MAX_LAYERS = 8              # Maximum layers accepted via SET_CONFIG
+MAX_BINDING_LENGTH = 256    # Maximum characters in a single binding string
+
+raw_key_states = [True] * len(KEY_PINS)
+debounced_key_states = [True] * len(KEY_PINS)
+last_key_change_times = [0.0] * len(KEY_PINS)
+
+raw_sw_state = True
+debounced_sw_state = True
+last_sw_change_time = 0.0
+
+# ---------------------------------------------------------------------------
 # INITIALIZE HARDWARE
 # ---------------------------------------------------------------------------
 # USB HID Devices
@@ -260,6 +277,38 @@ def send_serial_json(obj):
         except Exception:
             pass
 
+def validate_config(data):
+    """Validate incoming configuration before accepting it."""
+    if not isinstance(data, dict):
+        return False, "Config must be a JSON object"
+    if len(data) > MAX_CONFIG_KEYS:
+        return False, "Config has too many keys"
+    layers = data.get("layers")
+    if layers is not None:
+        if not isinstance(layers, list):
+            return False, "layers must be an array"
+        if len(layers) > MAX_LAYERS:
+            return False, "Too many layers (max %d)" % MAX_LAYERS
+        if len(layers) == 0:
+            return False, "Config must have at least one layer"
+        for layer_idx, layer in enumerate(layers):
+            if not isinstance(layer, dict):
+                return False, "Layer %d is not an object" % layer_idx
+            for slot_key, slot_value in layer.items():
+                if not isinstance(slot_key, str) or len(slot_key) > 32:
+                    return False, "Invalid slot key in layer %d" % layer_idx
+                if isinstance(slot_value, dict):
+                    binding = slot_value.get("binding", "")
+                    if isinstance(binding, str) and len(binding) > MAX_BINDING_LENGTH:
+                        return False, "Binding too long in layer %d slot %s" % (layer_idx, slot_key)
+    idx = data.get("activeLayerIndex")
+    if idx is not None:
+        if not isinstance(idx, int) or idx < 0:
+            return False, "activeLayerIndex must be a non-negative integer"
+        if layers and idx >= len(layers):
+            return False, "activeLayerIndex out of range"
+    return True, None
+
 def handle_serial_input():
     global current_config, active_layer_idx
     port = usb_cdc.data if (usb_cdc.data and usb_cdc.data.in_waiting) else usb_cdc.console
@@ -267,13 +316,19 @@ def handle_serial_input():
         return
 
     try:
-        raw_bytes = port.readline()
+        raw_bytes = port.readline(MAX_SERIAL_LINE_BYTES + 1)
         if not raw_bytes:
+            return
+        if len(raw_bytes) > MAX_SERIAL_LINE_BYTES:
+            send_serial_json({"status": "ERROR", "error": "Line too long (max %d bytes)" % MAX_SERIAL_LINE_BYTES})
             return
         raw_line = raw_bytes.decode("utf-8", errors="replace").strip()
         if not raw_line:
             return
         msg = json.loads(raw_line)
+        if not isinstance(msg, dict):
+            send_serial_json({"status": "ERROR", "error": "Message must be a JSON object"})
+            return
         cmd = msg.get("cmd")
 
         if cmd == "PING":
@@ -299,19 +354,25 @@ def handle_serial_input():
 
         elif cmd == "SET_CONFIG":
             new_data = msg.get("data")
-            if new_data:
-                current_config = new_data
-                active_layer_idx = current_config.get("activeLayerIndex", 0)
-                saved = save_config(current_config)
-                send_serial_json({
-                    "status": "OK" if saved else "ERROR_READONLY",
-                    "saved": saved,
-                    "msg": "Keymap updated successfully" if saved else "Updated in RAM (Boot drive readonly)"
-                })
-                # Visual success flash
-                pixel[0] = (0, 255, 0)
-                time.sleep(0.12)
-                pixel[0] = (0, 81, 255)
+            if not new_data:
+                send_serial_json({"status": "ERROR", "error": "Missing config data"})
+            else:
+                valid, error_msg = validate_config(new_data)
+                if not valid:
+                    send_serial_json({"status": "ERROR", "error": error_msg})
+                else:
+                    current_config = new_data
+                    active_layer_idx = current_config.get("activeLayerIndex", 0)
+                    saved = save_config(current_config)
+                    send_serial_json({
+                        "status": "OK" if saved else "ERROR_READONLY",
+                        "saved": saved,
+                        "msg": "Keymap updated successfully" if saved else "Updated in RAM (Boot drive readonly)"
+                    })
+                    # Visual success flash
+                    pixel[0] = (0, 255, 0)
+                    time.sleep(0.12)
+                    pixel[0] = (0, 81, 255)
 
         elif cmd == "SET_LAYER":
             idx = msg.get("layer", 0)
@@ -335,13 +396,18 @@ while True:
     layers = current_config.get("layers", [])
     active_layer = layers[active_layer_idx] if (0 <= active_layer_idx < len(layers)) else {}
 
-    # 2. Scan 9 Matrix Keys (Direct Pin, active LOW)
+    # 2. Scan 9 Matrix Keys (Direct Pin, active LOW) with non-blocking debounce
+    now_ms = time.monotonic()
+    debounce_sec = DEBOUNCE_MS / 1000.0
     for i, key_in in enumerate(keys):
         val = key_in.value
         slot = SLOT_NAMES[i]
-        if val != last_key_states[i]:
-            last_key_states[i] = val
-            if not val:  # Pressed (LOW)
+        if val != raw_key_states[i]:
+            raw_key_states[i] = val
+            last_key_change_times[i] = now_ms
+        elif raw_key_states[i] != debounced_key_states[i] and (now_ms - last_key_change_times[i]) >= debounce_sec:
+            debounced_key_states[i] = raw_key_states[i]
+            if not debounced_key_states[i]:  # Pressed (LOW)
                 pixel[0] = (255, 255, 255)  # Flash white on physical press
                 send_serial_json({"event": "KEY_DOWN", "slot": slot})
                 key_data = active_layer.get(slot, {})
@@ -373,11 +439,14 @@ while True:
         time.sleep(0.01)
         pixel[0] = (0, 81, 255)
 
-    # 4. Scan Rotary Encoder Press Switch (active LOW)
+    # 4. Scan Rotary Encoder Press Switch (active LOW) with non-blocking debounce
     sw_val = encoder_sw.value
-    if sw_val != last_sw_state:
-        last_sw_state = sw_val
-        if not sw_val:  # Encoder clicked down
+    if sw_val != raw_sw_state:
+        raw_sw_state = sw_val
+        last_sw_change_time = now_ms
+    elif raw_sw_state != debounced_sw_state and (now_ms - last_sw_change_time) >= debounce_sec:
+        debounced_sw_state = raw_sw_state
+        if not debounced_sw_state:  # Encoder clicked down
             pixel[0] = (255, 120, 0)
             send_serial_json({"event": "DIAL_PRESS", "state": "down", "slot": "dial-tl"})
             dial_data = active_layer.get("dial-tl", {})
