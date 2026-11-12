@@ -297,7 +297,7 @@ jobs:
   build-qmk-for-release:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && github.event.head_commit.message == 'release: publish 1.0.8')
+      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.8'))
     uses: ./.github/workflows/qmk-build.yml
     permissions:
       contents: read
@@ -305,7 +305,7 @@ jobs:
   publish-verified-builds:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && github.event.head_commit.message == 'release: publish 1.0.8')
+      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.8'))
     needs: [package-windows, build-qmk-for-release]
     runs-on: ubuntu-latest
     permissions:
