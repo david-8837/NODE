@@ -331,6 +331,7 @@ async function captureVisualSmokeScreenshot() {
       return {
         title: document.title,
         appMounted: Boolean(root?.firstElementChild),
+        connectionGateVisible: Boolean(root?.querySelector('[role=\"dialog\"][aria-labelledby=\"device-required-title\"]') && root?.querySelector('.app-shell[inert]')),
         keyCount: keySlots.length,
         hasEncoder: Boolean(root?.querySelector('button[title^="Dial:"]')),
         hasNavigation: ['Keymap', 'Preset', 'Settings'].every((label) => navText.includes(label)),
@@ -341,6 +342,7 @@ async function captureVisualSmokeScreenshot() {
 
     if (
       !renderedUi.appMounted ||
+      !renderedUi.connectionGateVisible ||
       renderedUi.keyCount !== 9 ||
       !renderedUi.hasEncoder ||
       !renderedUi.hasNavigation ||

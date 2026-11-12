@@ -1402,6 +1402,21 @@ export default function App() {
   const [simulationTransition, setSimulationTransition] = useState(false);
 
   useEffect(() => {
+    if (deviceStatus.state === 'connected') return;
+    debounceEngineRef.current?.reset();
+    gestureEngineRef.current?.resetAll();
+    setActivePhysicalPressedSlot(null);
+    setCheatSheetOpen(false);
+    dragSessionRef.current = null;
+    setDraggedTile(null);
+    setDragOverTarget(null);
+    if (simulationMode) {
+      setSimulationMode(false);
+      void requestSimulationMode(false, window);
+    }
+  }, [deviceStatus.state]);
+
+  useEffect(() => {
     const disableSimulationOnPageHide = () => {
       void requestSimulationMode(false, window);
     };
@@ -2458,6 +2473,7 @@ export default function App() {
   // Keyboard recording listener for Action editing when Advance mode is OFF
   useEffect(() => {
     if (
+      deviceStatus.state !== 'connected' ||
       creatorModalTab !== 'Action' ||
       actionAdvanceMode ||
       actionRecordingStatus !== 'recording'
@@ -2714,7 +2730,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleActionKeyDown);
     };
-  }, [creatorModalTab, actionAdvanceMode, actionRecordingStatus]);
+  }, [creatorModalTab, actionAdvanceMode, actionRecordingStatus, deviceStatus.state]);
 
   useEffect(() => {
     const handleWindowPointerMove = (e: PointerEvent) => {
@@ -4071,7 +4087,8 @@ export default function App() {
   })).filter((sec) => sec.items.length > 0);
 
   return (
-    <div className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
+    <div className="h-screen w-full relative">
+    <div inert={deviceStatus.state !== 'connected'} aria-hidden={deviceStatus.state !== 'connected' ? true : undefined} className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
       {(profileLoadFailed || profileSaveError || syncIssue) && (
         <div role="alert" className="bg-amber-100 text-amber-950 px-4 py-2 text-xs flex flex-wrap items-center gap-3">
           <span>{profileLoadFailed ? 'Saved profile could not be loaded. Original data preserved; saving and device sync are paused.' : profileSaveError || syncIssue}</span>
@@ -8404,6 +8421,31 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+    {deviceStatus.state !== 'connected' && (
+      <section role="dialog" aria-modal="true" aria-labelledby="device-required-title" className="fixed inset-0 z-[200] bg-[#efefef] flex flex-col text-[#171717]">
+        <div className="h-[38px] bg-black text-white flex items-center justify-between px-5 shrink-0">
+          <span className="font-bold text-[13px] tracking-[0.16em]">NØDE</span>
+          {window.electronAPI && <div className="flex gap-5 text-sm">
+            <button type="button" aria-label="Minimize window" onClick={() => void window.electronAPI?.minimize?.()}>−</button>
+            <button type="button" aria-label="Close window" onClick={() => void window.electronAPI?.close?.()}>×</button>
+          </div>}
+        </div>
+        <div className="flex-1 flex items-center justify-center px-6 py-8">
+          <div className="w-full max-w-[410px] text-center">
+            <div aria-hidden="true" className="mx-auto mb-7 w-20 h-20 rounded-[24px] bg-black text-white flex items-center justify-center text-3xl">⌁</div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#0051ff] mb-3">Grid Macro 1</p>
+            <h1 id="device-required-title" className="text-2xl font-semibold tracking-tight">Connect your macropad</h1>
+            <p className="mt-3 text-sm leading-6 text-[#626262]">Plug in your Grid Macro 1 to use NØDE Studio. Your assignments stay saved on this computer and will be available when you reconnect.</p>
+            <p role="status" className="mt-5 text-xs text-[#626262]">
+              {deviceStatus.state === 'connecting' ? 'Connecting to your macropad…' : deviceStatus.state === 'searching' ? 'Looking for your macropad…' : deviceStatus.state === 'unavailable' ? 'Device access is unavailable. Open the installed desktop app or use a WebHID-compatible browser.' : deviceStatus.error || 'Waiting for your macropad.'}
+            </p>
+            {deviceStatus.state !== 'unavailable' && <button type="button" autoFocus onClick={() => void handleToggleDeviceConnection()} disabled={deviceStatus.state === 'connecting' || deviceStatus.state === 'searching'} className="mt-6 rounded-full bg-[#0051ff] px-7 py-3 text-sm font-medium text-white disabled:opacity-50">Connect macropad</button>}
+            <p className="mt-5 text-xs leading-5 text-[#777]">Previously authorized devices reconnect automatically. If needed, use the button to select your device.</p>
+          </div>
+        </div>
+      </section>
+    )}
     </div>
   );
 }
