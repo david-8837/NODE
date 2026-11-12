@@ -31,10 +31,10 @@ static void send_hardware_event(uint8_t event_type, uint8_t slot_index) {
 /* Dynamic EEPROM Layers (Configurable live via VIA / Web App) */
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [0] = LAYOUT_grid_macro_1(
-        KC_MPLY,
-        KC_Q,       KC_W,       KC_E,
-        KC_A,       KC_S,       KC_D,
-        KC_Z,       KC_X,       MO(1)
+        KC_NO,
+        KC_NO,      KC_NO,      KC_NO,
+        KC_NO,      KC_NO,      KC_NO,
+        KC_NO,      KC_NO,      KC_NO
     ),
     [1] = LAYOUT_grid_macro_1(
         KC_MUTE,
@@ -102,8 +102,8 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         }
     }
 
-    // If keycode is in dedicated Smart Action range (0x7E00..0x7E09), suppress normal USB typing
-    if (keycode >= 0x7E00 && keycode <= 0x7E09) {
+    // If keycode is KC_NO (0x0000) or in dedicated Smart Action range (0x7E00..0x7E09), suppress normal USB typing
+    if (keycode == KC_NO || (keycode >= 0x7E00 && keycode <= 0x7E09)) {
         return false;
     }
 

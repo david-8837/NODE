@@ -2060,6 +2060,7 @@ export default function App() {
       };
     });
 
+    lastSyncedConfigKeyRef.current = '';
     pushState(nextProfiles);
     setSelectedKey(null);
     setSelectedEncoderSub(null);
@@ -3398,6 +3399,104 @@ export default function App() {
       };
     });
 
+    const actionTypeMap: Record<Exclude<MappingTabId, 'Basic'>, KeyAssignment['actionType']> = {
+      Action: 'Shortcut',
+      'Multi-A': 'Multi-step action',
+      'Smart-A': 'Smart Action',
+    };
+    const targetActionType = actionTypeMap[creatorModalTab];
+    const isEditing = Boolean(editingCustomItemId);
+    const targetItemId = created.id;
+
+    let modifiedProfiles = false;
+    const nextProfiles = profiles.map((p, pIdx) => {
+      let profileChanged = false;
+      const nextLayers = p.layers.map((layer, lIdx) => {
+        let layerChanged = false;
+        const updatedLayer: LayerKeymap = { ...layer };
+
+        for (const slot of GRID_MACRO_KEY_SLOTS) {
+          const entry = updatedLayer[slot];
+          const isSelected =
+            pIdx === activeProfileIndex &&
+            lIdx === activeLayerIndex &&
+            selectedKey === slot;
+          const matchesAction =
+            entry?.actionId === targetItemId ||
+            (isEditing && entry?.actionId === editingCustomItemId);
+
+          if (matchesAction || isSelected) {
+            updatedLayer[slot] = {
+              ...entry,
+              label: created.macropadLabel,
+              binding: summaryBinding,
+              actionType: targetActionType,
+              iconId: created.iconId,
+              actionId: created.id,
+              execution: created.execution,
+            };
+            layerChanged = true;
+          }
+        }
+
+        const dialEntry = updatedLayer[GRID_MACRO_ENCODER_SLOT];
+        if (dialEntry) {
+          const encActions = getEncoderActions(dialEntry);
+          let encChanged = false;
+          const nextEncActions = { ...encActions };
+
+          for (const dir of ['cw', 'ccw', 'press'] as const) {
+            const sub = nextEncActions[dir];
+            const isSelectedSub =
+              pIdx === activeProfileIndex &&
+              lIdx === activeLayerIndex &&
+              selectedKey === GRID_MACRO_ENCODER_SLOT &&
+              (selectedEncoderSub === dir || (!selectedEncoderSub && dir === 'press'));
+            const matchesSub =
+              sub?.actionId === targetItemId ||
+              (isEditing && sub?.actionId === editingCustomItemId);
+
+            if (matchesSub || isSelectedSub) {
+              nextEncActions[dir] = {
+                ...sub,
+                label: formatEncoderShortLabel(summaryBinding),
+                binding: summaryBinding,
+                actionId: created.id,
+                execution: created.execution,
+              };
+              encChanged = true;
+            }
+          }
+
+          if (encChanged) {
+            updatedLayer[GRID_MACRO_ENCODER_SLOT] = {
+              ...dialEntry,
+              actionType: targetActionType,
+              encoderActions: nextEncActions,
+            };
+            layerChanged = true;
+          }
+        }
+
+        if (layerChanged) {
+          profileChanged = true;
+          return updatedLayer;
+        }
+        return layer;
+      });
+
+      if (profileChanged) {
+        modifiedProfiles = true;
+        return { ...p, layers: nextLayers };
+      }
+      return p;
+    });
+
+    if (modifiedProfiles) {
+      lastSyncedConfigKeyRef.current = '';
+      pushState(nextProfiles);
+    }
+
     setIconPickerOpen(false);
     setActiveGestureDropdown(null);
     setActiveAdvanceStepDropdown(null);
@@ -3414,12 +3513,77 @@ export default function App() {
   const handleDeleteCustomItem = () => {
     if (!creatorModalTab) return;
     if (editingCustomItemId) {
+      const deletedId = editingCustomItemId;
       setCustomItemsByTab((prev) => ({
         ...prev,
         [creatorModalTab]: prev[creatorModalTab].filter(
-          (i) => i.id !== editingCustomItemId
+          (i) => i.id !== deletedId
         ),
       }));
+
+      let modifiedProfiles = false;
+      const nextProfiles = profiles.map((p) => {
+        let profileChanged = false;
+        const nextLayers = p.layers.map((layer) => {
+          let layerChanged = false;
+          const updatedLayer: LayerKeymap = { ...layer };
+
+          for (const slot of GRID_MACRO_KEY_SLOTS) {
+            if (updatedLayer[slot]?.actionId === deletedId) {
+              updatedLayer[slot] = {
+                label: '',
+                binding: 'blank',
+                actionType: 'Basic input',
+                iconId: undefined,
+                actionId: undefined,
+                execution: undefined,
+                color: undefined,
+              };
+              layerChanged = true;
+            }
+          }
+
+          const dialEntry = updatedLayer[GRID_MACRO_ENCODER_SLOT];
+          if (dialEntry) {
+            const encActions = getEncoderActions(dialEntry);
+            let encChanged = false;
+            const nextEncActions = { ...encActions };
+
+            for (const dir of ['cw', 'ccw', 'press'] as const) {
+              if (nextEncActions[dir]?.actionId === deletedId) {
+                nextEncActions[dir] = { label: '', binding: 'blank' };
+                encChanged = true;
+              }
+            }
+
+            if (encChanged) {
+              updatedLayer[GRID_MACRO_ENCODER_SLOT] = {
+                ...dialEntry,
+                encoderActions: nextEncActions,
+              };
+              layerChanged = true;
+            }
+          }
+
+          if (layerChanged) {
+            profileChanged = true;
+            return updatedLayer;
+          }
+          return layer;
+        });
+
+        if (profileChanged) {
+          modifiedProfiles = true;
+          return { ...p, layers: nextLayers };
+        }
+        return p;
+      });
+
+      if (modifiedProfiles) {
+        lastSyncedConfigKeyRef.current = '';
+        pushState(nextProfiles);
+      }
+
       showToast('Deleted item');
     }
     setIconPickerOpen(false);

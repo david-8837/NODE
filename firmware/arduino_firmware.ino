@@ -21,8 +21,8 @@ const uint8_t ENC_SW = 11; // Rotary Push Switch
 
 // Dynamic Keymap Stored in RAM (Committable to Flash)
 uint16_t keymaps[NUM_LAYERS][TOTAL_KEYS] = {
-  // Layer 0: Default (Q, W, E, A, S, D, Z, X, Layer1, Play/Pause)
-  { 0x0014, 0x001A, 0x0008, 0x0004, 0x0016, 0x0007, 0x001D, 0x001B, 0x5101, 0xE0CD },
+  // Layer 0: Default Blank (No keys active until mapped in App)
+  { 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000 },
   // Layer 1: Media (Prev, Play, Next, Left, Up, Right, Home, Down, End, Mute)
   { 0xE0B6, 0xE0CD, 0xE0B5, 0x0050, 0x0052, 0x004F, 0x004A, 0x0051, 0x004D, 0xE0E2 },
   // Layer 2: Numpad (7, 8, 9, 4, 5, 6, 1, 2, 3, Equal)

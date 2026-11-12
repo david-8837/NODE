@@ -425,4 +425,43 @@ describe('Unified Hardware & Simulation Execution Pipeline Integration', () => {
       source: 'hardware',
     });
   });
+
+  it('updates multi-action gesture binding dynamically when edited (e.g. B -> D)', () => {
+    // 1. Initial layer with Double Tap = B
+    const dynamicLayer: ActionDispatcherLayer = {
+      r2c1: {
+        id: 'multiaction-key',
+        label: 'My MultiAction',
+        binding: 'My MultiAction',
+        actionType: 'Multi-step action',
+        execution: {
+          kind: 'multi',
+          gestures: {
+            onTap: 'A',
+            doubleTap: 'B',
+            onHold: 'C',
+            tapHold: 'D',
+          },
+        },
+      },
+    };
+
+    const initialDoubleTap = resolveActionForGesture('r2c1', 'doubleTap', dynamicLayer);
+    expect(initialDoubleTap?.value).toBe('B');
+
+    // 2. User edits Double Tap from 'B' to 'D'
+    dynamicLayer.r2c1.execution = {
+      kind: 'multi',
+      gestures: {
+        onTap: 'A',
+        doubleTap: 'D',
+        onHold: 'C',
+        tapHold: 'D',
+      },
+    };
+
+    const updatedDoubleTap = resolveActionForGesture('r2c1', 'doubleTap', dynamicLayer);
+    expect(updatedDoubleTap?.value).toBe('D');
+    expect(updatedDoubleTap?.value).not.toBe('B');
+  });
 });
