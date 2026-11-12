@@ -1,3 +1,6 @@
+// Record actual module evaluation for packaged-app lazy-load diagnostics.
+if (typeof performance !== 'undefined') performance.mark?.('node:emoji-catalog-module-loaded');
+
 export interface EmojiCatalogEntry { emoji: string; keywords: string }
 
 export const SELECTABLE_EMOJI_LIST: EmojiCatalogEntry[] = [

@@ -10,6 +10,7 @@ on:
       - 'qmk_firmware/grid_macro_1/**'
       - '.github/workflows/qmk-build.yml'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

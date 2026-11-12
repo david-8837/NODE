@@ -3,7 +3,8 @@
   "description": "Hardware keymap, layer, profile, and macro configuration studio for the NØDE Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
   "author": "NØDE Studio",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.8",
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite --port=5173",
@@ -22,12 +23,9 @@
     "build:win": "npm run build && electron-builder --win --publish never"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@tabler/icons": "^3.51.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
@@ -36,7 +34,6 @@
   },
   "devDependencies": {
     "@serialport/binding-mock": "^10.2.2",
-    "@types/express": "^4.17.21",
     "@types/jsdom": "^21.1.7",
     "@types/node": "^22.20.5",
     "@types/react": "^19.3.0",
@@ -69,6 +66,7 @@
       "electron/**/*",
       "dist/**/*",
       "public/favicon.ico",
+      "LICENSE",
       "package.json",
       "!**/*.map"
     ],

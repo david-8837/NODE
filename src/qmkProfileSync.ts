@@ -211,12 +211,27 @@ function parseBinding(
   if (temporaryLayer) {
     return { action: { t: 'layer', op: 'hold', n: Number(temporaryLayer[1]) - 1 } };
   }
-  if (actionType === 'Layer Cycle') return { action: { t: 'layer', op: 'next' } };
+  if (actionType === 'Layer Cycle' || /layer\s*cycle/i.test(clean)) {
+    return { action: { t: 'none' } };
+  }
 
-  const onTap = clean.match(/onTap:\s*([^,)]+)/i);
-  if (onTap) {
-    const keys = parseShortcut(onTap[1], os);
-    if (keys) return { action: { t: 'keys', k: keys } };
+  // Profile keys and profile cycle run on desktop; hardware key is set to host-event mode (KC_NO)
+  if (/^profile\s*\d+/i.test(clean) || /profile\s*cycle/i.test(clean)) {
+    return { action: { t: 'none' } };
+  }
+
+  if (/cheat-?sheet/i.test(clean) || /cheat-?sheet/i.test(label)) {
+    return { action: { t: 'none' } };
+  }
+
+  // Multiactions are handled by desktop gesture engine; device matrix is set to host-event mode (KC_NO)
+  if (/multi/i.test(actionType) || /(?:onTap|doubleTap|onHold|tapHold):/i.test(clean)) {
+    return { action: { t: 'none' } };
+  }
+
+  // Smart Actions run on desktop; device matrix is set to host-event mode (KC_NO)
+  if (/smart/i.test(actionType) || /\((?:Text|Cmd|Web|App):/i.test(clean)) {
+    return { action: { t: 'none' } };
   }
 
   const wrapped = clean.match(/^(.*?)\s*\((.*)\)\s*$/);
@@ -266,32 +281,30 @@ function parseStructuredExecution(
       return parseBinding(value, '', 'Shortcut', os);
     }
     return {
-      action: null,
+      action: { t: 'none' },
       warning: 'Multi-step sequences cannot be represented by stock VIA keycodes',
     };
   }
 
   if (execution.kind === 'multi') {
-    const gestures = isRecord(execution.gestures) ? execution.gestures : {};
-    const onTap = typeof gestures.onTap === 'string' ? gestures.onTap : '';
-    const parsed = onTap
-      ? parseBinding(onTap, '', 'Shortcut', os)
-      : { action: null, warning: 'This multiaction has no onTap keycode for the device' };
-    const additionalGestures = ['doubleTap', 'onHold', 'tapHold']
-      .filter((gesture) => typeof gestures[gesture] === 'string' && (gestures[gesture] as string).trim());
-    if (additionalGestures.length) {
-      const suffix = `Stock VIA can send onTap only; ${additionalGestures.join(', ')} ${additionalGestures.length === 1 ? 'gesture is' : 'gestures are'} not available on the device`;
-      parsed.warning = parsed.warning ? `${parsed.warning}; ${suffix}` : suffix;
-    }
-    return parsed;
+    return {
+      action: { t: 'none' },
+      warning: 'Multiactions are handled by desktop software; hardware key is set to host-event mode',
+    };
   }
 
   if (execution.kind === 'text') {
-    return { action: null, warning: 'Text actions cannot be represented by a stock VIA keycode' };
+    return {
+      action: { t: 'none' },
+      warning: 'Text actions cannot be represented by a stock VIA keycode',
+    };
   }
 
   if (execution.kind === 'smart') {
-    return { action: null, warning: 'Smart Actions run on the desktop and are not executable by device firmware' };
+    return {
+      action: { t: 'none' },
+      warning: 'Smart Actions run on the desktop and are not executable by device firmware',
+    };
   }
 
   return { action: null, warning: `Unsupported structured execution kind "${execution.kind}"` };
@@ -318,6 +331,10 @@ function applyBinding(
   location: string,
   warnings: string[]
 ): ViaAction | undefined {
+  const cleanBinding = (entry.binding ?? '').trim();
+  if (!cleanBinding || cleanBinding === 'blank' || entry.label === '—') {
+    return { t: 'none' };
+  }
   const parsed = entry.execution === undefined
     ? parseBinding(entry.binding ?? '', entry.label ?? '', entry.actionType ?? '', os)
     : parseStructuredExecution(entry.execution, os)!;

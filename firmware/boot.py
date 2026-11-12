@@ -16,10 +16,12 @@ key1.direction = digitalio.Direction.INPUT
 key1.pull = digitalio.Pull.UP
 
 if not key1.value:
-    # Held down on boot: read-only to RP2040 script, writable by host PC USB drive
+    # Held down on boot: USB drive writable by host PC, read-only to CircuitPython scripts.
+    # Use this mode to edit code.py / keymap.json from your computer's file manager.
     storage.remount("/", readonly=False)
 else:
-    # Default boot: Writable by Python script (for Web Serial live flashing)
-    storage.remount("/", readonly=False)
+    # Default boot: USB drive read-only to host PC, writable by CircuitPython scripts.
+    # This allows code.py to save keymap.json via Web Serial SET_CONFIG commands.
+    storage.remount("/", readonly=True)
 
 key1.deinit()

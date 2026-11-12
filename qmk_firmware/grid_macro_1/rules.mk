@@ -2,8 +2,8 @@
 MCU = RP2040
 BOOTLOADER = rp2040
 
-# Ultra-Low Latency Eager Debouncing (0.0ms Keypress Latency)
-DEBOUNCE_TYPE = sym_eager_pr
+# Symmetric Deferred Per-Key Debouncing (10ms Chatter Immunity)
+DEBOUNCE_TYPE = sym_defer_pk
 
 # Build Options
 BOOTMAGIC_ENABLE = yes       # Virtual DIP switch configuration

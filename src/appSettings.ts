@@ -101,8 +101,11 @@ export interface ElectronApi {
   maximize?: () => Promise<void>;
   close?: () => Promise<void>;
   isMaximized?: () => Promise<boolean>;
-  onHardwareSync?: (callback: () => void) => void;
-  onOpenHardwareModal?: (callback: () => void) => void;
+  onHardwareSync?: (callback: () => void) => (() => void) | void;
+  onResetMacropadKeys?: (callback: () => void) => (() => void) | void;
+  onToggleCheatSheet?: (callback: () => void) => (() => void) | void;
+  setCheatSheetActive?: (active: boolean) => Promise<{ ok: boolean; active?: boolean }>;
+  onOpenHardwareModal?: (callback: () => void) => (() => void) | void;
 }
 
 export interface AppSettingsTools {

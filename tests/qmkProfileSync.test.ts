@@ -139,13 +139,13 @@ describe('QMK profile-to-VIA configuration', () => {
 
     const { config, warnings } = buildViaConfiguration(profile, 'win');
     expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'keys', k: ['CONTROL', 'A'] });
-    expect(config.layers[0]?.keys).not.toHaveProperty('r1c2');
-    expect(config.layers[0]?.keys).not.toHaveProperty('r1c3');
-    expect(config.layers[0]?.keys?.r2c1).toEqual({ t: 'keys', k: ['CONTROL', 'C'] });
+    expect(config.layers[0]?.keys?.r1c2).toEqual({ t: 'none' });
+    expect(config.layers[0]?.keys?.r1c3).toEqual({ t: 'none' });
+    expect(config.layers[0]?.keys?.r2c1).toEqual({ t: 'none' });
     expect(warnings).toEqual(expect.arrayContaining([
       expect.stringContaining('Multi-step sequences cannot be represented'),
       expect.stringContaining('Smart Actions run on the desktop'),
-      expect.stringContaining('doubleTap'),
+      expect.stringContaining('Multiactions are handled by desktop software'),
     ]));
   });
 
@@ -160,5 +160,19 @@ describe('QMK profile-to-VIA configuration', () => {
     expect(config.layers).toHaveLength(8);
     expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'layer', op: 'set', n: 0 });
     expect(config.layers[7]?.keys?.r1c1).toEqual({ t: 'layer', op: 'set', n: 7 });
+  });
+
+  it('maps Cheat-Sheet HUD actions to KC_NO so physical keypresses do not emit phantom keystrokes', () => {
+    const profile = oneLayer({
+      r1c1: { label: 'Cheat-Sheet', binding: 'Show Cheat-Sheet', actionId: 'cs-show' },
+      r1c2: { label: 'Peek HUD', binding: 'Show Cheat-Sheet Hold', actionId: 'cs-hold' },
+      r1c3: { label: 'Toggle HUD', binding: 'Toggle Cheat-Sheet', actionId: 'cs-tog' },
+      r2c1: { label: 'Hide HUD', binding: 'Hide Cheat-Sheet', actionId: 'cs-hide' },
+    });
+    const { config } = buildViaConfiguration(profile, 'win');
+    expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'none' });
+    expect(config.layers[0]?.keys?.r1c2).toEqual({ t: 'none' });
+    expect(config.layers[0]?.keys?.r1c3).toEqual({ t: 'none' });
+    expect(config.layers[0]?.keys?.r2c1).toEqual({ t: 'none' });
   });
 });
