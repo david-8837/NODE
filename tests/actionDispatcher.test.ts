@@ -226,5 +226,48 @@ describe('actionDispatcher: Unified Action Resolution and Dispatch', () => {
     });
     expect(onCheatSheetToggle).toHaveBeenCalledWith('toggle');
   });
+
+  it('resolves and dispatches Layer and Profile switching actions', async () => {
+    const layerNavLayer: ActionDispatcherLayer = {
+      r1c1: { label: 'L2', binding: 'Layer 2', actionId: 'lyr-2' },
+      r1c2: { label: 'TL3', binding: 'Temp Layer 3', actionId: 'tlyr-3' },
+      r1c3: { label: 'LC', binding: 'Layer Cycle', actionType: 'Layer Cycle' },
+      r2c1: { label: 'P2', binding: 'Profile 2', actionId: 'prf-2' },
+      r2c2: { label: 'PC', binding: 'Profile Cycle', actionId: 'prf-cycle' },
+    };
+
+    // Layer resolution
+    const l2Action = resolveActionForGesture('r1c1', 'onTap', layerNavLayer);
+    expect(l2Action).toMatchObject({ type: 'Layer', value: 'Layer 2', payload: { op: 'set', targetLayer: 1 } });
+
+    const tl3Action = resolveActionForGesture('r1c2', 'onTap', layerNavLayer);
+    expect(tl3Action).toMatchObject({ type: 'Layer', value: 'Temp Layer 3', payload: { op: 'hold', targetLayer: 2 } });
+
+    const lcAction = resolveActionForGesture('r1c3', 'onTap', layerNavLayer);
+    expect(lcAction).toMatchObject({ type: 'Layer', value: 'Layer Cycle', payload: { op: 'next' } });
+
+    // Profile resolution
+    const p2Action = resolveActionForGesture('r2c1', 'onTap', layerNavLayer);
+    expect(p2Action).toMatchObject({ type: 'Profile', value: 'Profile 2', payload: { op: 'set', targetProfile: 1 } });
+
+    const pcAction = resolveActionForGesture('r2c2', 'onTap', layerNavLayer);
+    expect(pcAction).toMatchObject({ type: 'Profile', value: 'Profile Cycle', payload: { op: 'next' } });
+
+    // Dispatch verification
+    const onLayerChange = vi.fn();
+    const onProfileChange = vi.fn();
+
+    await dispatchResolvedAction(l2Action!, { source: 'hardware', onLayerChange, onProfileChange });
+    expect(onLayerChange).toHaveBeenCalledWith(1);
+
+    await dispatchResolvedAction(lcAction!, { source: 'hardware', onLayerChange, onProfileChange });
+    expect(onLayerChange).toHaveBeenCalledWith(-1);
+
+    await dispatchResolvedAction(p2Action!, { source: 'hardware', onLayerChange, onProfileChange });
+    expect(onProfileChange).toHaveBeenCalledWith(1);
+
+    await dispatchResolvedAction(pcAction!, { source: 'hardware', onLayerChange, onProfileChange });
+    expect(onProfileChange).toHaveBeenCalledWith(-1);
+  });
 });
 

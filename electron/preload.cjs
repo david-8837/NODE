@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('trigger-toggle-cheat-sheet', listener);
     return () => ipcRenderer.removeListener('trigger-toggle-cheat-sheet', listener);
   },
+  setCheatSheetActive: (active) => ipcRenderer.invoke('set-cheat-sheet-active', active),
   onOpenHardwareModal: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('open-hardware-modal', listener);

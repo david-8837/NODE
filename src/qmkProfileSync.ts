@@ -211,7 +211,14 @@ function parseBinding(
   if (temporaryLayer) {
     return { action: { t: 'layer', op: 'hold', n: Number(temporaryLayer[1]) - 1 } };
   }
-  if (actionType === 'Layer Cycle') return { action: { t: 'layer', op: 'next' } };
+  if (actionType === 'Layer Cycle' || /layer\s*cycle/i.test(clean)) {
+    return { action: { t: 'none' } };
+  }
+
+  // Profile keys and profile cycle run on desktop; hardware key is set to host-event mode (KC_NO)
+  if (/^profile\s*\d+/i.test(clean) || /profile\s*cycle/i.test(clean)) {
+    return { action: { t: 'none' } };
+  }
 
   if (/cheat-?sheet/i.test(clean) || /cheat-?sheet/i.test(label)) {
     return { action: { t: 'none' } };

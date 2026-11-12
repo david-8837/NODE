@@ -104,6 +104,7 @@ export interface ElectronApi {
   onHardwareSync?: (callback: () => void) => (() => void) | void;
   onResetMacropadKeys?: (callback: () => void) => (() => void) | void;
   onToggleCheatSheet?: (callback: () => void) => (() => void) | void;
+  setCheatSheetActive?: (active: boolean) => Promise<{ ok: boolean; active?: boolean }>;
   onOpenHardwareModal?: (callback: () => void) => (() => void) | void;
 }
 

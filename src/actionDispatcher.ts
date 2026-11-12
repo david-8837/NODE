@@ -29,6 +29,7 @@ export interface DispatchOptions {
   source: 'hardware' | 'simulation';
   host?: SimulationActionHost;
   onLayerChange?: (index: number) => boolean | void;
+  onProfileChange?: (index: number) => boolean | void;
   onCheatSheetToggle?: (mode: 'show' | 'hide' | 'toggle' | 'hold') => void;
   showToast?: (message: string) => void;
   allowTerminal?: boolean;
@@ -175,6 +176,78 @@ function resolveEntryAction(
     };
   }
 
+  // Layer switching actions (Layer 1..8, Temp Layer 1..8, Layer Cycle)
+  const isLayerAction =
+    entry.actionId?.startsWith('lyr-') ||
+    entry.actionId?.startsWith('tlyr-') ||
+    entry.actionType === 'Layer Cycle' ||
+    /^layer\s*\d+/i.test(binding) ||
+    /^temp\s*layer\s*\d+/i.test(binding) ||
+    /layer\s*cycle/i.test(binding) ||
+    /layer\s*cycle/i.test(label);
+
+  if (isLayerAction) {
+    if (
+      entry.actionType === 'Layer Cycle' ||
+      /layer\s*cycle/i.test(binding) ||
+      /layer\s*cycle/i.test(label) ||
+      entry.actionId === 'lyr-cycle'
+    ) {
+      return {
+        type: 'Layer',
+        value: 'Layer Cycle',
+        payload: { type: 'Layer', op: 'next' },
+      };
+    }
+
+    const tempMatch = binding.match(/^temp\s*layer\s*(\d+)/i) || entry.actionId?.match(/^tlyr-(\d+)/i);
+    if (tempMatch) {
+      const targetLayer = Number.parseInt(tempMatch[1], 10) - 1;
+      return {
+        type: 'Layer',
+        value: `Temp Layer ${targetLayer + 1}`,
+        payload: { type: 'Layer', op: 'hold', targetLayer },
+      };
+    }
+
+    const layerMatch = binding.match(/^layer\s*(\d+)/i) || entry.actionId?.match(/^lyr-(\d+)/i);
+    if (layerMatch) {
+      const targetLayer = Number.parseInt(layerMatch[1], 10) - 1;
+      return {
+        type: 'Layer',
+        value: `Layer ${targetLayer + 1}`,
+        payload: { type: 'Layer', op: 'set', targetLayer },
+      };
+    }
+  }
+
+  // Profile switching actions (Profile 1..8, Profile Cycle)
+  const isProfileAction =
+    entry.actionId?.startsWith('prf-') ||
+    /^profile\s*\d+/i.test(binding) ||
+    /profile\s*cycle/i.test(binding) ||
+    /profile\s*cycle/i.test(label);
+
+  if (isProfileAction) {
+    if (/profile\s*cycle/i.test(binding) || /profile\s*cycle/i.test(label) || entry.actionId === 'prf-cycle') {
+      return {
+        type: 'Profile',
+        value: 'Profile Cycle',
+        payload: { type: 'Profile', op: 'next' },
+      };
+    }
+
+    const profileMatch = binding.match(/^profile\s*(\d+)/i) || entry.actionId?.match(/^prf-(\d+)/i);
+    if (profileMatch) {
+      const targetProfile = Number.parseInt(profileMatch[1], 10) - 1;
+      return {
+        type: 'Profile',
+        value: `Profile ${targetProfile + 1}`,
+        payload: { type: 'Profile', op: 'set', targetProfile },
+      };
+    }
+  }
+
   // Cheat-Sheet internal actions (Show, Hold, Hide, Toggle)
   if (
     /cheat-?sheet/i.test(binding) ||
@@ -229,6 +302,30 @@ export async function dispatchResolvedAction(
         ? 'Cheat-Sheet (Hold to peek)'
         : 'Cheat-Sheet Toggled'
     );
+    return { success: true };
+  }
+
+  if (action.type === 'Layer') {
+    const op = action.payload?.op;
+    const targetLayer = action.payload?.targetLayer as number | undefined;
+    if (op === 'set' && typeof targetLayer === 'number') {
+      options.onLayerChange?.(targetLayer);
+    } else if (op === 'hold' && typeof targetLayer === 'number') {
+      options.onLayerChange?.(targetLayer);
+    } else if (op === 'next') {
+      options.onLayerChange?.(-1);
+    }
+    return { success: true };
+  }
+
+  if (action.type === 'Profile') {
+    const op = action.payload?.op;
+    const targetProfile = action.payload?.targetProfile as number | undefined;
+    if (op === 'set' && typeof targetProfile === 'number') {
+      options.onProfileChange?.(targetProfile);
+    } else if (op === 'next') {
+      options.onProfileChange?.(-1);
+    }
     return { success: true };
   }
 

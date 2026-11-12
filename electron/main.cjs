@@ -1,5 +1,5 @@
 // electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
-const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, Tray } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -806,6 +806,20 @@ ipcMain.handle('window-close', (event) => {
   }
 });
 
+ipcMain.handle('set-cheat-sheet-active', (event, active) => {
+  if (!isTrustedRenderer(event) || !mainWindow || mainWindow.isDestroyed()) return { ok: false };
+  if (active) {
+    if (!mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    mainWindow.focus();
+  } else {
+    mainWindow.setAlwaysOnTop(false);
+  }
+  return { ok: true, active };
+});
+
 ipcMain.handle('window-is-maximized', (event) => {
   return isTrustedRenderer(event) && mainWindow ? mainWindow.isMaximized() : false;
 });
@@ -1053,6 +1067,14 @@ app.whenReady().then(() => {
 
   createTray();
 
+  try {
+    globalShortcut.register('CommandOrControl+Alt+H', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('trigger-toggle-cheat-sheet');
+      }
+    });
+  } catch {}
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -1064,6 +1086,7 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', (event) => {
+  try { globalShortcut.unregisterAll(); } catch {}
   isQuitting = true;
   if (completingQuit) return;
   event.preventDefault();
