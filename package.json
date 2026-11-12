@@ -3,7 +3,7 @@
   "description": "Hardware keymap, layer, profile, and macro configuration studio for the NØDE Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
   "author": "NØDE Studio",
   "private": true,
-  "version": "1.0.9",
+  "version": "1.0.10",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {

@@ -277,6 +277,32 @@ export class QmkViaBridge {
   private hardwareEventListeners = new Set<(event: DecodedHardwareEvent) => void>();
   private lastHardwareSequence: number | null = null;
   private lastMatrixStateMask = 0;
+  private autoReconnect = true;
+  private connectionGeneration = 0;
+  private activeRequestGeneration: number | null = null;
+  private requestQueue: Promise<void> = Promise.resolve();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+
+  private scheduleReconnect(): void {
+    if (!this.autoReconnect || this.reconnectTimer || this.reconnectAttempts >= 4) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.autoReconnect || this.status.state === 'connected') return;
+      this.reconnectAttempts++;
+      void this.getStatus().then((status) => {
+        if (status.state !== 'connected') this.scheduleReconnect();
+      });
+    }, Math.min(500 * 2 ** this.reconnectAttempts, 4000));
+  }
+
+  private readonly onHidConnect = (event: Event) => {
+    const device = (event as Event & { device?: HidDeviceLike }).device;
+    if (!device || !this.isTarget(device) || !this.autoReconnect) return;
+    this.reconnectAttempts = 0;
+    // Silent scans only use previously authorized devices; never open a chooser.
+    this.scheduleReconnect();
+  };
 
   private readonly onInputReport = (event: Event) => {
     const report = event as HidInputReportEventLike;
@@ -340,6 +366,7 @@ export class QmkViaBridge {
   private readonly onHidDisconnect = (event: Event) => {
     const device = (event as Event & { device?: HidDeviceLike }).device;
     if (!device || device !== this.device) return;
+    this.connectionGeneration++;
     device.removeEventListener('inputreport', this.onInputReport);
     this.device = null;
     this.layerCount = 0;
@@ -356,6 +383,7 @@ export class QmkViaBridge {
     this.timeoutMs = options.timeoutMs ?? 1500;
     this.status = { state: hid ? 'disconnected' : 'unavailable' };
     this.hid?.addEventListener('disconnect', this.onHidDisconnect);
+    this.hid?.addEventListener('connect', this.onHidConnect);
   }
 
   public onStatus(callback: (status: QmkViaStatus) => void): () => void {
@@ -379,7 +407,7 @@ export class QmkViaBridge {
       return this.status;
     }
     if (this.status.state === 'connected' && this.device) return this.status;
-    if (this.status.state === 'connecting') return this.status;
+    if (this.status.state === 'connecting' || this.status.state === 'searching') return this.status;
 
     this.setStatus({ state: 'searching' });
     let devices: HidDeviceLike[];
@@ -387,14 +415,14 @@ export class QmkViaBridge {
       devices = await this.hid.getDevices();
     } catch (error) {
       // Do not let a stale silent scan overwrite a user-initiated permission flow.
-      if (this.status.state === 'searching') {
+      if (this.isStatusState('searching')) {
         this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
       }
       return this.status;
     }
 
     // A user may start the permission flow while this silent scan is pending.
-    if (this.status.state !== 'searching') return this.status;
+    if (!this.isStatusState('searching')) return this.status;
     const device = devices.find((candidate) => this.isTarget(candidate));
     if (!device) {
       this.setStatus({ state: 'disconnected' });
@@ -413,6 +441,7 @@ export class QmkViaBridge {
 
   /** Must be called from a user gesture because WebHID prompts for permission. */
   public async connect(): Promise<QmkViaStatus> {
+    this.autoReconnect = true;
     if (!this.hid) {
       this.setStatus({ state: 'unavailable', error: 'Use a WebHID-capable browser over HTTPS or localhost' });
       return this.status;
@@ -443,6 +472,10 @@ export class QmkViaBridge {
   }
 
   public async disconnect(): Promise<void> {
+    this.autoReconnect = false;
+    this.connectionGeneration++;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     const device = this.device;
     this.device = null;
     this.layerCount = 0;
@@ -464,7 +497,25 @@ export class QmkViaBridge {
    * These command names are local renderer APIs, not firmware commands.
    * Reads and restores use only the stock VIA keycode/encoder reports below.
    */
-  public async request(request: {
+  public request(request: {
+    cmd?: string;
+    config?: ViaConfiguration;
+    snapshot?: ViaKeymapSnapshot;
+  }): Promise<BridgeResult> {
+    const generation = this.connectionGeneration;
+    const operation = this.requestQueue.then(async () => {
+      if (generation !== this.connectionGeneration || this.status.state !== 'connected') {
+        return { ok: false, error: 'No QMK/VIA device is connected' };
+      }
+      this.activeRequestGeneration = generation;
+      try { return await this.requestConnected(request); }
+      finally { this.activeRequestGeneration = null; }
+    });
+    this.requestQueue = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
+  private async requestConnected(request: {
     cmd?: string;
     config?: ViaConfiguration;
     snapshot?: ViaKeymapSnapshot;
@@ -622,11 +673,12 @@ export class QmkViaBridge {
   private async openDevice(device: HidDeviceLike): Promise<void> {
     if (this.device === device && this.status.state === 'connected') return;
     this.setStatus({ state: 'connecting' });
-    if (!device.opened) await device.open();
+    const generation = ++this.connectionGeneration;
     this.device = device;
-    device.addEventListener('inputreport', this.onInputReport);
-
     try {
+      if (!device.opened) await device.open();
+      if (generation !== this.connectionGeneration || this.device !== device) throw new Error('Connection was interrupted');
+      device.addEventListener('inputreport', this.onInputReport);
       const versionReport = await this.exchange(new Uint8Array([VIA_COMMAND.getProtocolVersion]));
       if (versionReport.length < 3) throw new Error('Invalid VIA protocol-version response');
       const version = (versionReport[1] << 8) | versionReport[2];
@@ -651,6 +703,8 @@ export class QmkViaBridge {
         // The protocol version and layer-count handshake are sufficient to connect.
       }
 
+      if (generation !== this.connectionGeneration || this.device !== device) throw new Error('Connection was interrupted');
+      this.reconnectAttempts = 0;
       this.setStatus({
         state: 'connected',
         device: device.productName || 'Grid Macro 1',
@@ -660,12 +714,14 @@ export class QmkViaBridge {
       });
       this.emit({ type: 'connect', device: device.productName || 'Grid Macro 1' });
     } catch (error) {
-      device.removeEventListener('inputreport', this.onInputReport);
-      this.device = null;
-      this.layerCount = 0;
-      try {
-        if (device.opened) await device.close();
-      } catch {}
+      if (generation === this.connectionGeneration) {
+        device.removeEventListener('inputreport', this.onInputReport);
+        this.device = null;
+        this.layerCount = 0;
+        try {
+          if (device.opened) await device.close();
+        } catch {}
+      }
       throw error;
     }
   }
@@ -837,6 +893,9 @@ export class QmkViaBridge {
 
   private async exchange(command: Uint8Array): Promise<Uint8Array> {
     const device = this.device;
+    if (this.activeRequestGeneration !== null && this.activeRequestGeneration !== this.connectionGeneration) {
+      throw new Error('QMK/VIA session changed during the operation');
+    }
     if (!device || !device.opened) throw new Error('QMK/VIA device is not open');
     if (this.pending) throw new Error('A VIA Raw HID report is already in flight');
     if (command.length > VIA_RAW_REPORT_SIZE) throw new Error('VIA command exceeds Raw HID report size');
@@ -845,8 +904,10 @@ export class QmkViaBridge {
     report.set(command);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let rejectResponse: ((error: Error) => void) | undefined;
+    let pending: PendingReport | null = null;
     const response = new Promise<Uint8Array>((resolve, reject) => {
-      this.pending = { commandId: command[0], resolve, reject };
+      pending = { commandId: command[0], resolve, reject };
+      this.pending = pending;
       rejectResponse = reject;
       timer = setTimeout(() => reject(new Error(`Timed out waiting for VIA command 0x${command[0].toString(16)}`)), this.timeoutMs);
     });
@@ -860,7 +921,7 @@ export class QmkViaBridge {
       return await response;
     } finally {
       if (timer !== undefined) clearTimeout(timer);
-      this.pending = null;
+      if (this.pending === pending) this.pending = null;
     }
   }
 

@@ -49,6 +49,7 @@ import {
 } from './appSettings';
 import type { QmkViaStatus } from './qmkViaBridge';
 import { buildViaConfiguration } from './qmkProfileSync';
+import { deviceMatchesConfiguration } from './deviceSyncSafety';
 import type { EmojiCatalogEntry } from './emojiCatalog';
 import { PRESET_CATALOG } from './presetCatalog';
 import {
@@ -182,9 +183,17 @@ function groupCustomItemsByPreset(
   });
 }
 
+type LightingSettings = Record<'Backlight' | 'Underglow', {
+  preset: 'Off' | 'Solid' | 'Snake' | 'Rainbow' | 'Breath' | 'Gradient';
+  light: number; speed: number; magic: number; hue: number; colorHex: string;
+}>;
+
 interface PersistedAppProfileState {
   profiles: ProfileData[];
   activeProfileIndex: number;
+  activeLayerIndex: number;
+  layerNames?: Record<string, string>;
+  lightingConfig?: LightingSettings;
   customItems: CustomItemsByTab;
 }
 
@@ -772,11 +781,11 @@ function normalizeCustomItemsForEditor(items: CustomItemsByTab): CustomItemsByTa
   };
 }
 
-function loadSavedProfileState(): PersistedAppProfileState | null {
+function loadSavedProfileState(storageKey = PROFILE_FILE_STORAGE_KEY): PersistedAppProfileState | null {
   if (typeof window === 'undefined' || !profileFileTools) return null;
 
   try {
-    const text = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+    const text = window.localStorage.getItem(storageKey);
     if (!text) return null;
 
     const saved = JSON.parse(text) as Record<string, unknown>;
@@ -807,9 +816,22 @@ function loadSavedProfileState(): PersistedAppProfileState | null {
       }
     });
 
+    if (saved.layerNames !== undefined && (!isRecordValue(saved.layerNames) || Object.values(saved.layerNames).some(value => typeof value !== 'string'))) throw new Error('Invalid saved layer names');
+    if (saved.lightingConfig !== undefined) {
+      if (!isRecordValue(saved.lightingConfig)) throw new Error('Invalid saved lighting');
+      for (const side of ['Backlight', 'Underglow']) {
+        const entry = saved.lightingConfig[side];
+        if (!isRecordValue(entry) || !['Off', 'Solid', 'Snake', 'Rainbow', 'Breath', 'Gradient'].includes(String(entry.preset)) ||
+          ['light', 'speed', 'magic', 'hue'].some(key => typeof entry[key] !== 'number' || !Number.isFinite(entry[key])) || typeof entry.colorHex !== 'string') throw new Error('Invalid saved lighting');
+      }
+    }
     return {
       profiles: (parsed.profiles as unknown as ProfileData[]).map(normalizeProfileForEditor),
       activeProfileIndex: parsed.activeProfileIndex,
+      activeLayerIndex: Number.isInteger(saved.activeLayerIndex) && (saved.activeLayerIndex as number) >= 0 && (saved.activeLayerIndex as number) < (parsed.profiles[parsed.activeProfileIndex].layers as unknown[]).length
+        ? saved.activeLayerIndex as number : 0,
+      layerNames: saved.layerNames as Record<string, string> | undefined,
+      lightingConfig: saved.lightingConfig as LightingSettings | undefined,
       customItems: normalizeCustomItemsForEditor(
         parsed.customItems as unknown as CustomItemsByTab
       ),
@@ -855,13 +877,19 @@ export default function App() {
   const entrancePhase: EntrancePhase = 'complete';
   const [activeNav, setActiveNav] = useState<'Keymap' | 'Preset' | 'Settings'>('Keymap');
   const [savedProfileState] = useState(loadSavedProfileState);
+  const [profileLoadFailed] = useState(() => {
+    try { return window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) !== null && !savedProfileState; }
+    catch { return true; }
+  });
+  const localProfileSavedRef = useRef(false);
+  const [profileSaveError, setProfileSaveError] = useState('');
   const [profiles, setProfiles] = useState<ProfileData[]>(
     () => savedProfileState?.profiles ?? INITIAL_PROFILES
   );
   const [activeProfileIndex, setActiveProfileIndex] = useState(
     () => savedProfileState?.activeProfileIndex ?? 0
   );
-  const [activeLayerIndex, setActiveLayerIndex] = useState(0);
+  const [activeLayerIndex, setActiveLayerIndex] = useState(() => savedProfileState?.activeLayerIndex ?? 0);
   const [selectedKey, setSelectedKey] = useState<KeySlotId | null>(null);
   const [selectedEncoderSub, setSelectedEncoderSub] =
     useState<EncoderSubActionId | null>(null);
@@ -1171,7 +1199,9 @@ export default function App() {
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
+  const [syncIssue, setSyncIssue] = useState('');
   const lastSyncedConfigKeyRef = useRef('');
+  const lastDeviceSnapshotRef = useRef('');
 
   // Hardware layout, physical event visual mirroring, and desktop execution mode
   const [encoderAngle, setEncoderAngle] = useState(45);
@@ -1366,21 +1396,6 @@ export default function App() {
   const [history, setHistory] = useState<ProfileData[][]>([]);
   const [redoStack, setRedoStack] = useState<ProfileData[][]>([]);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        PROFILE_FILE_STORAGE_KEY,
-        JSON.stringify({
-          v: 1,
-          profiles,
-          activeProfileIndex,
-          customItems: customItemsByTab,
-        })
-      );
-    } catch {
-      // Keep in-memory profile editing usable if browser storage is unavailable.
-    }
-  }, [profiles, activeProfileIndex, customItemsByTab]);
 
   // Desktop execution simulation mode
   const [simulationMode, setSimulationMode] = useState(false);
@@ -1399,23 +1414,11 @@ export default function App() {
   const [layerToolbarOpen, setLayerToolbarOpen] = useState(false);
   const [layerLightingOpen, setLayerLightingOpen] = useState(false);
   const [layerDeleteConfirm, setLayerDeleteConfirm] = useState(false);
-  const [layerNames, setLayerNames] = useState<Record<string, string>>({});
+  const [layerNames, setLayerNames] = useState<Record<string, string>>(() => savedProfileState?.layerNames ?? {});
   const [lightingTab, setLightingTab] = useState<'Backlight' | 'Underglow'>(
     'Backlight'
   );
-  const [lightingConfig, setLightingConfig] = useState<
-    Record<
-      'Backlight' | 'Underglow',
-      {
-        preset: 'Off' | 'Solid' | 'Snake' | 'Rainbow' | 'Breath' | 'Gradient';
-        light: number;
-        speed: number;
-        magic: number;
-        hue: number;
-        colorHex: string;
-      }
-    >
-  >({
+  const [lightingConfig, setLightingConfig] = useState<LightingSettings>(() => savedProfileState?.lightingConfig ?? ({
     Backlight: {
       preset: 'Solid',
       light: 100,
@@ -1432,7 +1435,30 @@ export default function App() {
       hue: 220,
       colorHex: '#FFFFFF',
     },
-  });
+  }));
+
+  useEffect(() => {
+    if (profileLoadFailed) {
+      showToast('Saved profile could not be loaded. Original data preserved; device sync is paused.');
+      return;
+    }
+    try {
+      const text = JSON.stringify({ v: 1, profiles, activeProfileIndex, activeLayerIndex, layerNames, lightingConfig, customItems: customItemsByTab });
+      // Validate before replacing durable data. Empty draft names are allowed in the editor.
+      profileFileTools?.parse(JSON.stringify({ v: 1, profiles: profiles.map(profile => ({ ...profile, name: profile.name.trim() || 'Untitled Profile' })), activeProfileIndex, customItems: customItemsByTab }));
+      const previous = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+      if (previous !== null && previous !== text) {
+        if (!loadSavedProfileState()) throw new Error('Existing saved profile is unreadable');
+        window.localStorage.setItem('cm2.state.backup.v1', previous);
+      }
+      window.localStorage.setItem(PROFILE_FILE_STORAGE_KEY, text);
+      localProfileSavedRef.current = true;
+      setProfileSaveError('');
+    } catch {
+      localProfileSavedRef.current = false;
+      setProfileSaveError('Profile could not be saved locally; device sync is paused. Your latest edits are not safely saved.');
+    }
+  }, [profiles, activeProfileIndex, activeLayerIndex, customItemsByTab, profileLoadFailed, layerNames, lightingConfig]);
 
   const currentProfile = profiles[activeProfileIndex] || profiles[0];
   const currentLayer =
@@ -1764,6 +1790,7 @@ export default function App() {
     const bridge = window.macropad;
     if (!bridge || deviceStatus.state !== 'connected') {
       lastSyncedConfigKeyRef.current = '';
+      lastDeviceSnapshotRef.current = '';
       setDeviceSyncReady(false);
       return;
     }
@@ -1773,38 +1800,36 @@ export default function App() {
     lastSyncedConfigKeyRef.current = '';
 
     void (async () => {
+      if (profileLoadFailed || !localProfileSavedRef.current) return;
       try {
-        const remote = await bridge.getFile('app_state') as {
-          ok: boolean;
-          text?: string;
-        };
+        const current = await bridge.request({ cmd: 'get_config' });
         if (cancelled) return;
-        if (remote.ok && typeof remote.text === 'string' && profileFileTools) {
-          try {
-            const saved = profileFileTools.parse(remote.text);
-            const nextProfiles = saved.profiles.map((profile) =>
-              normalizeProfileForEditor(profile as unknown as ProfileData)
-            );
-            setProfiles(nextProfiles);
-            setActiveProfileIndex(saved.activeProfileIndex);
-            setActiveLayerIndex(0);
-            setCustomItemsByTab(normalizeCustomItemsForEditor(
-              saved.customItems as unknown as CustomItemsByTab
-            ));
-            const selected = nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0];
-            lastSyncedConfigKeyRef.current = JSON.stringify(
-              buildViaConfiguration(selected, presetOs).config
-            );
-            showToast('Loaded keymap profile from Grid Macro 1');
-          } catch {
-            // Ignore malformed device metadata; the validated local profile remains authoritative.
+        if (!current.ok || !current.snapshot || !deviceKeymapFileTools) {
+          setSyncIssue('Device sync paused: could not read and preserve the existing device keymap.');
+          return;
+        }
+        const backup = deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot, {
+          device: deviceStatus.device, firmware: deviceStatus.fw,
+        });
+        if (!backup.ok) {
+          setSyncIssue(`Device sync paused: could not preserve the device keymap: ${backup.error || 'storage error'}`);
+          return;
+        }
+        lastDeviceSnapshotRef.current = JSON.stringify(current.snapshot);
+        const config = buildViaConfiguration(currentProfileRef.current, presetOs).config;
+        if (deviceMatchesConfiguration(config, current.snapshot)) {
+          lastSyncedConfigKeyRef.current = JSON.stringify(config);
+        } else {
+          const approved = window.confirm('The device keymap differs from the desktop profile. A device keymap backup was saved locally. Replace the device mappings with the desktop profile? Cancel keeps both unchanged and pauses sync.');
+          if (!approved || cancelled) {
+            setSyncIssue('Device sync paused. Your desktop profile and device keymap were preserved. Reconnect to review the conflict.');
+            return;
           }
         }
-      } catch {
-        // A stock VIA device stores keymaps, not profile metadata. Sync local profiles below.
+        if (!cancelled) { setSyncIssue(''); setDeviceSyncReady(true); }
+      } catch (error) {
+        if (!cancelled) setSyncIssue(`Device sync paused: ${error instanceof Error ? error.message : String(error)}`);
       }
-
-      if (!cancelled) setDeviceSyncReady(true);
     })();
 
     return () => {
@@ -1814,7 +1839,7 @@ export default function App() {
 
   useEffect(() => {
     const bridge = window.macropad;
-    if (!bridge || deviceStatus.state !== 'connected' || !deviceSyncReady) return;
+    if (!bridge || deviceStatus.state !== 'connected' || !deviceSyncReady || profileLoadFailed || !localProfileSavedRef.current) return;
 
     const { config, warnings: configWarnings } = buildViaConfiguration(currentProfile, presetOs);
     if (config.layers.length === 0) return;
@@ -1834,6 +1859,11 @@ export default function App() {
                 current.error || 'no keymap snapshot returned'
               }`
             );
+            return;
+          }
+          if (JSON.stringify(current.snapshot) !== lastDeviceSnapshotRef.current) {
+            setDeviceSyncReady(false);
+            setSyncIssue('Device keymap changed externally; sync paused to preserve it. Reconnect to review the conflict.');
             return;
           }
           if (!deviceKeymapFileTools) {
@@ -1864,19 +1894,15 @@ export default function App() {
             return;
           }
 
-          lastSyncedConfigKeyRef.current = configKey;
-          const state = JSON.stringify({
-            v: 1,
-            profiles,
-            activeProfileIndex,
-            customItems: customItemsByTab,
-          });
-          const saved = await bridge.putFile('app_state', state);
+          const verified = await bridge.request({ cmd: 'get_config' });
           if (cancelled) return;
-          if (!saved.ok) {
-            showToast(`Keymap synced to device; local profile save failed: ${saved.error || 'unknown error'}`);
+          if (!verified.ok || !verified.snapshot || !deviceMatchesConfiguration(config, verified.snapshot)) {
+            setDeviceSyncReady(false);
+            setSyncIssue('Device sync could not be verified; further writes are paused. The pre-sync backup is preserved.');
             return;
           }
+          lastDeviceSnapshotRef.current = JSON.stringify(verified.snapshot);
+          lastSyncedConfigKeyRef.current = configKey;
 
           const syncWarnings = [
             ...configWarnings,
@@ -4046,6 +4072,43 @@ export default function App() {
 
   return (
     <div className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
+      {(profileLoadFailed || profileSaveError || syncIssue) && (
+        <div role="alert" className="bg-amber-100 text-amber-950 px-4 py-2 text-xs flex flex-wrap items-center gap-3">
+          <span>{profileLoadFailed ? 'Saved profile could not be loaded. Original data preserved; saving and device sync are paused.' : profileSaveError || syncIssue}</span>
+          {profileLoadFailed && (
+            <button type="button" className="underline" onClick={() => {
+              try {
+                const original = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+                if (original === null) throw new Error('No saved profile found');
+                const url = URL.createObjectURL(new Blob([original], { type: 'application/json' }));
+                const link = document.createElement('a'); link.href = url; link.download = 'node-unreadable-profile.json';
+                link.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
+              } catch (error) { showToast(`Download failed: ${error instanceof Error ? error.message : String(error)}`); }
+            }}>Download original profile</button>
+          )}
+          {profileLoadFailed && loadSavedProfileState('cm2.state.backup.v1') && (
+            <button type="button" className="underline" onClick={() => {
+              if (!window.confirm('Restore the previous local profile backup? The unreadable original will be preserved separately.')) return;
+              try {
+                const original = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+                const backup = window.localStorage.getItem('cm2.state.backup.v1');
+                const quarantine = 'cm2.state.unreadable.v1';
+                if (!backup || !loadSavedProfileState('cm2.state.backup.v1')) throw new Error('Backup is invalid');
+                if (window.localStorage.getItem(quarantine) !== null) throw new Error('An unreadable profile is already preserved; export it before recovering another');
+                if (original !== null) window.localStorage.setItem(quarantine, original);
+                window.localStorage.setItem(PROFILE_FILE_STORAGE_KEY, backup);
+                window.location.reload();
+              } catch (error) { showToast(`Recovery failed: ${error instanceof Error ? error.message : String(error)}`); }
+            }}>Restore previous local backup</button>
+          )}
+          {!profileLoadFailed && deviceKeymapFileTools?.getLatestBackup() && (
+            <button type="button" className="underline" onClick={() => {
+              const result = deviceKeymapFileTools!.downloadLatestBackup();
+              if (!result.ok) showToast(result.error || 'Could not download backup');
+            }}>Download device backup</button>
+          )}
+        </div>
+      )}
       {/* TOP NAVIGATION BAR */}
       <motion.header
         {...getEntranceMotionProps(entrancePhase, {

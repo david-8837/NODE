@@ -405,6 +405,28 @@ describe('QMK/VIA WebHID bridge', () => {
       .resolves.toMatchObject({ ok: false, error: 'No QMK/VIA device is connected' });
   });
 
+  it('reconnects previously authorized devices on USB connect without resetting mappings', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    let connectionState = 'connected';
+    bridge.onStatus(status => { connectionState = status.state; });
+    hid.device.seedKeycode(0, 1, 0, 4);
+    for (let i = 0; i < 3; i++) {
+      hid.dispatchEvent(Object.assign(new Event('disconnect'), { device: hid.device }));
+      hid.device.opened = false;
+      hid.deviceAvailableForSilentScan = true;
+      hid.dispatchEvent(Object.assign(new Event('connect'), { device: hid.device }));
+      await vi.waitFor(() => expect(connectionState).toBe('connected'), { timeout: 2500 });
+      expect(hid.device.keycodes.get('0:1:0')).toBe(4);
+    }
+    expect(hid.device.reports.some(report => report[0] === 0x05)).toBe(false);
+    await bridge.disconnect();
+    hid.dispatchEvent(Object.assign(new Event('connect'), { device: hid.device }));
+    await new Promise(r => setTimeout(r, 10));
+    expect(hid.device.opened).toBe(false);
+  });
+
   it('does not claim support for an incompatible VIA version', async () => {
     const hid = new FakeHidApi();
     hid.device.protocolVersion = VIA_PROTOCOL_VERSION - 1;
