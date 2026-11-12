@@ -757,10 +757,11 @@ while ($true) {
             } elseif ($opKind -eq 'text') {
                 $text = [string]$op.text
                 $interval = [int]$op.interKeyDelayMs
+                if ($interval -le 0) { $interval = 4 }
                 foreach ($character in $text.ToCharArray()) {
                     Read-ControlLines
                     [NodeStudioNativeInput]::SendUnicodeChar([uint16][char]$character)
-                    if ($interval -gt 0) { Wait-Cancelable $interval }
+                    Wait-Cancelable $interval
                 }
             } elseif ($opKind -eq 'wait') {
                 Wait-Cancelable ([int]$op.durationMs)
@@ -1258,8 +1259,8 @@ function normalizePayload(payload) {
       const operations = [{
         kind: 'text',
         text: value,
-        interKeyDelayMs: boundedDelay(payload.interKeyDelayMs, 'Text delay'),
-        delayAfterMs: boundedDelay(payload.delayAfterMs, 'Text delay'),
+        interKeyDelayMs: boundedDelay(payload.interKeyDelayMs, 'Text delay') || 4,
+        delayAfterMs: boundedDelay(payload.delayAfterMs, 'Text delay') || 8,
       }];
       if (payload.appendEnter === true) {
         const enter = parseKeyCombo('Enter');
