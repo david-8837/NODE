@@ -228,6 +228,11 @@ def execute_binding(binding_str):
 
     b = binding_str.strip().lower()
 
+    # Skip desktop-managed actions (Multi Actions, Smart Actions, Cheat-Sheet, Sequences)
+    # These are handled exclusively by the desktop companion app via serial events (KEY_DOWN / KEY_UP)
+    if any(prefix in b for prefix in ["ontap:", "doubletap:", "onhold:", "taphold:", "(text:", "(cmd:", "(web:", "(app:", "cheat-sheet"]):
+        return
+
     # Check for Consumer Control Media Action (exact token match)
     clean_b = b.strip("()")
     if clean_b in MEDIA_MAP:
