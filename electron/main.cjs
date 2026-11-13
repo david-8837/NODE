@@ -11,6 +11,7 @@ const {
   getIconPickerBrowserSmokeScript,
   getIconPickerMemorySoakScript,
 } = require('./browserSmoke.cjs');
+const { AgentClient } = require('./agentClient.cjs');
 const {
   canGrantAppPermissionCheck,
   canGrantAppPermissionRequest,
@@ -1039,8 +1040,77 @@ ipcMain.handle('execute-smart-action', async (event, payload) => {
   }
 });
 
+// Phase 1 Windows Background Agent Client Integration
+const agentClient = new AgentClient();
+
+agentClient.on('hardware-event', (event) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('agent:hardware-event', event);
+  }
+});
+agentClient.on('gesture-event', (event) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('agent:gesture-event', event);
+  }
+});
+agentClient.on('device-change', (data) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('agent:device-change', data);
+  }
+});
+
+ipcMain.handle('agent:get-status', async () => {
+  if (!agentClient.connected) {
+    return { connected: false };
+  }
+  try {
+    const status = await agentClient.getStatus();
+    return { connected: true, ...status };
+  } catch {
+    return { connected: false };
+  }
+});
+
+ipcMain.handle('agent:set-layer', async (_event, layer) => {
+  if (!agentClient.connected) return false;
+  try {
+    return await agentClient.setLayer(layer);
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle('agent:set-profile', async (_event, profileId) => {
+  if (!agentClient.connected) return false;
+  try {
+    return await agentClient.setProfile(profileId);
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle('agent:sync-profiles', async (_event, profilesData, expectedGen) => {
+  if (!agentClient.connected) return { ok: false, error: 'Agent offline' };
+  try {
+    return await agentClient.syncProfiles(profilesData, expectedGen);
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
+});
+
+ipcMain.handle('agent:via-passthrough', async (_event, report) => {
+  if (!agentClient.connected) return { ok: false, error: 'Agent offline' };
+  try {
+    const res = await agentClient.sendViaReport(report);
+    return { ok: true, report: Array.from(res) };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
+});
+
 // App Lifecycle
 app.whenReady().then(() => {
+  void agentClient.connect();
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.node.gridmacro1');
   }
@@ -1154,6 +1224,7 @@ app.on('before-quit', (event) => {
     try { tray.destroy(); } catch {}
     tray = null;
   }
+  try { agentClient.close(); } catch {}
   void desktopActionExecutor.close().finally(() => app.quit());
 });
 

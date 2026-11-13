@@ -42,4 +42,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('open-hardware-modal', listener);
     return () => ipcRenderer.removeListener('open-hardware-modal', listener);
   },
+  getAgentStatus: () => ipcRenderer.invoke('agent:get-status'),
+  agentSetLayer: (layer) => ipcRenderer.invoke('agent:set-layer', layer),
+  agentSetProfile: (profileId) => ipcRenderer.invoke('agent:set-profile', profileId),
+  agentSyncProfiles: (profilesData, expectedGen) => ipcRenderer.invoke('agent:sync-profiles', profilesData, expectedGen),
+  agentViaPassthrough: (report) => ipcRenderer.invoke('agent:via-passthrough', report),
+  onAgentHardwareEvent: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('agent:hardware-event', listener);
+    return () => ipcRenderer.removeListener('agent:hardware-event', listener);
+  },
+  onAgentGestureEvent: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('agent:gesture-event', listener);
+    return () => ipcRenderer.removeListener('agent:gesture-event', listener);
+  },
+  onAgentDeviceChange: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('agent:device-change', listener);
+    return () => ipcRenderer.removeListener('agent:device-change', listener);
+  },
 });
