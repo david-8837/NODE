@@ -279,4 +279,31 @@ describe('shared desktop action executor', () => {
     expect(POWERSHELL_WORKER_SCRIPT).toContain("$opKind -eq 'brightness'");
     expect(POWERSHELL_WORKER_SCRIPT).not.toContain('keybd_event');
   });
+
+  it('allows Smart Actions from authorized hardware source without requiring Simulation mode', async () => {
+    const openExternal = vi.fn().mockResolvedValue(undefined);
+    const executor = createDesktopActionExecutor({
+      platform: 'win32',
+      inputAdapter: { sendOperations: vi.fn(), cancelAll: vi.fn().mockResolvedValue({ success: true }) },
+      openExternal,
+    });
+
+    // Without authorizedHardwareSource and without simulation: rejected
+    const unauthResult = await executor.execute({ type: 'Web', value: 'https://github.com' });
+    expect(unauthResult).toMatchObject({
+      success: false,
+      error: expect.stringContaining('Simulation is disabled'),
+    });
+    expect(openExternal).not.toHaveBeenCalled();
+
+    // With authorizedHardwareSource: true: succeeds!
+    const authResult = await executor.execute(
+      { type: 'Web', value: 'https://github.com' },
+      { authorizedHardwareSource: true }
+    );
+    expect(authResult).toMatchObject({ success: true });
+    expect(openExternal).toHaveBeenCalledWith('https://github.com/');
+
+    await executor.close();
+  });
 });

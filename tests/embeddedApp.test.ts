@@ -7,6 +7,7 @@ import { createDeviceKeymapFileTools, DEVICE_KEYMAP_BACKUP_HISTORY_KEY } from '.
 import { createProfileExport, createProfileFileTools } from '../src/profileFiles';
 import { createAppSettingsTools } from '../src/appSettings';
 import { VIA_PROTOCOL_VERSION } from '../src/qmkViaBridge';
+import { presetBrandIconPaths } from './presetBrandIconData';
 
 const html = '<!doctype html><html><head></head><body><div id="root"></div></body></html>';
 const bundle = readFileSync(
@@ -19,20 +20,6 @@ const legacyUiBaseline = JSON.parse(
     'utf8'
   )
 ) as { tree: unknown };
-const macroIconDataSource = readFileSync(join(process.cwd(), 'public/icons-data.js'), 'utf8');
-const macroIconData = JSON.parse(
-  macroIconDataSource.slice(macroIconDataSource.indexOf('=') + 1, macroIconDataSource.lastIndexOf(';'))
-) as { d: Record<string, string> };
-const presetBrandIconIds = [
-  'brand-openai', 'brand-vscode', 'brand-github', 'terminal', 'brand-docker', 'brand-chrome',
-  'brand-adobe-photoshop', 'brand-adobe-illustrator', 'brand-adobe-premiere',
-  'brand-adobe-after-effects', 'brand-davinciresolve', 'brand-blender', 'brand-figma',
-  'brand-framer', 'brand-audacity', 'brand-notion', 'brand-slack', 'brand-zoom',
-  'brand-obsstudio', 'brand-discord', 'brand-spotify', 'brand-windows',
-];
-const presetBrandIconPaths = Object.fromEntries(
-  presetBrandIconIds.map((iconId) => [iconId, macroIconData.d[iconId]])
-);
 
 if (!bundle) {
   throw new Error('Expected the legacy inline application test fixture');
@@ -471,16 +458,14 @@ describe('Legacy inline app regression runtime', () => {
       (button) => button.textContent?.trim() === 'Settings'
     );
     settings!.click();
-    await new Promise<void>((resolve) => app.window.setTimeout(resolve, 330));
-    expect(root.textContent).toContain('Device status:Not connected');
+    await vi.waitFor(() => expect(root.textContent).toContain('Device status:Not connected'), { timeout: 3000 });
     expect(root.textContent).toContain('Firmware version:—');
     expect(root.textContent).not.toContain('Device connected:Grid Macro 1');
 
     for (const listener of statusListeners) {
       listener({ state: 'connected', device: 'Grid Macro 1 Test', fw: 'VIA 01020304' });
     }
-    await new Promise<void>((resolve) => app.window.setTimeout(resolve, 40));
-    expect(root.textContent).toContain('Device status:Grid Macro 1 Test');
+    await vi.waitFor(() => expect(root.textContent).toContain('Device status:Grid Macro 1 Test'), { timeout: 3000 });
     expect(root.textContent).toContain('Firmware version:VIA 01020304');
     expect(root.textContent).toContain('Pre-sync device keymap backup');
     expect(root.textContent).toContain('Save backup');
@@ -548,7 +533,7 @@ describe('Legacy inline app regression runtime', () => {
     expect(presetIcons).toHaveLength(27);
     expect(new Set(presetIcons.map((icon) => icon.dataset.presetIcon)).size).toBe(27);
     expect(presetIcons.every((icon) => icon.getAttribute('aria-hidden') === 'true')).toBe(true);
-    expect(presetIcons.filter((icon) => icon.querySelector('svg'))).toHaveLength(23);
+    expect(presetIcons.filter((icon) => icon.querySelector('svg path[d]'))).toHaveLength(27);
     expect(presetIcons.every((icon) => icon.style.borderRadius === '9px')).toBe(true);
   });
 

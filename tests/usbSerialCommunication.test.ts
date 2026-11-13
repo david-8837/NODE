@@ -175,6 +175,24 @@ describe('USB Serial Communication: Connection & Protocol Lifecycle', () => {
     await serial.disconnect();
   });
 
+  it('recovers from fragmented and malformed data over Binding Mock and rejects a request on close', async () => {
+    SerialPortMock.binding.createPort('/dev/grid-macro-errors', { record: true });
+    const port = new SerialPortMock({ path: '/dev/grid-macro-errors', baudRate: 115200, autoOpen: false });
+    await new Promise<void>((resolve, reject) => port.open((error) => error ? reject(error) : resolve()));
+    await serial.connect(port);
+    const received: unknown[] = [];
+    serial.on('message', (message: unknown) => received.push(message));
+    (port.port as any).emitData(Buffer.from('bad json\n{"event":'));
+    (port.port as any).emitData(Buffer.from('"KEY_DOWN"}\n{"event":"KEY_UP"}\n'));
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(received).toEqual([{ event: 'KEY_DOWN' }, { event: 'KEY_UP' }]);
+    const pending = serial.sendCommand('GET_CONFIG');
+    const rejected = expect(pending).rejects.toThrow('Connection lost');
+    await new Promise<void>((resolve, reject) => port.close((error) => error ? reject(error) : resolve()));
+    await rejected;
+    await serial.disconnect();
+  });
+
   it('should transition to DISCONNECTED on unexpected port closure', async () => {
     await serial.connect(mockPort);
     expect(serial.getState()).toBe('CONNECTED');
