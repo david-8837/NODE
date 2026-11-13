@@ -30,6 +30,7 @@ const VIA_USB_VENDOR_ID = 0xfeed;
 const VIA_USB_PRODUCT_ID = 0x6001;
 const VIA_RAW_USAGE_PAGE = 0xff60;
 const VIA_RAW_USAGE_ID = 0x61;
+const MAX_PROFILES = 100;
 
 const APPDATA_DIR = process.env.APPDATA
   ? path.join(process.env.APPDATA, 'NODE')
@@ -69,6 +70,7 @@ class BackgroundAgent {
     this.activeLayer = 0;
     this.currentGeneration = 1n;
     this.profilesData = null;
+    this.profileStorageReady = true;
 
     this.lastHardwareSequence = null;
     this.pendingViaRequests = [];
@@ -104,8 +106,10 @@ class BackgroundAgent {
       try {
         const raw = fs.readFileSync(this.profilesPath, 'utf8');
         const parsed = JSON.parse(raw);
+        const validation = validateProfilesData(parsed);
+        if (!validation.ok) throw new Error(validation.error);
         this.profilesData = parsed;
-        this.activeProfileId = parsed.activeProfileId || parsed.profiles?.[0]?.id || 'prof-default';
+        this.activeProfileId = parsed.activeProfileId || parsed.profiles[0].id;
         if (parsed.generation) {
           try {
             this.currentGeneration = BigInt(parsed.generation);
@@ -116,7 +120,8 @@ class BackgroundAgent {
         this.updateGestureConfigsFromActiveProfile();
         return;
       } catch (err) {
-        console.error('Failed to parse profiles.json:', err);
+        this.profileStorageReady = false;
+        console.error('Agent profile file is invalid; preserving it and pausing profile writes:', err);
       }
     }
 
@@ -136,22 +141,38 @@ class BackgroundAgent {
         },
       ],
     };
-    this.saveProfilesAtomic();
+    // A missing file may be initialized safely. An existing unreadable file is
+    // preserved until an explicit, validated SYNC_PROFILES recovery arrives.
+    if (this.profileStorageReady) this.saveProfilesAtomic();
   }
 
-  saveProfilesAtomic() {
+  saveProfilesAtomic(options = {}) {
+    const validation = validateProfilesData(this.profilesData);
+    if (!validation.ok) return false;
+    if (!this.profileStorageReady && fs.existsSync(this.profilesPath) && !options.allowRecovery) return false;
     ensureDirectories();
-    this.currentGeneration += 1n;
-    this.profilesData.generation = this.currentGeneration.toString();
-    this.profilesData.activeProfileId = this.activeProfileId;
+    const nextGeneration = this.currentGeneration + 1n;
+    const nextData = {
+      ...this.profilesData,
+      generation: nextGeneration.toString(),
+      activeProfileId: this.activeProfileId,
+    };
 
     const tmpPath = `${this.profilesPath}.tmp.${Date.now()}`;
     try {
-      fs.writeFileSync(tmpPath, JSON.stringify(this.profilesData, null, 2), 'utf8');
+      fs.writeFileSync(tmpPath, JSON.stringify(nextData, null, 2), 'utf8');
+      if (fs.existsSync(this.profilesPath)) {
+        fs.copyFileSync(this.profilesPath, `${this.profilesPath}.bak`);
+      }
       fs.renameSync(tmpPath, this.profilesPath);
+      this.profilesData = nextData;
+      this.currentGeneration = nextGeneration;
+      this.profileStorageReady = true;
+      return true;
     } catch (err) {
       console.error('Failed to write profiles.json:', err);
       try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+      return false;
     }
   }
 
@@ -186,8 +207,9 @@ class BackgroundAgent {
       }
       if (slotEntry.execution.kind === 'multi') {
         const gestures = slotEntry.execution.gestures || {};
+        const actionTappingTerm = Number(slotEntry.execution.tappingTermMs);
         return {
-          tappingTermMs,
+          tappingTermMs: Number.isFinite(actionTappingTerm) && actionTappingTerm > 0 ? actionTappingTerm : tappingTermMs,
           holdThresholdMs,
           hasDoubleTap: Boolean(gestures.doubleTap && gestures.doubleTap.trim()),
           hasTapHold: Boolean(gestures.tapHold && gestures.tapHold.trim()),
@@ -255,6 +277,8 @@ class BackgroundAgent {
               activeProfileId: this.activeProfileId,
               activeLayer: this.activeLayer,
               generation: this.currentGeneration.toString(),
+              profileStorageReady: this.profileStorageReady,
+              studioRevision: this.profilesData?.studioRevision || null,
             },
           })
         );
@@ -272,11 +296,16 @@ class BackgroundAgent {
       case AgentMessageType.SET_PROFILE: {
         const targetId = String(msg.payload?.activeProfileId || '');
         if (this.profilesData?.profiles?.some((p) => p.id === targetId)) {
+          const previousActiveProfileId = this.activeProfileId;
           this.activeProfileId = targetId;
           this.updateGestureConfigsFromActiveProfile();
-          this.saveProfilesAtomic();
-          socket.write(serializeMessage({ id, type: AgentMessageType.SET_PROFILE_RESPONSE, ok: true, activeProfileId: this.activeProfileId }));
-          this.broadcast({ type: AgentMessageType.PROFILE_STATE_CHANGE, activeProfileId: this.activeProfileId, generation: this.currentGeneration.toString() });
+          const saved = this.saveProfilesAtomic();
+          if (!saved) {
+            this.activeProfileId = previousActiveProfileId;
+            this.updateGestureConfigsFromActiveProfile();
+          }
+          socket.write(serializeMessage({ id, type: AgentMessageType.SET_PROFILE_RESPONSE, ok: saved, activeProfileId: this.activeProfileId, error: saved ? undefined : 'Profile could not be saved' }));
+          if (saved) this.broadcast({ type: AgentMessageType.PROFILE_STATE_CHANGE, activeProfileId: this.activeProfileId, generation: this.currentGeneration.toString() });
         } else {
           socket.write(serializeMessage({ id, type: AgentMessageType.SET_PROFILE_RESPONSE, ok: false, error: 'Profile not found' }));
         }
@@ -285,7 +314,15 @@ class BackgroundAgent {
 
       case AgentMessageType.SYNC_PROFILES: {
         const incoming = msg.payload?.profilesData;
-        const expectedGen = msg.payload?.expectedGeneration ? BigInt(msg.payload.expectedGeneration) : null;
+        const expectedGeneration = msg.payload?.expectedGeneration;
+        let expectedGen = null;
+        if (expectedGeneration !== undefined && expectedGeneration !== null) {
+          if (typeof expectedGeneration !== 'string' || !/^\d{1,30}$/.test(expectedGeneration)) {
+            socket.write(serializeMessage({ id, type: AgentMessageType.SYNC_PROFILES_RESPONSE, ok: false, error: 'Invalid expected generation', currentGeneration: this.currentGeneration.toString() }));
+            return;
+          }
+          expectedGen = BigInt(expectedGeneration);
+        }
 
         if (expectedGen !== null && expectedGen !== this.currentGeneration) {
           socket.write(
@@ -300,10 +337,18 @@ class BackgroundAgent {
           return;
         }
 
-        if (incoming && Array.isArray(incoming.profiles)) {
+        const validation = validateProfilesData(incoming);
+        if (validation.ok) {
+          const previousProfiles = this.profilesData;
+          const previousActiveProfileId = this.activeProfileId;
           this.profilesData = incoming;
-          if (incoming.activeProfileId) this.activeProfileId = incoming.activeProfileId;
-          this.saveProfilesAtomic();
+          this.activeProfileId = incoming.activeProfileId || incoming.profiles[0].id;
+          if (!this.saveProfilesAtomic({ allowRecovery: true })) {
+            this.profilesData = previousProfiles;
+            this.activeProfileId = previousActiveProfileId;
+            socket.write(serializeMessage({ id, type: AgentMessageType.SYNC_PROFILES_RESPONSE, ok: false, error: 'Profile could not be saved; prior profile preserved' }));
+            return;
+          }
           this.updateGestureConfigsFromActiveProfile();
 
           socket.write(
@@ -316,7 +361,7 @@ class BackgroundAgent {
           );
           this.broadcast({ type: AgentMessageType.PROFILE_STATE_CHANGE, activeProfileId: this.activeProfileId, generation: this.currentGeneration.toString() });
         } else {
-          socket.write(serializeMessage({ id, type: AgentMessageType.SYNC_PROFILES_RESPONSE, ok: false, error: 'Invalid profiles format' }));
+          socket.write(serializeMessage({ id, type: AgentMessageType.SYNC_PROFILES_RESPONSE, ok: false, error: validation.error }));
         }
         break;
       }
@@ -388,13 +433,7 @@ class BackgroundAgent {
 
     try {
       const devices = this.hidModule.devices();
-      const match = devices.find((d) => {
-        return (
-          d.vendorId === VIA_USB_VENDOR_ID &&
-          d.productId === VIA_USB_PRODUCT_ID &&
-          (d.usagePage === VIA_RAW_USAGE_PAGE || d.usagePage === undefined)
-        );
-      });
+      const match = selectViaRawHidDevice(devices);
 
       if (match && match.path) {
         this.openDevice(match);
@@ -408,6 +447,7 @@ class BackgroundAgent {
     try {
       this.hidDevice = new this.hidModule.HID(deviceDesc.path);
       this.deviceInfo = deviceDesc;
+      console.log(`Opened Grid Macro 1 Raw HID interface ${deviceDesc.interface ?? 'unknown'} (Usage Page 0xFF60, Usage 0x61)`);
 
       this.hidDevice.on('data', (data) => this.handleHidData(data));
       this.hidDevice.on('error', (err) => {
@@ -510,6 +550,11 @@ class BackgroundAgent {
     const entry = layerData.slots[event.slot];
     if (!entry) return;
 
+    // While Studio is connected, its renderer owns desktop action dispatch for
+    // live hardware events. Letting the background agent dispatch the same
+    // gesture as well produces duplicate keystrokes in the foreground app.
+    if (this.clients.size > 0) return;
+
     this.dispatchActionForEntry(entry, event.gesture);
   }
 
@@ -519,6 +564,10 @@ class BackgroundAgent {
     const dialEntry = layerData.dial[event.direction];
     if (!dialEntry) return;
 
+    // The connected Studio renderer owns foreground actions, including dial
+    // events, for the same reason it owns button gesture dispatch.
+    if (this.clients.size > 0) return;
+
     this.dispatchActionForEntry(dialEntry, 'onTap');
   }
 
@@ -527,6 +576,12 @@ class BackgroundAgent {
     const execution = entry.execution;
 
     if (execution) {
+      // Ordinary key shortcuts are already emitted by the device's QMK/VIA
+      // keymap. The agent only injects actions that the firmware cannot run.
+      if (execution.kind === 'shortcut') return;
+
+      if (execution.kind === 'sequence' && isSingleNativeKeySequence(execution)) return;
+
       if (execution.kind === 'multi') {
         const targetShortcut = execution.gestures?.[gesture]?.trim();
         if (targetShortcut) {
@@ -548,6 +603,9 @@ class BackgroundAgent {
     }
 
     // Fallback: binding string
+    // Legacy/basic profile bindings are native device keycodes. Only retain
+    // host dispatch for explicitly desktop-owned action types.
+    if (entry.actionType !== 'Smart Action' && entry.actionType !== 'Multi-step action') return;
     if (gesture === 'onTap' && entry.binding && entry.binding !== 'blank') {
       void this.executor.execute(
         { type: entry.actionType || 'Shortcut', value: entry.binding },
@@ -583,6 +641,18 @@ class BackgroundAgent {
   }
 }
 
+function isSingleNativeKeySequence(execution) {
+  const steps = execution?.steps;
+  if (!Array.isArray(steps) || steps.length !== 1) return false;
+  const step = steps[0];
+  return Boolean(
+    step &&
+    step.kind === 'key' &&
+    (step.mode === undefined || step.mode === 'press-release') &&
+    (step.delayAfterMs === undefined || step.delayAfterMs === 0)
+  );
+}
+
 // Standalone execution entrypoint
 if (require.main === module) {
   const agent = new BackgroundAgent();
@@ -611,4 +681,46 @@ module.exports = {
   BackgroundAgent,
   PROFILES_PATH,
   APPDATA_DIR,
+  validateProfilesData,
+  selectViaRawHidDevice,
 };
+
+function validateProfilesData(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { ok: false, error: 'Profiles data must be an object' };
+  }
+  if (!Array.isArray(data.profiles) || data.profiles.length === 0 || data.profiles.length > MAX_PROFILES) {
+    return { ok: false, error: `Profiles must contain 1 to ${MAX_PROFILES} entries` };
+  }
+  const ids = new Set();
+  for (const [index, profile] of data.profiles.entries()) {
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile) || typeof profile.id !== 'string' || !profile.id.trim()) {
+      return { ok: false, error: `Profile ${index + 1} has no valid identity` };
+    }
+    if (ids.has(profile.id)) return { ok: false, error: `Duplicate profile identity: ${profile.id}` };
+    ids.add(profile.id);
+    if (!Array.isArray(profile.layers) || profile.layers.length === 0 || profile.layers.length > 8) {
+      return { ok: false, error: `Profile ${profile.id} must contain 1 to 8 layers` };
+    }
+    if (profile.layers.some((layer) => !layer || typeof layer !== 'object' || Array.isArray(layer))) {
+      return { ok: false, error: `Profile ${profile.id} contains an invalid layer` };
+    }
+  }
+  if (data.activeProfileId !== undefined && !ids.has(data.activeProfileId)) {
+    return { ok: false, error: 'Active profile identity is not present in profiles' };
+  }
+  return { ok: true };
+}
+
+function selectViaRawHidDevice(devices) {
+  if (!Array.isArray(devices)) return null;
+  return devices.find((device) =>
+    device &&
+    device.vendorId === VIA_USB_VENDOR_ID &&
+    device.productId === VIA_USB_PRODUCT_ID &&
+    device.usagePage === VIA_RAW_USAGE_PAGE &&
+    device.usage === VIA_RAW_USAGE_ID &&
+    typeof device.path === 'string' &&
+    device.path.length > 0
+  ) || null;
+}

@@ -753,6 +753,7 @@ export default function App() {
   });
   const localProfileSavedRef = useRef(false);
   const [profileSaveError, setProfileSaveError] = useState('');
+  const [agentSyncIssue, setAgentSyncIssue] = useState('');
   const [profiles, setProfiles] = useState<ProfileData[]>(
     () => savedProfileState?.profiles ?? INITIAL_PROFILES
   );
@@ -1351,6 +1352,52 @@ export default function App() {
       setProfileSaveError('Profile could not be saved locally; device sync is paused. Your latest edits are not safely saved.');
     }
   }, [profiles, activeProfileIndex, activeLayerIndex, customItemsByTab, profileLoadFailed, layerNames, lightingConfig]);
+
+  // Keep the independent Agent executor on the last validated Studio profile.
+  // The Agent generation is a compare-and-swap token, not a device revision.
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.agentSyncStudioProfiles || profileLoadFailed || !localProfileSavedRef.current) return;
+
+    let cancelled = false;
+    const syncSavedProfiles = async () => {
+      let approvedGeneration: string | undefined;
+      while (!cancelled) {
+        try {
+          const result = await api.agentSyncStudioProfiles!(profiles, activeProfileIndex, approvedGeneration);
+          if (cancelled) return;
+          if (!result.connected) {
+            await new Promise((resolve) => window.setTimeout(resolve, 1500));
+            continue;
+          }
+          if (result.conflict) {
+            const approved = window.confirm(
+              'The Studio profile differs from the Agent profile. Sync Studio to the Agent? The existing Agent profile will be backed up.'
+            );
+            if (!approved || !result.generation) {
+              setAgentSyncIssue('Agent sync paused; both profiles are unchanged.');
+              return;
+            }
+            approvedGeneration = result.generation;
+            continue;
+          }
+          if (result.ok) {
+            setAgentSyncIssue('');
+            return;
+          }
+          setAgentSyncIssue(result.error || 'Agent sync failed.');
+          return;
+        } catch {
+          if (cancelled) return;
+          setAgentSyncIssue('Agent unavailable.');
+          return;
+        }
+      }
+    };
+
+    void syncSavedProfiles();
+    return () => { cancelled = true; };
+  }, [profiles, activeProfileIndex, profileLoadFailed]);
 
   const currentProfile = profiles[activeProfileIndex] || profiles[0];
   const currentLayer =
@@ -3968,9 +4015,9 @@ export default function App() {
   return (
     <>
     <div inert={deviceStatus.state !== 'connected' || resetKeysPending !== null} aria-hidden={deviceStatus.state !== 'connected' || resetKeysPending !== null ? true : undefined} className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
-      {(profileLoadFailed || profileSaveError || syncIssue) && (
+      {(profileLoadFailed || profileSaveError || syncIssue || agentSyncIssue) && (
         <div role="alert" className="bg-amber-100 text-amber-950 px-4 py-2 text-xs flex flex-wrap items-center gap-3">
-          <span>{profileLoadFailed ? 'Saved profile could not be loaded. Original data preserved; saving and device sync are paused.' : profileSaveError || syncIssue}</span>
+          <span>{profileLoadFailed ? 'Saved profile could not be loaded. Original data preserved; saving and device sync are paused.' : profileSaveError || syncIssue || agentSyncIssue}</span>
           {profileLoadFailed && (
             <button type="button" className="underline" onClick={() => {
               try {

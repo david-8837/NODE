@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { BackgroundAgent } = require('../electron/backgroundAgent.cjs');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -29,7 +31,8 @@ describe('BackgroundAgent & AgentClient Full IPC Integration', () => {
 
   it('connects, exchanges status, and updates layer state', async () => {
     const pipeName = `\\\\.\\pipe\\test-agent-pipe-${Date.now()}`;
-    agent = new BackgroundAgent({ pipeName, hidModule: null });
+    testDir = mkdtempSync(join(tmpdir(), 'node-agent-ipc-'));
+    agent = new BackgroundAgent({ pipeName, hidModule: null, profilesPath: join(testDir, 'profiles.json') });
     await agent.startServer();
 
     client = new AgentClient({ pipeName, autoReconnect: false });
@@ -52,7 +55,8 @@ describe('BackgroundAgent & AgentClient Full IPC Integration', () => {
 
   it('rejects stale generation in profile synchronization and accepts matching generation', async () => {
     const pipeName = `\\\\.\\pipe\\test-agent-pipe-sync-${Date.now()}`;
-    agent = new BackgroundAgent({ pipeName, hidModule: null });
+    testDir = mkdtempSync(join(tmpdir(), 'node-agent-ipc-'));
+    agent = new BackgroundAgent({ pipeName, hidModule: null, profilesPath: join(testDir, 'profiles.json') });
     await agent.startServer();
 
     client = new AgentClient({ pipeName, autoReconnect: false });
@@ -60,6 +64,17 @@ describe('BackgroundAgent & AgentClient Full IPC Integration', () => {
 
     const status = await client.getStatus();
     const currentGen = status.generation; // e.g. "2"
+
+    const emptyRes = await client.syncProfiles({ profiles: [] }, currentGen);
+    expect(emptyRes.ok).toBe(false);
+    expect(emptyRes.error).toContain('Profiles must contain');
+
+    const invalidGenerationRes = await client.syncProfiles({
+      activeProfileId: 'prof-default',
+      profiles: [{ id: 'prof-default', layers: [{ slots: {} }] }],
+    }, 'not-a-generation');
+    expect(invalidGenerationRes.ok).toBe(false);
+    expect(invalidGenerationRes.error).toBe('Invalid expected generation');
 
     // Attempt sync with mismatched expected generation
     const staleRes = await client.syncProfiles(
@@ -84,7 +99,8 @@ describe('BackgroundAgent & AgentClient Full IPC Integration', () => {
 
   it('broadcasts hardware and gesture events to connected clients upon report injection', async () => {
     const pipeName = `\\\\.\\pipe\\test-agent-pipe-events-${Date.now()}`;
-    agent = new BackgroundAgent({ pipeName, hidModule: null });
+    testDir = mkdtempSync(join(tmpdir(), 'node-agent-ipc-'));
+    agent = new BackgroundAgent({ pipeName, hidModule: null, profilesPath: join(testDir, 'profiles.json') });
     await agent.startServer();
 
     client = new AgentClient({ pipeName, autoReconnect: false });

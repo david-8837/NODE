@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   agentSetLayer: (layer) => ipcRenderer.invoke('agent:set-layer', layer),
   agentSetProfile: (profileId) => ipcRenderer.invoke('agent:set-profile', profileId),
   agentSyncProfiles: (profilesData, expectedGen) => ipcRenderer.invoke('agent:sync-profiles', profilesData, expectedGen),
+  agentSyncStudioProfiles: (profiles, activeProfileIndex, approvedGeneration) => ipcRenderer.invoke('agent:sync-studio-profiles', profiles, activeProfileIndex, approvedGeneration),
   agentViaPassthrough: (report) => ipcRenderer.invoke('agent:via-passthrough', report),
   onAgentHardwareEvent: (callback) => {
     const listener = (_event, data) => callback(data);

@@ -12,6 +12,7 @@ const {
   getIconPickerMemorySoakScript,
 } = require('./browserSmoke.cjs');
 const { AgentClient } = require('./agentClient.cjs');
+const { buildAgentProfilesPayload } = require('./agentProfileSync.cjs');
 const {
   canGrantAppPermissionCheck,
   canGrantAppPermissionRequest,
@@ -1095,6 +1096,35 @@ ipcMain.handle('agent:sync-profiles', async (_event, profilesData, expectedGen) 
     return await agentClient.syncProfiles(profilesData, expectedGen);
   } catch (err) {
     return { ok: false, error: String(err.message || err) };
+  }
+});
+
+ipcMain.handle('agent:sync-studio-profiles', async (_event, profiles, activeProfileIndex, approvedGeneration) => {
+  if (!agentClient.connected) return { connected: false };
+  try {
+    const status = await agentClient.getStatus();
+    if (!status.profileStorageReady) {
+      return { connected: true, ok: false, error: 'Agent profile storage is unreadable; existing data was preserved' };
+    }
+    if (typeof status.generation !== 'string' || !/^\d{1,30}$/.test(status.generation)) {
+      return { connected: true, ok: false, error: 'Agent profile generation is invalid' };
+    }
+
+    const profilePayload = buildAgentProfilesPayload(profiles, activeProfileIndex);
+    if (status.studioRevision === profilePayload.studioRevision && status.activeProfileId === profilePayload.activeProfileId) {
+      return { connected: true, ok: true, generation: status.generation };
+    }
+    if (approvedGeneration === undefined) {
+      return { connected: true, ok: false, conflict: true, generation: status.generation };
+    }
+    if (approvedGeneration !== status.generation) {
+      return { connected: true, ok: false, error: 'Agent profile changed during sync; review the conflict', currentGeneration: status.generation };
+    }
+
+    const result = await agentClient.syncProfiles(profilePayload, status.generation);
+    return { connected: true, ...result };
+  } catch (error) {
+    return { connected: true, ok: false, error: String(error.message || error) };
   }
 });
 

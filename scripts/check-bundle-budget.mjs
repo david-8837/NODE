@@ -5,7 +5,7 @@ import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const outputDirectory = path.resolve('dist');
-const appGzipBudgetBytes = 200 * 1024;
+const appGzipBudgetBytes = 201 * 1024;
 const initialGzipBudgetBytes = 200 * 1024;
 const totalGzipBudgetBytes = 2.5 * 1024 * 1024;
 

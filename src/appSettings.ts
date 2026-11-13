@@ -108,6 +108,27 @@ export interface ElectronApi {
   setCheatSheetActive?: (active: boolean, data?: { activeLayer: number; pressed: number; layers: { keys: { icon: OverlayIcon | null; label: string }[]; dial: string[] }[] }) => Promise<{ ok: boolean; active?: boolean }>;
   onCloseCheatSheet?: (callback: () => void) => (() => void) | void;
   onOpenHardwareModal?: (callback: () => void) => (() => void) | void;
+  getAgentStatus?: () => Promise<{
+    connected: boolean;
+    profileStorageReady?: boolean;
+    generation?: string;
+    activeProfileId?: string;
+    studioRevision?: string | null;
+  }>;
+  agentSyncProfiles?: (profilesData: unknown, expectedGeneration: string) => Promise<{
+    ok: boolean;
+    error?: string;
+    generation?: string;
+    currentGeneration?: string;
+  }>;
+  agentSyncStudioProfiles?: (profiles: unknown, activeProfileIndex: number, approvedGeneration?: string) => Promise<{
+    connected: boolean;
+    ok?: boolean;
+    conflict?: boolean;
+    generation?: string;
+    error?: string;
+    currentGeneration?: string;
+  }>;
 }
 
 export interface AppSettingsTools {
