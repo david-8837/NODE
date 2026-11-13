@@ -1,6 +1,6 @@
 # Grid Macro 1 - RP2040-Zero Macropad Firmware & Hardware Setup
 
-This directory contains the firmware and hardware wiring schematic for building the **Grid Macro 1** macropad (9 Keys + 1 Rotary Encoder with Push Button) using the **Waveshare RP2040-Zero** or any standard RP2040 development board.
+This directory contains firmware and a proposed pin-mapping table for the **Grid Macro 1** macropad (9 keys plus one rotary encoder with push button) using a **Waveshare RP2040-Zero** or another compatible RP2040 board. It does not contain a verified electrical schematic; confirm wiring, voltage levels, grounding, and component requirements against the exact board and circuit before connecting hardware.
 
 ---
 
@@ -34,7 +34,7 @@ This directory contains the firmware and hardware wiring schematic for building 
 | `dial-tl` (B) | Rotary Encoder Counter-CW | **GP10** | Pin B | Common GND (Pin C) |
 | `dial-tl` (SW)| Rotary Encoder Push Button | **GP11** | Switch Pin 1 | Common GND (Switch Pin 2) |
 
-> **Note:** Because the firmware enables internal Pull-Up resistors (`Pull.UP`), you do **NOT** need external resistors or matrix diodes. Simply solder one leg of each switch to its designated GPIO pin and the other leg to GND!
+> **Electrical safety:** The firmware enables internal pull-ups, but that does not verify the proposed wiring or determine whether external components are needed. Do not solder or connect a board from this table alone; check the actual schematic, GPIO voltage limits, grounding, and any resistor/level-shifting requirements for the exact hardware first.
 
 ---
 
@@ -52,13 +52,15 @@ Download the **Adafruit CircuitPython Community Bundle** and copy these folders 
 - `neopixel.mpy`
 
 ### Step 3: Copy Firmware Files
-Copy `boot.py` and `code.py` from this `firmware/` directory into the root of your `CIRCUITPY` drive.
+Copy `boot.py`, `code.py`, `config_validation.py`, `input_debounce.py`, and `serial_line_reader.py` from this `firmware/` directory into the root of your `CIRCUITPY` drive. The helper modules are required by `code.py`: they validate and bound stored configuration, frame USB-CDC input within a strict memory limit, and debounce physical key/switch edges.
 
 ---
 
 ## QMK/VIA firmware
 
 The repository contains `grid_macro_1_via.uf2` and `grid_macro_1_via_rawhid.uf2`. **Do not rely on the checked-in checksum manifest:** `SHA256SUMS.txt` names `grid_macro_1_via.uf2`, but its recorded digest does not match that file; it matches `grid_macro_1_via_rawhid.uf2`. The provenance and intended distinction between these binaries require independent verification. Verify the intended board, firmware source, checksum and recovery procedure before flashing. A compiled binary does not establish correct wiring or physical operation. See the [hardware checklist](../HARDWARE_PREPARATION_CHECKLIST.md) and the [QMK build notes](../qmk_firmware/grid_macro_1/README.md).
+
+On normal boot, CircuitPython can write its keymap while the host sees the drive read-only. Hold Key 1 (GP0) during boot to switch to host-writable/read-only-to-CircuitPython mode for editing files.
 
 ## Connecting the configurator
 

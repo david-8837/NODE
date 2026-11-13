@@ -1,6 +1,6 @@
 # Grid Macro 1 pre-hardware and first-flash checklist
 
-This checklist is for the **QMK/VIA HID** target. It separates repository/host checks from work that can only be completed with the real board. The checkout contains no schematic and no physical hardware was available for this work; all board wiring, pin assignment, USB enumeration, and on-device behavior remain **unverified** until the hardware steps below are completed.
+This checklist is for the **QMK/VIA HID** target. It separates repository/host checks from work that can only be completed with the real board. The checked items below are inherited reports from the v1.0.14 source history, not tests performed in this integration. The checkout contains no schematic and this integration did not independently inspect a board or repeat those tests; treat the reported wiring, USB enumeration, and on-device behavior as unconfirmed until independently reproduced. See the unchecked items for remaining verification.
 
 ## Before connecting or flashing a board
 
@@ -14,11 +14,11 @@ This checklist is for the **QMK/VIA HID** target. It separates repository/host c
 
 ## Build and artifact provenance
 
-- [x] Run the `QMK firmware build` GitHub Actions workflow and confirm both `via` and `default` compile jobs pass ([run 42731355502](https://github.com/david-8837/newww/actions/runs/42731355502)).
-- [x] Checked-in binary `firmware/grid_macro_1_via.uf2` verified (71,168 bytes, 139 blocks, RP2040 family ID `0xe48bff56`).
-- [x] Verify SHA-256 against `grid_macro_1_via.uf2` (`ABD542FF5C33268B34812DEFA2DD8BA55712ACCE62E83EE5D897D693C58120D0`).
-- [x] USB product string descriptor in binary payload confirmed: `Grid Macro 1` (UTF-16LE).
-- [x] Automated binary validation test added to `tests/qmkKeyboardDefinition.test.ts`.
+- [ ] Run the QMK workflow and verify both keymaps for the exact integrated release commit; no such build has been verified here.
+- [ ] Download the artifact from that exact run and reconcile its VIA UF2 with the checked-in file and checksum manifest before flashing.
+- [ ] Confirm `BUILD-INFO.txt` records the same source commit and artifact digest as the downloaded file. The checked-in metadata currently records commit `19f60b8518a8b9786d489e3a96f0a7c0f9615a0d` and run `43155494378`; that commit's `package.json` reports version `1.0.6`, not the current `1.0.14`.
+- [ ] Resolve the checked-in hash mismatch: `grid_macro_1_via.uf2` hashes to `0f1a86d8039e943718da057bef4079f31d1d19448105d15a3abccbfc831bd395`, while the manifest/build-info digest `9972aed247f693ba369194eb5b981ff58b45611f8038c19550f3bfe576da2039` matches `grid_macro_1_via_rawhid.uf2`.
+- [x] Automated binary test in `tests/qmkKeyboardDefinition.test.ts` checks UF2 block structure, RP2040 family ID, and the `Grid Macro 1` product string. This is a format/target check, not source provenance or physical validation.
 
 ## First boot and physical I/O checks
 

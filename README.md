@@ -61,6 +61,7 @@ npm run test:phase1    # Phase 1 standalone background agent acceptance suite
 npm run build          # Production UI build
 npm run check:bundle   # Enforce shipped JavaScript size budgets
 npm run test:stress    # Stress-test suite
+npm run test:firmware  # CircuitPython config validation (Python 3 required)
 ```
 
 Optional checks:

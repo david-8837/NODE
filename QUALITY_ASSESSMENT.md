@@ -1,5 +1,7 @@
 # Macro Pad Comprehensive Quality Assessment
 
+> **Historical report, not the current release checklist.** This assessment is based on commit `827202f` on an older branch. Some findings have since changed, and its hosted-run links point to historical `david-8837/newww` runs; do not use them as evidence for a current NODE release. See `WINDOWS_APP_AND_FIRMWARE_GUIDE.md` and `HARDWARE_PREPARATION_CHECKLIST.md` for current release-validation requirements.
+
 ## Assessment scope
 
 **Baseline point:** branch `arena/0e57631b-newww`, commit `827202f` (the existing state before changes for this assessment). This baseline already includes the earlier 3×3 + encoder layout, shipped-UI fixture, same-origin native-action check, and CI bundle/audit gates; “Before” does not mean the repository’s original upstream state.

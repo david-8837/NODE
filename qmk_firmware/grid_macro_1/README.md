@@ -8,6 +8,8 @@ This directory is a **keyboard-definition fragment**, not a complete QMK checkou
 
 The pinned workflow passed in [run 42731355502](https://github.com/david-8837/newww/actions/runs/42731355502) for repository commit `cdc6e41eca8e9b9607dbf36eba90f25c2505df59`: both `via` and `default` compiled, non-empty UF2s were verified, and the VIA artifact was uploaded. Artifact **`grid-macro-1-via-firmware`**, ID `13723834419`, is 30,132 bytes as a ZIP and has GitHub archive digest `sha256:7a8f531baeeea5ec98b14815bdc60fcd77a935bf3fd8f89b2883fb942180fbcc` (archive digest, not the UF2 checksum). The artifact expires after seven days. Its `SHA256SUMS.txt` contains the individual UF2 checksum and `BUILD-INFO.txt` contains provenance. The sandbox could not fetch the artifact ZIP because the external storage request ended with EOF, so no local UF2/checksum copy was obtained. The repository now contains UF2 files in `firmware/`. The checked-in manifest names the standard VIA file but its checksum fails for that file and matches the separately named raw-HID file. Treat both binary provenance and names as unverified until independently reconciled; do not replace the manifest merely to silence the mismatch.
 
+The checked-in binary provenance is unresolved: `firmware/BUILD-INFO.txt` records repository commit `19f60b8518a8b9786d489e3a96f0a7c0f9615a0d`, workflow run `43155494378`, and SHA-256 `9972aed247f693ba369194eb5b981ff58b45611f8038c19550f3bfe576da2039`. That digest matches `grid_macro_1_via_rawhid.uf2`, not the standard `grid_macro_1_via.uf2` named in the manifest. The standard VIA file hashes to `0f1a86d8039e943718da057bef4079f31d1d19448105d15a3abccbfc831bd395`. The recorded commit's `package.json` reports version `1.0.6`, whereas this source tree is `1.0.14`; the successful run therefore does not verify firmware built from the current release source. Do not infer which artifact is intended or flash either checked-in file based on the current metadata. Build and verify artifacts for the exact release commit before publication.
+
 The earlier hosted build [run 42662058460](https://github.com/david-8837/newww/actions/runs/42662058460) used the workflow that cloned the moving QMK `master` branch; it is historical and superseded by the pinned run above.
 
 ## Build locally
@@ -27,15 +29,15 @@ The earlier hosted build [run 42662058460](https://github.com/david-8837/newww/a
 2. Install this keyboard fragment in the full checkout:
 
    ```sh
-   cp -a /path/to/newww/qmk_firmware/grid_macro_1 ~/qmk_firmware/keyboards/
+   cp -a /path/to/NODE/qmk_firmware/grid_macro_1 ~/qmk_firmware/keyboards/
    ```
 
 3. Build and record provenance from the QMK checkout:
 
    ```sh
    cd ~/qmk_firmware
-   /path/to/newww/qmk_firmware/grid_macro_1/build_uf2.sh via
-   /path/to/newww/qmk_firmware/grid_macro_1/build_uf2.sh default
+   /path/to/NODE/qmk_firmware/grid_macro_1/build_uf2.sh via
+   /path/to/NODE/qmk_firmware/grid_macro_1/build_uf2.sh default
    ```
 
    The script prints the QMK commit, CLI/compiler version, and SHA-256. Set `QMK_FIRMWARE_REF=d194c077ed964195ec16d255c7a4b89a794cf03b` to make it reject a different QMK checkout. Expected outputs are `.build/grid_macro_1_via.uf2` and `.build/grid_macro_1_default.uf2`.

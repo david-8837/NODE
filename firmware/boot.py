@@ -16,12 +16,10 @@ key1.direction = digitalio.Direction.INPUT
 key1.pull = digitalio.Pull.UP
 
 if not key1.value:
-    # Held down on boot: USB drive writable by host PC, read-only to CircuitPython scripts.
-    # Use this mode to edit code.py / keymap.json from your computer's file manager.
-    storage.remount("/", readonly=False)
-else:
-    # Default boot: USB drive read-only to host PC, writable by CircuitPython scripts.
-    # This allows code.py to save keymap.json via Web Serial SET_CONFIG commands.
+    # Held down on boot: CircuitPython must not write while the host edits files.
     storage.remount("/", readonly=True)
+else:
+    # Default boot: allow the firmware to persist the device keymap.
+    storage.remount("/", readonly=False)
 
 key1.deinit()

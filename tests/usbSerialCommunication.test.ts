@@ -119,6 +119,40 @@ describe('USB Serial Communication: Connection & Protocol Lifecycle', () => {
     expect(response.mcu).toBe('RP2040-Zero');
   });
 
+  it('should resolve SET_CONFIG with a device validation error instead of timing out', async () => {
+    await serial.connect(mockPort);
+    const configPromise = serial.sendCommand('SET_CONFIG', { data: { layers: [] } });
+
+    mockPort.simulateIncoming(
+      JSON.stringify({
+        status: 'ERROR_INVALID_CONFIG',
+        error: 'layers must contain between 1 and 8 entries',
+      }) + '\n'
+    );
+
+    await expect(configPromise).resolves.toMatchObject({
+      status: 'ERROR_INVALID_CONFIG',
+      error: expect.stringContaining('layers'),
+    });
+  });
+
+  it('should resolve invalid SET_LAYER responses instead of timing out', async () => {
+    await serial.connect(mockPort);
+    const layerPromise = serial.sendCommand('SET_LAYER', { layer: 999 });
+
+    mockPort.simulateIncoming(
+      JSON.stringify({
+        status: 'ERROR',
+        error: 'Layer index is outside the configured range',
+      }) + '\n'
+    );
+
+    await expect(layerPromise).resolves.toMatchObject({
+      status: 'ERROR',
+      error: expect.stringContaining('Layer index'),
+    });
+  });
+
   it('should timeout and reject command if hardware fails to reply within timeoutMs', async () => {
     await serial.connect(mockPort);
 

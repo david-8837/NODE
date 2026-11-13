@@ -17,6 +17,7 @@
     "test:phase1": "node scripts/run-phase1-acceptance.cjs",
     "diagnose:hid": "node scripts/diagnose-hid.cjs",
     "test:stress": "vitest run tests/stressTesting.test.ts",
+    "test:firmware": "python3 -m unittest discover -s tests -p 'test_firmware_*.py'",
     "audit:cpp": "npx tsx tests/cppcheck_audit.ts",
     "audit:mem": "npx tsx tests/memlab_audit.ts",
     "test:all": "vitest run && npx tsx tests/cppcheck_audit.ts && npx tsx tests/memlab_audit.ts",

@@ -228,8 +228,8 @@ export class SerialManager {
           if (
             (reqKey === 'PING' && parsed.status === 'OK' && parsed.device) ||
             (reqKey === 'GET_CONFIG' && parsed.type === 'CONFIG_DATA') ||
-            (reqKey === 'SET_CONFIG' && (parsed.status === 'OK' || parsed.status === 'ERROR_READONLY')) ||
-            (reqKey === 'SET_LAYER' && parsed.activeLayer !== undefined)
+            (reqKey === 'SET_CONFIG' && ['OK', 'ERROR_READONLY', 'ERROR_INVALID_CONFIG'].includes(parsed.status)) ||
+            (reqKey === 'SET_LAYER' && (parsed.activeLayer !== undefined || parsed.status === 'ERROR'))
           ) {
             clearTimeout(req.timer);
             req.resolve(parsed);
