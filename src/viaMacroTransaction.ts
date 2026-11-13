@@ -64,6 +64,28 @@ export async function runMacroOperation(request: MacroRequest, context: MacroCon
     progress(phase, bytes.length, bytes.length);
   }
 
+    if (request.cmd === 'read_via_device_backup') {
+      try {
+        const progress = (phase: string, done: number, total: number) => {
+          try { request.onProgress?.(phase, done, total); } catch { /* Progress is informational. */ }
+        };
+        progress('Reading keymap', 0, 3);
+        const count = await context.readLayerCount();
+        if (count < 1 || count > 8) throw new Error('Device layer count is not supported for a complete keymap backup');
+        const first = await context.readDeviceKeymap(count);
+        const second = await context.readDeviceKeymap(count);
+        if (JSON.stringify(first) !== JSON.stringify(second)) throw new Error('Device keymap changed during backup; retry');
+        progress('Reading macros', 1, 3);
+        const macros = await readStableMacros();
+        if (!macros.bytes.length || macros.bytes[macros.bytes.length - 1] !== 0 || macros.bytes.filter(byte => byte === 0).length < macros.count) throw new Error('Macro buffer is incomplete or indicates an interrupted write');
+        progress('Checking keymap', 2, 3);
+        const last = await context.readDeviceKeymap(count);
+        if (JSON.stringify(first) !== JSON.stringify(last) || await context.readLayerCount() !== count) throw new Error('Device keymap changed during backup; retry');
+        progress('Device backup read', 3, 3);
+        return { ok: true, snapshot: first, macroBackup: macros };
+      } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+    }
+
     if (request.cmd === 'read_via_macros') {
       try {
         const macros = await readStableMacros();
@@ -94,6 +116,12 @@ export async function runMacroOperation(request: MacroRequest, context: MacroCon
         const keymapCheck = await context.readDeviceKeymap(layerCount);
         if (JSON.stringify(keymap) !== JSON.stringify(keymapCheck)) throw new Error('Device keymap changed during the recovery snapshot; retry');
         previous = await readStableMacros();
+        // A keymap that changes while macros are captured is not a coherent
+        // recovery snapshot. Bracket the macro read with another full read.
+        const keymapAfterMacros = await context.readDeviceKeymap(layerCount);
+        if (JSON.stringify(keymap) !== JSON.stringify(keymapAfterMacros) || await context.readLayerCount() !== layerCount) {
+          throw new Error('Device keymap changed during the recovery snapshot; retry');
+        }
         if (previous.bytes.length === 0) throw new Error('Device has no macro buffer');
         interrupted = previous.bytes[previous.bytes.length - 1] !== 0 || previous.bytes.filter(byte => byte === 0).length < previous.count;
         if (interrupted && !request.allowInterruptedRecovery) return { ok: false, error: 'Device macro buffer indicates an interrupted write; no restore was attempted', rollback: 'not-needed', interruptedMacroBuffer: true };

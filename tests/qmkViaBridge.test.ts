@@ -176,6 +176,24 @@ describe('QMK/VIA keycode translation', () => {
 });
 
 describe('QMK/VIA WebHID bridge', () => {
+  it('captures a checked keymap and complete macro buffer without device writes', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    const start = hid.device.reports.length; const progress = vi.fn();
+    const result = await bridge.request({ cmd: 'read_via_device_backup', onProgress: progress });
+    expect(result).toMatchObject({ ok: true, snapshot: { layerCount: 4, capturedLayerCount: 4 }, macroBackup: { count: 4, bytes: Array.from(hid.device.macroBytes) } });
+    expect(hid.device.reports.slice(start).every(report => ![5, 15, 21].includes(report[0]))).toBe(true);
+    expect(progress).toHaveBeenCalledWith('Device backup read', 3, 3);
+    await bridge.disconnect();
+  });
+  it('rejects combined backup on an incomplete macro buffer', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    hid.device.macroBytes[60] = 255;
+    const result = await bridge.request({ cmd: 'read_via_device_backup' });
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('incomplete') });
+    expect(result.snapshot).toBeUndefined();
+    expect(hid.device.reports.some(report => report[0] === 15)).toBe(false);
+    await bridge.disconnect();
+  });
   it('restores macros with a saved keymap and macro recovery snapshot and verifies each chunk', async () => {
     const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
     const before = Array.from(hid.device.macroBytes), target = before.map((v, i) => i < 4 || i === 60 ? 0 : 255 - v);

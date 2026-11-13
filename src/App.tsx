@@ -876,10 +876,13 @@ const TIPS = [
   },
 ];
 
+const LayerLightingPanel = lazy(() => import('./components/LayerLightingPanel'));
+
 export default function App() {
   // Render the workspace directly; keep the loading screen to a simple spinner.
   const entrancePhase: EntrancePhase = 'complete';
   const [activeNav, setActiveNav] = useState<'Keymap' | 'Preset' | 'Settings'>('Keymap');
+  const [showLayerLightingPanel, setShowLayerLightingPanel] = useState(false);
   const [savedProfileState] = useState(loadSavedProfileState);
   const [profileLoadFailed] = useState(() => {
     try { return window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) !== null && !savedProfileState; }
@@ -2064,6 +2067,25 @@ export default function App() {
     } finally {
       setFirmwareCheckPending(false);
     }
+  };
+
+  const handleExportDeviceBackup = async () => {
+    if (!window.macropad || macroRestoreBusyRef.current) return;
+    macroRestoreBusyRef.current = true;
+    setMacroRestoreBusy(true);
+    setMacroRestoreReport('Reading device backup…');
+    try {
+      const result = await window.macropad.request({ cmd: 'read_via_device_backup', onProgress: (phase, done, total) => setMacroRestoreReport(`${phase} (${done}/${total})`) });
+      if (!result.ok || !result.snapshot || !result.macroBackup) throw new Error(result.error || 'Device backup is incomplete');
+      const backup = { format: 'node-studio-via-macros', version: 1, device: deviceStatus.device || 'Grid Macro 1', firmware: deviceStatus.fw || null, createdAt: new Date().toISOString(), count: result.macroBackup.count, bytes: result.macroBackup.bytes, keymap: result.snapshot };
+      const text = JSON.stringify(backup, null, 2);
+      parseViaMacroFile(text); // Validate the complete file before offering it.
+      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      const link = document.createElement('a'); link.href = url; link.download = `grid-macro-1-device-backup-${Date.now()}.json`;
+      document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setMacroRestoreReport('Keymap and macro backup download started. Verify the file was saved. Profiles and lighting require separate backups. This file can currently restore macros only.');
+    } catch (error) { setMacroRestoreReport(`Device backup failed: ${error instanceof Error ? error.message : String(error)}`); }
+    finally { macroRestoreBusyRef.current = false; setMacroRestoreBusy(false); }
   };
 
   const handleExportViaMacros = async () => {
@@ -8085,10 +8107,15 @@ export default function App() {
                 </div>
 
                 <div className="bg-[#f2e4c6] rounded-[16px] px-[16px] py-[14px]">
+                  <button type="button" onClick={() => setShowLayerLightingPanel(value => !value)} className="w-full rounded-full bg-white text-[10.5px] py-1 mb-2">{showLayerLightingPanel ? 'Hide per-layer lighting' : 'Per-layer lighting (experimental)'}</button>
+                  {showLayerLightingPanel && window.macropad && <Suspense fallback={<p>Loading lighting controls…</p>}><LayerLightingPanel bridge={window.macropad} connected={deviceStatus.state === 'connected'} /></Suspense>}
                   <div className="flex items-center gap-[7px] text-[#e09100] text-[13.5px] font-medium mb-[12px]">
                     <WarningTriangleIcon color="#e09100" />
                     <span>Device update</span>
                   </div>
+                  <button type="button" onClick={() => void handleExportDeviceBackup()} disabled={macroRestoreBusy || deviceStatus.state !== 'connected'} className="w-full h-[27px] mb-2 rounded-full bg-white disabled:opacity-50 text-[10.5px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed">
+                    Download keymap and macro backup
+                  </button>
                   <button type="button" onClick={() => void handleExportViaMacros()} disabled={deviceStatus.state !== 'connected'} title="Read and download the VIA macro buffer" className="w-full h-[27px] mb-2 rounded-full bg-white disabled:opacity-50 text-[10.5px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed">
                     Download VIA macro backup
                   </button>

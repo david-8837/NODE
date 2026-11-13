@@ -34,6 +34,24 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); delete (window as any).macropad; });
 
 describe('macro restore interface', () => {
+  it('downloads a validated combined keymap and macro backup without requesting writes', async () => {
+    request.mockImplementation(async arg => arg.cmd === 'read_via_device_backup'
+      ? { ok: true, snapshot, macroBackup: { count: 2, bytes: [0, 1, 0] } }
+      : { ok: false, error: 'test device unavailable' });
+    const create = vi.fn(() => 'blob:test');
+    const revoke = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoke });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    await render();
+    const backup = [...container.querySelectorAll('button')].find(b => b.textContent?.includes('Download keymap and macro backup'))!;
+    await act(async () => { backup.click(); await Promise.resolve(); });
+    expect(create).toHaveBeenCalledOnce(); expect(click).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain('Profiles and lighting require separate backups');
+    expect(container.textContent).toContain('currently restore macros only');
+    expect(request.mock.calls.some(([arg]) => arg.cmd === 'restore_via_macros')).toBe(false);
+    click.mockRestore();
+  });
   it('rejects malformed backups and cancelled confirmation before requesting writes', async () => {
     await render(); await selectFile('{bad');
     expect(container.textContent).toContain('Macro backup is not valid JSON');

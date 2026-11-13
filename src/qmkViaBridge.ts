@@ -528,7 +528,8 @@ export class QmkViaBridge {
     config?: ViaConfiguration;
     snapshot?: ViaKeymapSnapshot;
     lighting?: LayerLight;
-    layerLightingWrite?: { layer: number; setting: LayerLight };
+    layerLightingWrite?: { layer: number; setting: LayerLight; expected: LayerLight[] };
+    layerLightingInitial?: LayerLight[];
     saveLightingRecovery?: (layers: LayerLight[]) => void;
     macroRestore?: { count: number; bytes: number[] };
     allowInterruptedRecovery?: boolean;
@@ -553,28 +554,30 @@ export class QmkViaBridge {
     config?: ViaConfiguration;
     snapshot?: ViaKeymapSnapshot;
     lighting?: LayerLight;
-    layerLightingWrite?: { layer: number; setting: LayerLight };
+    layerLightingWrite?: { layer: number; setting: LayerLight; expected: LayerLight[] };
+    layerLightingInitial?: LayerLight[];
     saveLightingRecovery?: (layers: LayerLight[]) => void;
     macroRestore?: { count: number; bytes: number[] };
     allowInterruptedRecovery?: boolean;
     saveRecovery?: (data: { keymap: ViaKeymapSnapshot; macros: { count: number; bytes: number[] } }) => void;
     onProgress?: (phase: string, done: number, total: number) => void;
   }): Promise<BridgeResult> {
-    if (!['set_config', 'get_config', 'restore_config', 'set_onboard_led', 'read_layer_lighting', 'write_layer_lighting', 'read_via_macros', 'restore_via_macros'].includes(request?.cmd ?? '')) {
+    if (!['set_config', 'get_config', 'restore_config', 'set_onboard_led', 'read_layer_lighting', 'write_layer_lighting', 'initialize_layer_lighting', 'read_via_macros', 'read_via_device_backup', 'restore_via_macros'].includes(request?.cmd ?? '')) {
       return { ok: false, error: 'Unsupported QMK/VIA request' };
     }
     if (!this.device || this.status.state !== 'connected') {
       return { ok: false, error: 'No QMK/VIA device is connected' };
     }
 
-    if (request.cmd === 'read_layer_lighting' || request.cmd === 'write_layer_lighting') {
-      const { readLayerLighting, writeLayerLighting } = await import('./layerLightingProtocol');
+    if (request.cmd === 'read_layer_lighting' || request.cmd === 'write_layer_lighting' || request.cmd === 'initialize_layer_lighting') {
+      const { readLayerLighting, writeLayerLighting, initializeLayerLighting } = await import('./layerLightingProtocol');
       const exchange = (command: Uint8Array) => this.exchange(command);
-      return request.cmd === 'read_layer_lighting' ? readLayerLighting(exchange)
-        : writeLayerLighting(exchange, request.layerLightingWrite, request.saveLightingRecovery);
+      if (request.cmd === 'read_layer_lighting') return readLayerLighting(exchange);
+      if (request.cmd === 'initialize_layer_lighting') return initializeLayerLighting(exchange, request.layerLightingInitial, request.saveLightingRecovery);
+      return writeLayerLighting(exchange, request.layerLightingWrite, request.saveLightingRecovery);
     }
 
-    if (request.cmd === 'read_via_macros' || request.cmd === 'restore_via_macros') {
+    if (request.cmd === 'read_via_macros' || request.cmd === 'read_via_device_backup' || request.cmd === 'restore_via_macros') {
       const { runMacroOperation } = await import('./viaMacroTransaction');
       return runMacroOperation(request, {
         exchange: command => this.exchange(command),

@@ -24,3 +24,12 @@ export function rp2040ZeroColorToQmkHsv(hex: string): { hue: number; saturation:
   if (!/^#[0-9a-f]{6}$/i.test(hex)) return null;
   return rgbHexToQmkHsv(`#${hex.slice(3, 5)}${hex.slice(1, 3)}${hex.slice(5, 7)}`);
 }
+
+/** Decode the current firmware's HSV values back to the user's RGB channels. */
+export function qmkHsvToRp2040ZeroHex(hue: number, saturation: number): string {
+  const h = ((hue / 255) * 6) % 6, s = saturation / 255;
+  const c = s, x = c * (1 - Math.abs((h % 2) - 1)), m = 1 - c;
+  const [r, g, b] = h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x] : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+  const hex = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, '0');
+  return `#${hex(g)}${hex(r)}${hex(b)}`;
+}
