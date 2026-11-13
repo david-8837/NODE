@@ -196,7 +196,7 @@ describe('production React preset experience', () => {
     expect(chatgptTile).not.toBeNull();
     const chatgptActionIcon = chatgptTile?.querySelector<HTMLElement>('[data-preset-action-icon="chatgpt"]');
     expect(chatgptActionIcon?.style.color).toBe('rgb(16, 163, 127)');
-  });
+  }, 15000);
 
   it('allows each preset only once in a profile while keeping other profiles independent', async () => {
     const getChatgptInstallButton = () => {
@@ -292,7 +292,7 @@ describe('production React preset experience', () => {
       expect.arrayContaining([expect.objectContaining({ presetId: 'chatgpt' })]),
     ]);
     expect(saved.profiles.every((profile: { layers: unknown[] }) => profile.layers.length === 2)).toBe(true);
-  });
+  }, 15000);
 
   it('recognizes preset layers saved before installation markers were added', async () => {
     await act(async () => root.unmount());

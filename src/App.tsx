@@ -155,6 +155,8 @@ interface CustomItemGroup {
   items: BasicTileItem[];
 }
 
+const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+
 function groupCustomItemsByPreset(
   items: BasicTileItem[],
   customGroupTitle: string
@@ -216,344 +218,160 @@ function formatCustomTileText(name: string): string {
 
 interface BasicSection {
   title: string;
-  listPreview: string;
   items: BasicTileItem[];
 }
+
+const bItem = (id: string, main: string, macropadLabel = main, extra?: Partial<BasicTileItem>): BasicTileItem => ({
+  id, main, macropadLabel, ...(extra || {})
+});
 
 const BASIC_KEY_SECTIONS: BasicSection[] = [
   {
     title: 'Alphanumerics',
-    listPreview: '[ blank, A, B, C, D, E... ]',
     items: [
-      { id: 'none', main: '', listLabel: 'blank', macropadLabel: '', isClearIcon: true },
-      { id: 'A', main: 'A', macropadLabel: 'A' },
-      { id: 'B', main: 'B', macropadLabel: 'B' },
-      { id: 'C', main: 'C', macropadLabel: 'C' },
-      { id: 'D', main: 'D', macropadLabel: 'D' },
-      { id: 'E', main: 'E', macropadLabel: 'E' },
-      { id: 'F', main: 'F', macropadLabel: 'F' },
-      { id: 'G', main: 'G', macropadLabel: 'G' },
-      { id: 'H', main: 'H', macropadLabel: 'H' },
-      { id: 'I', main: 'I', macropadLabel: 'I' },
-      { id: 'J', main: 'J', macropadLabel: 'J' },
-      { id: 'K', main: 'K', macropadLabel: 'K' },
-      { id: 'L', main: 'L', macropadLabel: 'L' },
-      { id: 'M', main: 'M', macropadLabel: 'M' },
-      { id: 'N', main: 'N', macropadLabel: 'N' },
-      { id: 'O', main: 'O', macropadLabel: 'O' },
-      { id: 'P', main: 'P', macropadLabel: 'P' },
-      { id: 'Q', main: 'Q', macropadLabel: 'Q' },
-      { id: 'R', main: 'R', macropadLabel: 'R' },
-      { id: 'S', main: 'S', macropadLabel: 'S' },
-      { id: 'T', main: 'T', macropadLabel: 'T' },
-      { id: 'U', main: 'U', macropadLabel: 'U' },
-      { id: 'V', main: 'V', macropadLabel: 'V' },
-      { id: 'W', main: 'W', macropadLabel: 'W' },
-      { id: 'X', main: 'X', macropadLabel: 'X' },
-      { id: 'Y', main: 'Y', macropadLabel: 'Y' },
-      { id: 'Z', main: 'Z', macropadLabel: 'Z' },
-      { id: '1', top: '!', main: '1', listLabel: '1', macropadLabel: '1' },
-      { id: '2', top: '@', main: '2', listLabel: '2', macropadLabel: '2' },
-      { id: '3', top: '#', main: '3', listLabel: '3', macropadLabel: '3' },
-      { id: '4', top: '$', main: '4', listLabel: '4', macropadLabel: '4' },
-      { id: '5', top: '%', main: '5', listLabel: '5', macropadLabel: '5' },
-      { id: '6', top: '^', main: '6', listLabel: '6', macropadLabel: '6' },
-      { id: '7', top: '&', main: '7', listLabel: '7', macropadLabel: '7' },
-      { id: '8', top: '*', main: '8', listLabel: '8', macropadLabel: '8' },
-      { id: '9', top: '(', main: '9', listLabel: '9', macropadLabel: '9' },
-      { id: '0', top: ')', main: '0', listLabel: '0', macropadLabel: '0' },
+      bItem('none', '', '', { listLabel: 'blank', isClearIcon: true }),
+      ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(c => bItem(c, c)),
+      ...['1!','2@','3#','4$','5%','6^','7&','8*','9(','0)'].map(([n, s]) => bItem(n, n, n, { top: s })),
     ],
   },
   {
     title: 'Glyphs',
-    listPreview: '[ -, =, [, ], \\, NUHS... ]',
     items: [
-      { id: 'minus', top: '_', main: '-', listLabel: '-', macropadLabel: '-' },
-      { id: 'equal', top: '+', main: '=', listLabel: '=', macropadLabel: '=' },
-      { id: 'lbracket', top: '{', main: '[', listLabel: '[', macropadLabel: '[' },
-      { id: 'rbracket', top: '}', main: ']', listLabel: ']', macropadLabel: ']' },
-      { id: 'backslash', top: '|', main: '\\', listLabel: '\\', macropadLabel: '\\' },
-      { id: 'nuhs', main: 'NUHS', listLabel: 'NUHS', macropadLabel: '#' },
-      { id: 'semicolon', top: ':', main: ';', listLabel: ';', macropadLabel: ';' },
-      { id: 'quote', top: '"', main: "'", listLabel: "'", macropadLabel: "'" },
-      { id: 'grave', top: '~', main: '`', listLabel: '`', macropadLabel: '`' },
-      { id: 'comma', top: '<', main: ',', listLabel: ',', macropadLabel: ',' },
-      { id: 'plus-glyph', main: '+', listLabel: '+', macropadLabel: '+' },
-      { id: 'hyphen-glyph', main: '-', listLabel: '-', macropadLabel: '-' },
-      { id: 'eq-glyph', main: '=', listLabel: '=', macropadLabel: '=' },
-      { id: 'ast-glyph', main: '*', listLabel: '*', macropadLabel: '*' },
-      { id: 'period', top: '>', main: '.', listLabel: '.', macropadLabel: '.' },
-      { id: 'slash', top: '?', main: '/', listLabel: '/', macropadLabel: '/' },
-      { id: 'pipe2', top: '|', main: '\\', listLabel: '\\', macropadLabel: '\\' },
+      ...([
+        ['minus', '-', '_'], ['equal', '=', '+'], ['lbracket', '[', '{'], ['rbracket', ']', '}'],
+        ['backslash', '\\', '|'], ['semicolon', ';', ':'], ['quote', "'", '"'],
+        ['grave', '`', '~'], ['comma', ',', '<'], ['period', '.', '>'], ['slash', '/', '?'],
+        ['pipe2', '\\', '|'],
+      ] as const).map(([id, main, top]) => bItem(id, main, main, { top })),
+      bItem('nuhs', 'NUHS', '#', { listLabel: 'NUHS' }),
+      ...(['plus:+', 'hyphen:-', 'eq:=', 'ast:*'].map((s) => {
+        const [k, c] = s.split(':');
+        return bItem(`${k}-glyph`, c);
+      })),
     ],
   },
   {
     title: 'Modifiers',
-    listPreview: '[ enter, esc, back, tab, space, ctrl... ]',
     items: [
-      { id: 'enter', main: 'enter', macropadLabel: 'ent' },
-      { id: 'esc', main: 'esc', macropadLabel: 'esc' },
-      { id: 'back', main: 'back', macropadLabel: 'bksp' },
-      { id: 'tab', main: 'tab', macropadLabel: 'tab' },
-      { id: 'space', main: 'space', macropadLabel: 'spc' },
-      { id: 'ctrl', main: 'ctrl', macropadLabel: 'ctrl' },
-      { id: 'shift', main: 'shift', macropadLabel: 'shft' },
-      { id: 'alt', main: 'alt', macropadLabel: 'alt' },
-      { id: 'win', main: 'win', macropadLabel: 'win' },
-      { id: 'rctrl', main: 'right\nctrl', listLabel: 'right ctrl', macropadLabel: 'rctl' },
-      { id: 'rshift', main: 'right\nshift', listLabel: 'right shift', macropadLabel: 'rshf' },
-      { id: 'ralt', main: 'right\nalt', listLabel: 'right alt', macropadLabel: 'ralt' },
-      { id: 'rwin', main: 'right\nwin', listLabel: 'right win', macropadLabel: 'rwin' },
-      { id: 'lock', main: 'lock', macropadLabel: 'lock' },
-      { id: 'scrolllock', main: 'scroll lock', macropadLabel: 'scrl' },
-      { id: 'numlock', main: 'num lock', macropadLabel: 'num' },
-      {
-        id: 'lscrolllock',
-        main: 'locking\nscroll lock',
-        listLabel: 'locking scroll lock',
-        macropadLabel: 'lscr',
-      },
-      { id: 'prtsc', main: 'print\nscreen', listLabel: 'print screen', macropadLabel: 'prts' },
-      { id: 'pause', main: 'pause', macropadLabel: 'paus' },
-      { id: 'insert', main: 'insert', macropadLabel: 'ins' },
-      { id: 'home', main: 'home', macropadLabel: 'home' },
-      { id: 'pgup', main: 'page up', macropadLabel: 'pgup' },
-      { id: 'pgdn', main: 'page\ndown', listLabel: 'page down', macropadLabel: 'pgdn' },
-      { id: 'delete', main: 'delete', macropadLabel: 'del' },
-      { id: 'end', main: 'end', macropadLabel: 'end' },
-      { id: 'arr-r', main: '→', listLabel: 'right arrow', macropadLabel: '→', arrowDir: 'right' },
-      { id: 'arr-l', main: '←', listLabel: 'left arrow', macropadLabel: '←', arrowDir: 'left' },
-      { id: 'arr-d', main: '↓', listLabel: 'down arrow', macropadLabel: '↓', arrowDir: 'down' },
-      { id: 'arr-u', main: '↑', listLabel: 'up arrow', macropadLabel: '↑', arrowDir: 'up' },
+      bItem('enter', 'enter', 'ent'),
+      bItem('esc', 'esc'),
+      bItem('back', 'back', 'bksp'),
+      bItem('tab', 'tab'),
+      bItem('space', 'space', 'spc'),
+      bItem('ctrl', 'ctrl'),
+      bItem('shift', 'shift', 'shft'),
+      bItem('alt', 'alt'),
+      bItem('win', 'win'),
+      ...(['ctrl:rctl', 'shift:rshf', 'alt:ralt', 'win:rwin'].map((s) => {
+        const [k, m] = s.split(':');
+        return bItem(`r${k}`, `right\n${k}`, m, { listLabel: `right ${k}` });
+      })),
+      bItem('lock', 'lock'),
+      bItem('scrolllock', 'scroll lock', 'scrl'),
+      bItem('numlock', 'num lock', 'num'),
+      bItem('lscrolllock', 'locking\nscroll lock', 'lscr', { listLabel: 'locking scroll lock' }),
+      bItem('prtsc', 'print\nscreen', 'prts', { listLabel: 'print screen' }),
+      bItem('pause', 'pause'),
+      bItem('insert', 'insert', 'ins'),
+      bItem('home', 'home'),
+      bItem('pgup', 'page up', 'pgup'),
+      bItem('pgdn', 'page\ndown', 'pgdn', { listLabel: 'page down' }),
+      bItem('delete', 'delete', 'del'),
+      bItem('end', 'end'),
+      ...(['r:right:→', 'l:left:←', 'd:down:↓', 'u:up:↑'].map((s) => {
+        const [k, d, g] = s.split(':');
+        return bItem(`arr-${k}`, g, g, { listLabel: `${d} arrow`, arrowDir: d as any });
+      })),
     ],
   },
   {
     title: 'Function keys (F)',
-    listPreview: '[ F1, F2, F3, F4, F5, F6... ]',
-    items: Array.from({ length: 24 }, (_, i) => ({
-      id: `F${i + 1}`,
-      main: `F${i + 1}`,
-      macropadLabel: `F${i + 1}`,
-    })),
+    items: Array.from({ length: 24 }, (_, i) => bItem(`F${i + 1}`, `F${i + 1}`)),
   },
   {
     title: 'Number pad',
-    listPreview: '[ /, *, -, +, num enter, 1... ]',
     items: [
-      { id: 'num-div', main: '/', macropadLabel: '/' },
-      { id: 'num-mul', main: '*', macropadLabel: '*' },
-      { id: 'num-sub', main: '-', macropadLabel: '-' },
-      { id: 'num-add', main: '+', macropadLabel: '+' },
-      { id: 'num-ent', main: 'num enter', macropadLabel: 'nent' },
-      { id: 'num-1', main: '1', macropadLabel: '1' },
-      { id: 'num-2', main: '2', macropadLabel: '2' },
-      { id: 'num-3', main: '3', macropadLabel: '3' },
-      { id: 'num-4', main: '4', macropadLabel: '4' },
-      { id: 'num-5', main: '5', macropadLabel: '5' },
-      { id: 'num-6', main: '6', macropadLabel: '6' },
-      { id: 'num-7', main: '7', macropadLabel: '7' },
-      { id: 'num-8', main: '8', macropadLabel: '8' },
-      { id: 'num-9', main: '9', macropadLabel: '9' },
-      { id: 'num-0', main: '0', macropadLabel: '0' },
-      { id: 'num-dot', main: '.', macropadLabel: '.' },
-      { id: 'num-eq', main: '=', macropadLabel: '=' },
-      { id: 'num-comma', main: ',', macropadLabel: ',' },
+      ...['div:/', 'mul:*', 'sub:-', 'add:+'].map((s) => {
+        const [k, c] = s.split(':');
+        return bItem(`num-${k}`, c, c);
+      }),
+      bItem('num-ent', 'num enter', 'nent'),
+      ...Array.from({ length: 9 }, (_, i) => bItem(`num-${i + 1}`, String(i + 1))),
+      bItem('num-0', '0'),
+      bItem('num-dot', '.', '.'),
+      bItem('num-eq', '=', '='),
+      bItem('num-comma', ',', ','),
     ],
   },
   {
     title: 'Media keys',
-    listPreview: '[ mute, volume +, volume -, next track,...',
     items: [
-      { id: 'mute', main: 'mute', macropadLabel: 'mute' },
-      { id: 'vol-up', main: 'volume +', macropadLabel: 'vol+' },
-      { id: 'vol-dn', main: 'volume -', macropadLabel: 'vol-' },
-      { id: 'next-trk', main: 'next track', macropadLabel: 'next' },
-      {
-        id: 'prev-trk',
-        main: 'previous\ntrack',
-        listLabel: 'previous track',
-        macropadLabel: 'prev',
-      },
-      { id: 'm-stop', main: 'media stop', macropadLabel: 'stop' },
-      { id: 'play', main: 'play', macropadLabel: 'play' },
-      {
-        id: 'ffwd',
-        main: 'fast\nforward',
-        listLabel: 'fast forward',
-        macropadLabel: 'ffwd',
-      },
-      { id: 'rwnd', main: 'rewind', macropadLabel: 'rwnd' },
+      bItem('mute', 'mute'),
+      bItem('vol-up', 'volume +', 'vol+'),
+      bItem('vol-dn', 'volume -', 'vol-'),
+      bItem('next-trk', 'next track', 'next'),
+      bItem('prev-trk', 'previous\ntrack', 'prev', { listLabel: 'previous track' }),
+      bItem('m-stop', 'media stop', 'stop'),
+      bItem('play', 'play'),
+      bItem('ffwd', 'fast\nforward', 'ffwd', { listLabel: 'fast forward' }),
+      bItem('rwnd', 'rewind'),
     ],
   },
   {
     title: 'Extra Keys',
-    listPreview: '[ power down, sleep, stop, bright up, b...',
     items: [
-      {
-        id: 'pwr',
-        main: 'power\ndown',
-        listLabel: 'power down',
-        macropadLabel: 'pwr',
-      },
-      { id: 'slp', main: 'sleep', macropadLabel: 'slp' },
-      { id: 'stop-ex', main: 'stop', macropadLabel: 'stop' },
-      { id: 'brt-up', main: 'bright up', macropadLabel: 'brt+' },
-      {
-        id: 'brt-dn',
-        main: 'bright\ndown',
-        listLabel: 'bright down',
-        macropadLabel: 'brt-',
-      },
+      bItem('pwr', 'power\ndown', 'pwr', { listLabel: 'power down' }),
+      bItem('slp', 'sleep'),
+      bItem('stop-ex', 'stop'),
+      bItem('brt-up', 'bright up', 'brt+'),
+      bItem('brt-dn', 'bright\ndown', 'brt-', { listLabel: 'bright down' }),
     ],
   },
   {
     title: 'Layer Keys',
-    listPreview: '[ Layer 1, Layer 2, Layer 3, Layer 4, La...',
     items: [
-      { id: 'lyr-1', main: 'Layer 1', macropadLabel: 'L1' },
-      { id: 'lyr-2', main: 'Layer 2', macropadLabel: 'L2' },
-      { id: 'lyr-3', main: 'Layer 3', macropadLabel: 'L3' },
-      { id: 'lyr-4', main: 'Layer 4', macropadLabel: 'L4' },
-      { id: 'lyr-5', main: 'Layer 5', macropadLabel: 'L5' },
-      { id: 'lyr-6', main: 'Layer 6', macropadLabel: 'L6' },
-      {
-        id: 'tlyr-1',
-        main: 'Temp Layer\n1',
-        listLabel: 'Temp Layer 1',
-        macropadLabel: 'TL1',
-      },
-      {
-        id: 'tlyr-2',
-        main: 'Temp Layer\n2',
-        listLabel: 'Temp Layer 2',
-        macropadLabel: 'TL2',
-      },
-      {
-        id: 'tlyr-3',
-        main: 'Temp Layer\n3',
-        listLabel: 'Temp Layer 3',
-        macropadLabel: 'TL3',
-      },
-      {
-        id: 'tlyr-4',
-        main: 'Temp Layer\n4',
-        listLabel: 'Temp Layer 4',
-        macropadLabel: 'TL4',
-      },
-      {
-        id: 'tlyr-5',
-        main: 'Temp Layer\n5',
-        listLabel: 'Temp Layer 5',
-        macropadLabel: 'TL5',
-      },
-      {
-        id: 'tlyr-6',
-        main: 'Temp Layer\n6',
-        listLabel: 'Temp Layer 6',
-        macropadLabel: 'TL6',
-      },
+      ...Array.from({ length: 6 }, (_, i) => bItem(`lyr-${i + 1}`, `Layer ${i + 1}`, `L${i + 1}`)),
+      ...Array.from({ length: 6 }, (_, i) => bItem(`tlyr-${i + 1}`, `Temp Layer\n${i + 1}`, `TL${i + 1}`, { listLabel: `Temp Layer ${i + 1}` })),
     ],
   },
   {
     title: 'Profile Keys',
-    listPreview: '[ Profile 1, Profile 2, Profile 3, Profile ...',
-    items: [
-      { id: 'prf-1', main: 'Profile 1', macropadLabel: 'P1' },
-      { id: 'prf-2', main: 'Profile 2', macropadLabel: 'P2' },
-      { id: 'prf-3', main: 'Profile 3', macropadLabel: 'P3' },
-      { id: 'prf-4', main: 'Profile 4', macropadLabel: 'P4' },
-      { id: 'prf-5', main: 'Profile 5', macropadLabel: 'P5' },
-      { id: 'prf-6', main: 'Profile 6', macropadLabel: 'P6' },
-    ],
+    items: Array.from({ length: 6 }, (_, i) => bItem(`prf-${i + 1}`, `Profile ${i + 1}`, `P${i + 1}`)),
   },
   {
     title: 'Internal',
-    listPreview: '[ Show Cheat-Sheet, Show Cheat-Sheet ...',
     items: [
-      {
-        id: 'cs-show',
-        main: 'Show\nCheat-\nSheet',
-        listLabel: 'Show Cheat-Sheet',
-        macropadLabel: 'CS',
-      },
-      {
-        id: 'cs-hold',
-        main: 'Show\nCheat-\nSheet Hold',
-        listLabel: 'Show Cheat-Sheet Hold',
-        macropadLabel: 'CSH',
-      },
-      {
-        id: 'cs-hide',
-        main: 'Hide\nCheat-\nSheet',
-        listLabel: 'Hide Cheat-Sheet',
-        macropadLabel: 'HCS',
-      },
-      {
-        id: 'cs-tog',
-        main: 'Toggle\nCheat-\nSheet',
-        listLabel: 'Toggle Cheat-Sheet',
-        macropadLabel: 'TCS',
-      },
+      bItem('cs-show', 'Show\nCheat-\nSheet', 'CS', { listLabel: 'Show Cheat-Sheet' }),
+      bItem('cs-hold', 'Show\nCheat-\nSheet Hold', 'CSH', { listLabel: 'Show Cheat-Sheet Hold' }),
+      bItem('cs-hide', 'Hide\nCheat-\nSheet', 'HCS', { listLabel: 'Hide Cheat-Sheet' }),
+      bItem('cs-tog', 'Toggle\nCheat-\nSheet', 'TCS', { listLabel: 'Toggle Cheat-Sheet' }),
     ],
   },
 ];
 
+const BLANK_SLOT: KeyAssignment = { label: '', actionType: 'Basic input', binding: 'blank' };
+
 export const INITIAL_LAYER_1: LayerKeymap = {
-  'dial-tl': {
-    label: '',
-    actionType: 'Basic input',
-    binding: 'blank',
-    encoderActions: BLANK_ENCODER_ACTIONS,
-  },
-  r1c1: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r1c2: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r1c3: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r2c1: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r2c2: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r2c3: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r3c1: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r3c2: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r3c3: { label: '', actionType: 'Basic input', binding: 'blank' },
+  'dial-tl': { ...BLANK_SLOT, encoderActions: BLANK_ENCODER_ACTIONS },
+  ...Object.fromEntries(GRID_MACRO_KEY_SLOTS.map((k) => [k, { ...BLANK_SLOT }])) as any,
 };
 
-const PRESET_MACROPAD_LABELS: Record<string, string> = {
-  Duplicate: 'Dupl.',
-  Rectangle: 'Rect',
-  Eyedropper: 'Eyedrop',
-  Instructions: 'Instr.',
-  Shortcuts: 'Keys',
-  Component: 'Comp.',
-  Transform: 'Xform',
-};
+const PRESET_MACROPAD_LABELS: Record<string, string> = Object.fromEntries(
+  'Duplicate:Dupl.,Rectangle:Rect,Eyedropper:Eyedrop,Instructions:Instr.,Shortcuts:Keys,Component:Comp.,Transform:Xform'
+    .split(',').map((s) => s.split(':'))
+);
 
-const PRESET_DIAL_LABELS: Record<string, string> = {
-  'Scroll Down': 'dn',
-  Latest: 'end',
-  'Scroll Up': 'up',
-  'Zoom In': 'zo+',
-  'Zoom Fit': 'fit',
-  'Zoom Out': 'zo-',
-  Fit: 'fit',
-  'Fit Screen': 'fit',
-  'Brush +': 'br+',
-  'Brush -': 'br-',
-  'Next Frame': 'nxt',
-  Play: 'ply',
-  'Prev Frame': 'prv',
-  Redo: 'rdo',
-  Undo: 'und',
-  'View Selected': 'sel',
-};
+const PRESET_DIAL_LABELS: Record<string, string> = Object.fromEntries(
+  'Scroll Down:dn,Latest:end,Scroll Up:up,Zoom In:zo+,Zoom Fit:fit,Zoom Out:zo-,Fit:fit,Fit Screen:fit,Brush +:br+,Brush -:br-,Next Frame:nxt,Play:ply,Prev Frame:prv,Redo:rdo,Undo:und,View Selected:sel'
+    .split(',').map((s) => s.split(':'))
+);
 
 const PRESET_SINGLE_MODIFIERS = new Set([
   'win', 'ctrl', 'alt', 'shift', 'cmd', 'option', 'command', 'control', 'super',
 ]);
 
 function formatPresetSequence(sequence: string, os: 'mac' | 'win'): string {
-  return sequence
-    .split('+')
-    .map((key) => key === 'Mod' ? (os === 'mac' ? 'Cmd' : 'Ctrl') : key)
-    .join(' + ');
+  return sequence.replace(/\bMod\b/g, os === 'mac' ? 'Cmd' : 'Ctrl').split('+').join(' + ');
 }
 
 function isPresetShortcut(sequence: string): boolean {
@@ -564,15 +382,11 @@ function isPresetShortcut(sequence: string): boolean {
 
 function isPresetSingleKey(value: string): boolean {
   const clean = value.trim().toLowerCase();
-  const singleSymbols = new Set([
-    '`', '~', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '-', '=',
-    '[', ']', '{', '}', '\\', '|', ';', ':', "'", '"', ',', '.', '<', '>', '/', '?',
-  ]);
   return Boolean(
     PRESET_SINGLE_MODIFIERS.has(clean) ||
       /^(?:[a-z0-9]|f(?:[1-9]|1[0-2])|numpad (?:[0-9]|\.))$/.test(clean) ||
       /^(?:enter|return|tab|space|space bar|esc|escape|backspace|delete|del|insert|home|end|page up|page down|up|down|left|right|caps lock|num lock|scroll lock|volume up|volume down|media mute|media play \/ pause)$/.test(clean) ||
-      (value.trim().length === 1 && singleSymbols.has(value.trim()))
+      (clean.length === 1 && /^[`~!@#$%^&*()_+\-=\[\]{}\\|;:'",.<>\/?]$/.test(clean))
   );
 }
 
@@ -653,13 +467,7 @@ export function buildPresetLibrary(os: 'mac' | 'win'): PresetItem[] {
       } else {
         execution = getPresetExecution(action.keys, os);
         if (isPresetShortcut(action.keys)) {
-          const lowerName = action.name.toLowerCase();
-          const isSmartAction =
-            lowerName.includes('prompt') ||
-            lowerName.includes('ai') ||
-            lowerName.includes('smart') ||
-            lowerName.includes('auto') ||
-            lowerName.includes('instruction');
+          const isSmartAction = /prompt|ai|smart|auto|instruction/i.test(action.name);
           actionType = isSmartAction ? 'Smart Action' : 'Shortcut';
           label = shortName;
           binding = `${action.name} (${formatPresetSequence(action.keys, os)})`;
@@ -733,41 +541,26 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeProfileForEditor(profile: ProfileData): ProfileData {
-  const defaultEncoder = INITIAL_LAYER_1[GRID_MACRO_ENCODER_SLOT];
+  const defEnc = INITIAL_LAYER_1[GRID_MACRO_ENCODER_SLOT];
   const layers = profile.layers.map((layer) => {
-    const normalized = { ...INITIAL_LAYER_1, ...layer } as LayerKeymap;
+    const norm = { ...INITIAL_LAYER_1, ...layer } as LayerKeymap;
     for (const slot of GRID_MACRO_KEY_SLOTS) {
-      const incoming = layer[slot] as unknown;
-      normalized[slot] = {
-        ...INITIAL_LAYER_1[slot],
-        ...(isRecordValue(incoming) ? incoming : {}),
-      } as KeyAssignment;
+      norm[slot] = { ...INITIAL_LAYER_1[slot], ...(isRecordValue(layer[slot]) ? layer[slot] : {}) } as KeyAssignment;
     }
-
-    const incomingEncoder = layer[GRID_MACRO_ENCODER_SLOT] as unknown;
-    const encoder = isRecordValue(incomingEncoder) ? incomingEncoder : {};
-    const incomingActions = encoder.encoderActions;
-    const encoderActions = isRecordValue(incomingActions) ? incomingActions : {};
-    const mergeEncoderAction = (direction: EncoderSubActionId): EncoderSubBinding => {
-      const fallback = defaultEncoder.encoderActions![direction];
-      const incoming = encoderActions[direction];
-      return {
-        ...fallback,
-        ...(isRecordValue(incoming) ? incoming : {}),
-      } as EncoderSubBinding;
-    };
-    normalized[GRID_MACRO_ENCODER_SLOT] = {
-      ...defaultEncoder,
-      ...encoder,
-      encoderActions: {
-        cw: mergeEncoderAction('cw'),
-        press: mergeEncoderAction('press'),
-        ccw: mergeEncoderAction('ccw'),
-      },
+    const enc = (isRecordValue(layer[GRID_MACRO_ENCODER_SLOT]) ? layer[GRID_MACRO_ENCODER_SLOT] : {}) as any;
+    const encActions = isRecordValue(enc.encoderActions) ? enc.encoderActions : {};
+    norm[GRID_MACRO_ENCODER_SLOT] = {
+      ...defEnc,
+      ...enc,
+      encoderActions: Object.fromEntries(
+        (['cw', 'press', 'ccw'] as const).map((d) => [
+          d,
+          { ...defEnc.encoderActions![d], ...(isRecordValue(encActions[d]) ? encActions[d] : {}) },
+        ])
+      ) as any,
     } as KeyAssignment;
-    return normalized;
+    return norm;
   });
-
   return { ...profile, layers };
 }
 
@@ -846,37 +639,107 @@ function loadSavedProfileState(storageKey = PROFILE_FILE_STORAGE_KEY): Persisted
 }
 
 const TIPS = [
-  {
-    lines: ['Actions can contain other', 'actions or smart-actions'],
-    dot: 0,
-  },
-  {
-    lines: [
-      'You can switch to another layer',
-      'when holding a key by assigning',
-      'a temp-layer to it',
-    ],
-    dot: 1,
-  },
-  {
-    lines: ['You can open your favorite app', 'with a smart-action'],
-    dot: 1,
-  },
-  {
-    lines: ['Multiactions can contain actions', 'and smart-actions'],
-    dot: 1,
-  },
-  {
-    lines: ['If you need more layers you can', 'create another profile'],
-    dot: 2,
-  },
-  {
-    lines: ['You can assign icons to actions,', 'multiactions and smart-actions'],
-    dot: 2,
-  },
-];
+  [['Actions can contain other', 'actions or smart-actions'], 0],
+  [['You can switch to another layer', 'when holding a key by assigning', 'a temp-layer to it'], 1],
+  [['You can open your favorite app', 'with a smart-action'], 1],
+  [['Multiactions can contain actions', 'and smart-actions'], 1],
+  [['If you need more layers you can', 'create another profile'], 2],
+  [['You can assign icons to actions,', 'multiactions and smart-actions'], 2],
+].map(([lines, dot]) => ({ lines: lines as string[], dot: dot as number }));
 
 const LayerLightingPanel = lazy(() => import('./components/LayerLightingPanel'));
+
+function KeySearchDropdown({
+  search,
+  onSearchChange,
+  expandedSection,
+  onToggleSection,
+  onSelect,
+  dropdownClass = 'w-[154px]',
+  maxHeightClass = 'max-h-[268px]',
+  btnHeightClass = 'h-[30px]',
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+  expandedSection: string | null;
+  onToggleSection: (title: string) => void;
+  onSelect: (item: BasicTileItem) => void;
+  dropdownClass?: string;
+  maxHeightClass?: string;
+  btnHeightClass?: string;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -4, scale: 0.96 }}
+      transition={{ duration: 0.16, ease: [0.32, 0.72, 0, 1] }}
+      className={`absolute top-[30px] left-0 ${dropdownClass} bg-white rounded-[16px] shadow-[0_6px_20px_rgba(0,0,0,0.12)] border border-black/[0.05] overflow-hidden z-50`}
+    >
+      <div className="h-[30px] bg-[#e6e6e6] px-[10px] flex items-center gap-[6px]">
+        <Search className="w-[10.5px] h-[10.5px] text-[#555555] stroke-[2] shrink-0" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search a key"
+          className="w-full bg-transparent text-[10px] text-[#333333] placeholder:text-[#9c9c9c] focus:outline-none"
+        />
+      </div>
+      <div className={`${maxHeightClass} overflow-y-auto list-accordion-scroll divide-y divide-[#eeeeee]`}>
+        {BASIC_KEY_SECTIONS.map((sec) => {
+          const matchingItems = sec.items.filter((it) => {
+            if (!search.trim()) return true;
+            const q = search.toLowerCase();
+            const lbl = (it.listLabel || it.main.replace(/\n/g, ' ')).toLowerCase();
+            return lbl.includes(q);
+          });
+          if (matchingItems.length === 0) return null;
+          const isSecOpen = expandedSection === sec.title || !!search.trim();
+          return (
+            <div key={sec.title}>
+              <button
+                type="button"
+                onClick={() => onToggleSection(sec.title)}
+                className={`w-full ${btnHeightClass} px-[11px] flex items-center justify-between text-[10.5px] font-normal transition-colors cursor-pointer ${
+                  isSecOpen ? 'bg-[#0051ff] text-white' : 'bg-white text-[#555555] hover:bg-[#0051ff] hover:text-white'
+                }`}
+              >
+                <span className="truncate">{sec.title}</span>
+                {isSecOpen ? <ChevronUp className="w-[11px] h-[11px] shrink-0" /> : <ChevronDown className="w-[11px] h-[11px] shrink-0" />}
+              </button>
+              <AnimatePresence initial={false}>
+                {isSecOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    className="bg-white py-[2px] overflow-hidden"
+                  >
+                    {matchingItems.map((it) => {
+                      const itemName = it.listLabel || it.main.replace(/\n/g, ' ');
+                      return (
+                        <button
+                          key={it.id}
+                          type="button"
+                          onClick={() => onSelect(it)}
+                          className="w-full h-[26px] px-[12px] text-left text-[10.5px] text-[#555555] hover:bg-[#0051ff] hover:text-white transition-colors flex items-center cursor-pointer"
+                        >
+                          {itemName}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
 
 export default function App() {
   // Render the workspace directly; keep the loading screen to a simple spinner.
@@ -2116,7 +1979,9 @@ export default function App() {
       }
       submitted = true;
       const restoreRequest = {
-        cmd: 'restore_via_macros', macroRestore: { count: backup.count, bytes: backup.bytes },
+        cmd: 'restore_via_macros',
+        macroRestore: { count: backup.count, bytes: backup.bytes },
+        ...(backup.keymap ? { keymapRestore: backup.keymap } : {}),
         saveRecovery: ({ keymap, macros }: { keymap: import('./qmkViaBridge').ViaKeymapSnapshot; macros: { count: number; bytes: number[] } }) => {
           const incomplete = macros.bytes[macros.bytes.length - 1] !== 0 || macros.bytes.filter(byte => byte === 0).length < macros.count;
           const key = saveViaRecovery(window.localStorage, { format: 'node-studio-via-macros', version: 1, device: deviceStatus.device || 'Grid Macro 1', firmware: deviceStatus.fw || null, createdAt: new Date().toISOString(), count: macros.count, bytes: macros.bytes, keymap }, incomplete);
@@ -2198,7 +2063,7 @@ export default function App() {
     if (!window.confirm('Reset all saved profiles and custom actions? This does not reset the physical device keymap.')) {
       return;
     }
-    setProfiles(JSON.parse(JSON.stringify(INITIAL_PROFILES)) as ProfileData[]);
+    setProfiles(clone(INITIAL_PROFILES) as ProfileData[]);
     setActiveProfileIndex(0);
     setActiveLayerIndex(0);
     setCustomItemsByTab({ Action: [], 'Multi-A': [], 'Smart-A': [] });
@@ -2226,7 +2091,7 @@ export default function App() {
 
   const handleAddLayer = () => {
     if (currentProfile.layers.length >= 8) return;
-    const blankLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
+    const blankLayer: LayerKeymap = clone(INITIAL_LAYER_1);
     const nextProfiles = profiles.map((p, idx) =>
       idx === activeProfileIndex
         ? { ...p, layers: [...p.layers, blankLayer] }
@@ -2240,7 +2105,7 @@ export default function App() {
 
   const handleRemoveLayer = (layerIdx: number) => {
     if (currentProfile.layers.length <= 1) {
-      const resetLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
+      const resetLayer: LayerKeymap = clone(INITIAL_LAYER_1);
       const nextProfiles = profiles.map((p, idx) =>
         idx === activeProfileIndex ? { ...p, layers: [resetLayer] } : p
       );
@@ -2269,13 +2134,13 @@ export default function App() {
     if (!pending || deviceStatus.state !== 'connected' || pending.profileIndex !== activeProfileIndex || pending.layerIndex !== activeLayerIndex) return;
     const { allLayers } = pending;
     const layerNumber = pending.layerIndex + 1;
-    const blankLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
+    const blankLayer: LayerKeymap = clone(INITIAL_LAYER_1);
     const nextProfiles = profiles.map((p, idx) => {
       if (idx !== activeProfileIndex) return p;
       return {
         ...p,
         layers: allLayers
-          ? p.layers.map(() => JSON.parse(JSON.stringify(INITIAL_LAYER_1)))
+          ? p.layers.map(() => clone(INITIAL_LAYER_1))
           : p.layers.map((l, lIdx) => (lIdx === activeLayerIndex ? blankLayer : l)),
       };
     });
@@ -2306,17 +2171,11 @@ export default function App() {
           ...currentSlot,
           ...updates,
         };
-        if (updates.execution === undefined) {
-          delete merged.execution;
-        }
-        if (updates.iconId === undefined && updates.binding === 'blank') {
-          delete merged.iconId;
-        }
-        if (updates.actionId === undefined && updates.binding === 'blank') {
-          delete merged.actionId;
-        }
-        if (updates.color === undefined && updates.binding === 'blank') {
-          delete merged.color;
+        if (updates.execution === undefined) delete merged.execution;
+        if (updates.binding === 'blank') {
+          if (updates.iconId === undefined) delete merged.iconId;
+          if (updates.actionId === undefined) delete merged.actionId;
+          if (updates.color === undefined) delete merged.color;
         }
         return {
           ...layer,
@@ -2401,7 +2260,7 @@ export default function App() {
       if (pIdx !== activeProfileIndex) return p;
       const nextLayers = p.layers.map((layer, lIdx) => {
         if (lIdx !== activeLayerIndex) return layer;
-        const copy: LayerKeymap = JSON.parse(JSON.stringify(layer));
+        const copy: LayerKeymap = clone(layer);
 
         if (subA && subB) {
           const actionsA = getEncoderActions(copy[slotA]);
@@ -2607,7 +2466,26 @@ export default function App() {
       return;
     }
 
-    const handleActionKeyDown = (e: KeyboardEvent) => {
+    const NUMPAD_MAP: Record<string, string> = {
+    Numpad0: 'num 0', Numpad1: 'num 1', Numpad2: 'num 2', Numpad3: 'num 3', Numpad4: 'num 4',
+    Numpad5: 'num 5', Numpad6: 'num 6', Numpad7: 'num 7', Numpad8: 'num 8', Numpad9: 'num 9',
+    NumpadAdd: 'num +', NumpadSubtract: 'num -', NumpadMultiply: 'num *', NumpadDivide: 'num /',
+    NumpadDecimal: 'num .', NumpadEnter: 'num enter',
+  };
+
+  const SPECIAL_KEY_MAP: Record<string, string> = {
+    Enter: 'enter', Tab: 'tab', Escape: 'esc', Delete: 'delete', Insert: 'insert',
+    Home: 'home', End: 'end', PageUp: 'page up', PageDown: 'page down',
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  };
+
+  const makeTok = (label: string, kind: 'text' | 'modifier' | 'special') => ({
+    id: `tok-${Date.now()}-${Math.random()}`,
+    label,
+    kind,
+  });
+
+  const handleActionKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement as HTMLElement | null;
       if (
         activeEl &&
@@ -2666,14 +2544,7 @@ export default function App() {
               },
             ];
           }
-          return [
-            ...prev,
-            {
-              id: `tok-${now}-${Math.random()}`,
-              label: 'backspace',
-              kind: 'special',
-            },
-          ];
+          return [...prev, makeTok('backspace', 'special')];
         });
         return;
       }
@@ -2681,121 +2552,33 @@ export default function App() {
       lastBackspaceTimeRef.current = 0;
 
       // 2. Handle Modifiers (Green pills: ctrl, win, shift, alt)
-      if (
-        e.key === 'Control' ||
-        e.key === 'Meta' ||
-        e.key === 'Shift' ||
-        e.key === 'Alt'
-      ) {
-        const modLabel =
-          e.key === 'Control'
-            ? 'ctrl'
-            : e.key === 'Meta'
-            ? 'win'
-            : e.key === 'Shift'
-            ? 'shift'
-            : 'alt';
-
+      const MOD_KEYS: Record<string, string> = { Control: 'ctrl', Meta: 'win', Shift: 'shift', Alt: 'alt' };
+      if (MOD_KEYS[e.key]) {
+        const modLabel = MOD_KEYS[e.key];
         setActionTokens((prev) => {
           const last = prev[prev.length - 1];
-          if (last && last.kind === 'modifier' && last.label === modLabel) {
-            return prev;
-          }
-          return [
-            ...prev,
-            {
-              id: `tok-${Date.now()}-${Math.random()}`,
-              label: modLabel,
-              kind: 'modifier',
-            },
-          ];
+          return last?.kind === 'modifier' && last.label === modLabel ? prev : [...prev, makeTok(modLabel, 'modifier')];
         });
         return;
       }
 
       // 3. Handle CapsLock & NumLock
-      if (e.code === 'CapsLock' || e.key === 'CapsLock') {
-        setActionTokens((prev) => [
-          ...prev,
-          {
-            id: `tok-${Date.now()}-${Math.random()}`,
-            label: 'caps lock',
-            kind: 'special',
-          },
-        ]);
-        return;
-      }
-      if (e.code === 'NumLock' || e.key === 'NumLock') {
-        setActionTokens((prev) => [
-          ...prev,
-          {
-            id: `tok-${Date.now()}-${Math.random()}`,
-            label: 'num lock',
-            kind: 'special',
-          },
-        ]);
+      if (e.key === 'CapsLock' || e.key === 'NumLock') {
+        setActionTokens((prev) => [...prev, makeTok(e.key === 'CapsLock' ? 'caps lock' : 'num lock', 'special')]);
         return;
       }
 
       // 4. Handle Numpad keys
       if (e.code.startsWith('Numpad') || e.location === 3) {
-        const numpadMap: Record<string, string> = {
-          Numpad0: 'num 0',
-          Numpad1: 'num 1',
-          Numpad2: 'num 2',
-          Numpad3: 'num 3',
-          Numpad4: 'num 4',
-          Numpad5: 'num 5',
-          Numpad6: 'num 6',
-          Numpad7: 'num 7',
-          Numpad8: 'num 8',
-          Numpad9: 'num 9',
-          NumpadAdd: 'num +',
-          NumpadSubtract: 'num -',
-          NumpadMultiply: 'num *',
-          NumpadDivide: 'num /',
-          NumpadDecimal: 'num .',
-          NumpadEnter: 'num enter',
-        };
-        const npLabel =
-          numpadMap[e.code] || `num ${e.key.toLowerCase()}`;
-        setActionTokens((prev) => [
-          ...prev,
-          {
-            id: `tok-${Date.now()}-${Math.random()}`,
-            label: npLabel,
-            kind: 'special',
-          },
-        ]);
+        const npLabel = NUMPAD_MAP[e.code] || `num ${e.key.toLowerCase()}`;
+        setActionTokens((prev) => [...prev, makeTok(npLabel, 'special')]);
         return;
       }
 
       // 5. Handle other non-character special keys
       if (e.key.length > 1) {
-        const specialMap: Record<string, string> = {
-          Enter: 'enter',
-          Tab: 'tab',
-          Escape: 'esc',
-          Delete: 'delete',
-          Insert: 'insert',
-          Home: 'home',
-          End: 'end',
-          PageUp: 'page up',
-          PageDown: 'page down',
-          ArrowUp: 'up',
-          ArrowDown: 'down',
-          ArrowLeft: 'left',
-          ArrowRight: 'right',
-        };
-        const spLabel = specialMap[e.key] || e.key.toLowerCase();
-        setActionTokens((prev) => [
-          ...prev,
-          {
-            id: `tok-${Date.now()}-${Math.random()}`,
-            label: spLabel,
-            kind: 'special',
-          },
-        ]);
+        const spLabel = SPECIAL_KEY_MAP[e.key] || e.key.toLowerCase();
+        setActionTokens((prev) => [...prev, makeTok(spLabel, 'special')]);
         return;
       }
 
@@ -2807,14 +2590,7 @@ export default function App() {
           if (last && last.kind === 'text') {
             return prev;
           }
-          return [
-            ...prev,
-            {
-              id: `tok-${Date.now()}-${Math.random()}`,
-              label: 'space',
-              kind: 'special',
-            },
-          ];
+          return [...prev, makeTok('space', 'special')];
         });
         return;
       }
@@ -2841,14 +2617,7 @@ export default function App() {
             ];
           }
         }
-        return [
-          ...prev,
-          {
-            id: `tok-${Date.now()}-${Math.random()}`,
-            label: char,
-            kind: 'text',
-          },
-        ];
+        return [...prev, makeTok(char, 'text')];
       });
     };
 
@@ -3350,6 +3119,26 @@ export default function App() {
     }));
   };
 
+  const renderEmptyState = (title: string, desc: string, docToast: string, docLabel: string) => (
+    <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] flex flex-col items-center justify-center px-[22px] text-center">
+      <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] mb-[14px]">{title}</h3>
+      <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[22px]">{desc}</p>
+      <button onClick={() => showToast(docToast)} className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black cursor-pointer">
+        {docLabel}
+      </button>
+    </div>
+  );
+
+  const renderHintCard = (minH: string, text: string, docToast = 'Smart Actions documentation opened', docLabel = 'Discover more about Smart Actions') => (
+    <div className={`flex-1 ${minH} rounded-[20px] border border-dashed border-[#cfcfcf] px-[26px] py-[20px] flex flex-col justify-center`}>
+      <h4 className="text-[14.5px] font-semibold text-[#555555] mb-[8px]">Hint</h4>
+      <p className="text-[10.5px] leading-[1.36] text-[#666666] mb-[22px]">{text}</p>
+      <button onClick={() => showToast(docToast)} className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer">
+        {docLabel}
+      </button>
+    </div>
+  );
+
   const handleOpenCreatorEditor = (
     tab: Exclude<MappingTabId, 'Basic'>,
     existingItem?: BasicTileItem
@@ -3822,12 +3611,10 @@ export default function App() {
       return;
     }
 
-    const clonedLayer: LayerKeymap = JSON.parse(
-      JSON.stringify({
-        ...preset.layerKeymap,
-        presetId: preset.id,
-      })
-    );
+    const clonedLayer: LayerKeymap = clone({
+      ...preset.layerKeymap,
+      presetId: preset.id,
+    });
     const nextLayerIndex = currentProfile.layers.length;
     const nextProfiles = profiles.map((profile, index) => {
       if (index !== activeProfileIndex) return profile;
@@ -4022,7 +3809,7 @@ export default function App() {
       id: `prof-${Date.now()}`,
       name: `${source.name} Copy`,
       color: source.color,
-      layers: JSON.parse(JSON.stringify(source.layers)),
+      layers: clone(source.layers),
     };
     const next = [...profiles, duplicated];
     pushState(next);
@@ -4056,7 +3843,7 @@ export default function App() {
       id: `prof-${Date.now()}`,
       name: '',
       color: '#0051ff',
-      layers: [JSON.parse(JSON.stringify(INITIAL_LAYER_1))],
+      layers: [clone(INITIAL_LAYER_1)],
     };
     const next = [...profiles, nextProf];
     pushState(next);
@@ -4078,7 +3865,7 @@ export default function App() {
         id: `prof-${Date.now()}`,
         name: 'Default Profile',
         color: '#0051ff',
-        layers: [JSON.parse(JSON.stringify(INITIAL_LAYER_1))],
+        layers: [clone(INITIAL_LAYER_1)],
       };
       pushState([resetProf]);
       setActiveProfileIndex(0);
@@ -4096,45 +3883,11 @@ export default function App() {
   };
 
   const hueToHex = (h: number): string => {
-    const s = 1;
-    const l = 0.5;
-    const c = (1 - Math.abs(2 * l - 1)) * s;
-    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-    const m = l - c / 2;
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    if (h >= 0 && h < 60) {
-      r = c;
-      g = x;
-      b = 0;
-    } else if (h >= 60 && h < 120) {
-      r = x;
-      g = c;
-      b = 0;
-    } else if (h >= 120 && h < 180) {
-      r = 0;
-      g = c;
-      b = x;
-    } else if (h >= 180 && h < 240) {
-      r = 0;
-      g = x;
-      b = c;
-    } else if (h >= 240 && h < 300) {
-      r = x;
-      g = 0;
-      b = c;
-    } else {
-      r = c;
-      g = 0;
-      b = x;
-    }
-    const toHex = (n: number) =>
-      Math.round((n + m) * 255)
-        .toString(16)
-        .padStart(2, '0')
-        .toUpperCase();
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    const x = 1 - Math.abs(((h / 60) % 2) - 1);
+    const rgb = [
+      [1, x, 0], [x, 1, 0], [0, 1, x], [0, x, 1], [x, 0, 1], [1, 0, x]
+    ][Math.floor(((h % 360) + 360) % 360 / 60)] || [1, 0, x];
+    return '#' + rgb.map((v) => Math.round(v * 255).toString(16).padStart(2, '0').toUpperCase()).join('');
   };
 
   const handleImportProfile = async () => {
@@ -4969,7 +4722,7 @@ export default function App() {
                               strokeLinejoin="round"
                             >
                               <circle cx="12" cy="12" r="3" />
-                              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                              <path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.1-7.1l-1.4 1.4M8.3 15.7l-1.4 1.4m0-11.4l1.4 1.4m7 7l1.4 1.4" />
                             </svg>
                           </button>
 
@@ -5097,119 +4850,20 @@ export default function App() {
 
                               return (
                                 <div className="space-y-[8px]">
-                                  {/* Light Slider */}
-                                  <div
-                                    className={`flex items-center gap-[8px] ${
-                                      isOff
-                                        ? 'opacity-35 pointer-events-none'
-                                        : ''
-                                    }`}
-                                  >
-                                    <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">
-                                      Light
-                                    </span>
-                                    <div className="relative flex-1 h-[14px] flex items-center">
-                                      <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
-                                      <input
-                                        type="range"
-                                        min={0}
-                                        max={100}
-                                        value={cfg.light}
-                                        onChange={(e) =>
-                                          setLightingConfig((prev) => ({
-                                            ...prev,
-                                            [lightingTab]: {
-                                              ...prev[lightingTab],
-                                              light: Number(e.target.value),
-                                            },
-                                          }))
-                                        }
-                                        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-                                      />
-                                      <div
-                                        style={{
-                                          left: `calc(${cfg.light}% - 5.5px)`,
-                                        }}
-                                        className="absolute w-[11px] h-[11px] rounded-full bg-white border border-[#444444] pointer-events-none"
-                                      />
+                                  {[
+                                    { label: 'Light', val: cfg.light, dis: isOff, onChg: (v: number) => setLightingConfig(p => ({ ...p, [lightingTab]: { ...p[lightingTab], light: v } })) },
+                                    { label: 'Speed', val: cfg.speed, dis: true, title: 'Reserved for a later lighting update' },
+                                    { label: 'Magic', val: cfg.magic, dis: true, title: 'Reserved for a later lighting update' },
+                                  ].map(s => (
+                                    <div key={s.label} className={`flex items-center gap-[8px] ${s.dis ? (s.title ? 'opacity-30 pointer-events-none' : 'opacity-35 pointer-events-none') : ''}`}>
+                                      <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">{s.label}</span>
+                                      <div className="relative flex-1 h-[14px] flex items-center">
+                                        <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
+                                        <input type="range" disabled={s.dis} title={s.title} min={0} max={100} value={s.val} onChange={e => s.onChg?.(Number(e.target.value))} className="absolute inset-0 w-full opacity-0 cursor-pointer z-10" />
+                                        <div style={{ left: `calc(${s.val}% - 5.5px)` }} className="absolute w-[11px] h-[11px] rounded-full bg-white border border-[#444444] pointer-events-none" />
+                                      </div>
                                     </div>
-                                  </div>
-
-                                  {/* Speed Slider */}
-                                  <div
-                                    className={`flex items-center gap-[8px] ${
-                                      'opacity-30 pointer-events-none'
-                                    }`}
-                                  >
-                                    <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">
-                                      Speed
-                                    </span>
-                                    <div className="relative flex-1 h-[14px] flex items-center">
-                                      <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
-                                      <input
-                                        type="range"
-                                        disabled
-                                        title="Reserved for a later lighting update"
-                                        min={0}
-                                        max={100}
-                                        value={cfg.speed}
-                                        onChange={(e) =>
-                                          setLightingConfig((prev) => ({
-                                            ...prev,
-                                            [lightingTab]: {
-                                              ...prev[lightingTab],
-                                              speed: Number(e.target.value),
-                                            },
-                                          }))
-                                        }
-                                        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-                                      />
-                                      <div
-                                        style={{
-                                          left: `calc(${cfg.speed}% - 5.5px)`,
-                                        }}
-                                        className="absolute w-[11px] h-[11px] rounded-full bg-white border border-[#444444] pointer-events-none"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {/* Magic Slider */}
-                                  <div
-                                    className={`flex items-center gap-[8px] ${
-                                      'opacity-30 pointer-events-none'
-                                    }`}
-                                  >
-                                    <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">
-                                      Magic
-                                    </span>
-                                    <div className="relative flex-1 h-[14px] flex items-center">
-                                      <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
-                                      <input
-                                        type="range"
-                                        disabled
-                                        title="Reserved for a later lighting update"
-                                        min={0}
-                                        max={100}
-                                        value={cfg.magic}
-                                        onChange={(e) =>
-                                          setLightingConfig((prev) => ({
-                                            ...prev,
-                                            [lightingTab]: {
-                                              ...prev[lightingTab],
-                                              magic: Number(e.target.value),
-                                            },
-                                          }))
-                                        }
-                                        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-                                      />
-                                      <div
-                                        style={{
-                                          left: `calc(${cfg.magic}% - 5.5px)`,
-                                        }}
-                                        className="absolute w-[11px] h-[11px] rounded-full bg-white border border-[#444444] pointer-events-none"
-                                      />
-                                    </div>
-                                  </div>
+                                  ))}
 
                                   {/* Color Rainbow Slider */}
                                   <div
@@ -5778,42 +5432,25 @@ export default function App() {
 
                           return (
                             <div className="grid grid-cols-3 gap-[6px]">
-                              <button
-                                type="button"
-                                disabled={!canSave}
-                                onClick={handleSaveCustomItem}
-                                className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
-                                  canSave
-                                    ? 'bg-white text-[#444444] hover:bg-[#2ec27e] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
-                                    : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
-                                }`}
-                              >
-                                Save
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!canSave}
-                                onClick={handleDiscardCustomItem}
-                                className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
-                                  canSave
-                                    ? 'bg-white text-[#444444] hover:bg-[#f59e0b] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
-                                    : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
-                                }`}
-                              >
-                                Discard
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!canDelete}
-                                onClick={handleDeleteCustomItem}
-                                className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
-                                  canDelete
-                                    ? 'bg-white text-[#444444] hover:bg-[#e01b24] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
-                                    : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
-                                }`}
-                              >
-                                Delete
-                              </button>
+                              {[
+                                { label: 'Save', enabled: canSave, fn: handleSaveCustomItem, bg: 'hover:bg-[#2ec27e]' },
+                                { label: 'Discard', enabled: canSave, fn: handleDiscardCustomItem, bg: 'hover:bg-[#f59e0b]' },
+                                { label: 'Delete', enabled: canDelete, fn: handleDeleteCustomItem, bg: 'hover:bg-[#e01b24]' },
+                              ].map(({ label, enabled, fn, bg }) => (
+                                <button
+                                  key={label}
+                                  type="button"
+                                  disabled={!enabled}
+                                  onClick={fn}
+                                  className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
+                                    enabled
+                                      ? `bg-white text-[#444444] ${bg} hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer`
+                                      : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
                             </div>
                           );
                         })()}
@@ -5951,127 +5588,22 @@ export default function App() {
                                   {/* ================================================= */}
                                   <AnimatePresence>
                                     {isDropdownOpen && (
-                                      <motion.div
-                                        initial={{ opacity: 0, y: -4, scale: 0.96 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                                        transition={{
-                                          duration: 0.16,
-                                          ease: [0.32, 0.72, 0, 1],
+                                      <KeySearchDropdown
+                                        search={gestureKeySearch}
+                                        onSearchChange={setGestureKeySearch}
+                                        expandedSection={expandedGestureSection}
+                                        onToggleSection={(sec) =>
+                                          setExpandedGestureSection(expandedGestureSection === sec ? null : sec)
+                                        }
+                                        onSelect={(it) => {
+                                          const itemName = it.listLabel || it.main.replace(/\n/g, ' ');
+                                          setMultiGestures((prev) => ({
+                                            ...prev,
+                                            [gesture.key]: it.isClearIcon ? '' : itemName,
+                                          }));
+                                          setActiveGestureDropdown(null);
                                         }}
-                                        className="absolute top-[30px] left-0 w-[154px] bg-white rounded-[16px] shadow-[0_6px_20px_rgba(0,0,0,0.12)] border border-black/[0.05] overflow-hidden z-50"
-                                      >
-                                        {/* Top Search Bar */}
-                                        <div className="h-[30px] bg-[#e6e6e6] px-[10px] flex items-center gap-[6px]">
-                                          <Search className="w-[10.5px] h-[10.5px] text-[#555555] stroke-[2] shrink-0" />
-                                          <input
-                                            type="text"
-                                            value={gestureKeySearch}
-                                            onChange={(e) =>
-                                              setGestureKeySearch(e.target.value)
-                                            }
-                                            placeholder="Search a key"
-                                            className="w-full bg-transparent text-[10px] text-[#333333] placeholder:text-[#9c9c9c] focus:outline-none"
-                                          />
-                                        </div>
-
-                                        {/* Accordion Categories with Blue Hover & Active */}
-                                        <div className="max-h-[268px] overflow-y-auto list-accordion-scroll divide-y divide-[#eeeeee]">
-                                          {BASIC_KEY_SECTIONS.map((sec) => {
-                                            const matchingItems = sec.items.filter(
-                                              (it) => {
-                                                if (!gestureKeySearch.trim())
-                                                  return true;
-                                                const q =
-                                                  gestureKeySearch.toLowerCase();
-                                                const lbl = (
-                                                  it.listLabel ||
-                                                  it.main.replace(/\n/g, ' ')
-                                                ).toLowerCase();
-                                                return lbl.includes(q);
-                                              }
-                                            );
-                                            if (matchingItems.length === 0)
-                                              return null;
-
-                                            const isSecOpen =
-                                              expandedGestureSection === sec.title ||
-                                              !!gestureKeySearch.trim();
-
-                                            return (
-                                              <div key={sec.title}>
-                                                <button
-                                                  onClick={() =>
-                                                    setExpandedGestureSection(
-                                                      expandedGestureSection ===
-                                                        sec.title
-                                                        ? null
-                                                        : sec.title
-                                                    )
-                                                  }
-                                                  className={`w-full h-[30px] px-[11px] flex items-center justify-between text-[10.5px] font-normal transition-colors cursor-pointer ${
-                                                    isSecOpen
-                                                      ? 'bg-[#0051ff] text-white'
-                                                      : 'bg-white text-[#555555] hover:bg-[#0051ff] hover:text-white'
-                                                  }`}
-                                                >
-                                                  <span className="truncate">
-                                                    {sec.title}
-                                                  </span>
-                                                  {isSecOpen ? (
-                                                    <ChevronUp className="w-[11px] h-[11px] shrink-0" />
-                                                  ) : (
-                                                    <ChevronDown className="w-[11px] h-[11px] shrink-0" />
-                                                  )}
-                                                </button>
-
-                                                <AnimatePresence initial={false}>
-                                                  {isSecOpen && (
-                                                    <motion.div
-                                                      initial={{ height: 0, opacity: 0 }}
-                                                      animate={{ height: 'auto', opacity: 1 }}
-                                                      exit={{ height: 0, opacity: 0 }}
-                                                      transition={{
-                                                        duration: 0.2,
-                                                        ease: [0.22, 1, 0.36, 1],
-                                                      }}
-                                                      className="bg-white py-[2px] overflow-hidden"
-                                                    >
-                                                      {matchingItems.map((it) => {
-                                                        const itemName =
-                                                          it.listLabel ||
-                                                          it.main.replace(/\n/g, ' ');
-                                                        return (
-                                                          <button
-                                                            key={it.id}
-                                                            onClick={() => {
-                                                              setMultiGestures(
-                                                                (prev) => ({
-                                                                  ...prev,
-                                                                  [gesture.key]:
-                                                                    it.isClearIcon
-                                                                      ? ''
-                                                                      : itemName,
-                                                                })
-                                                              );
-                                                              setActiveGestureDropdown(
-                                                                null
-                                                              );
-                                                            }}
-                                                            className="w-full h-[26px] px-[12px] text-left text-[10.5px] text-[#555555] hover:bg-[#0051ff] hover:text-white transition-colors flex items-center cursor-pointer"
-                                                          >
-                                                            {itemName}
-                                                          </button>
-                                                        );
-                                                      })}
-                                                    </motion.div>
-                                                  )}
-                                                </AnimatePresence>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </motion.div>
+                                      />
                                     )}
                                   </AnimatePresence>
                                 </div>
@@ -6138,22 +5670,7 @@ export default function App() {
                         </div>
 
                         {/* Dashed Hint Box */}
-                        <div className="flex-1 min-h-[190px] rounded-[20px] border border-dashed border-[#cfcfcf] px-[26px] py-[20px] flex flex-col justify-center">
-                          <h4 className="text-[14.5px] font-semibold text-[#555555] mb-[8px]">
-                            Hint
-                          </h4>
-                          <p className="text-[10.5px] leading-[1.36] text-[#666666] mb-[22px]">
-                            Assign a key or action to each gesture — tap, double-tap, hold, and tap + hold — then bind the multiaction to a button.
-                          </p>
-                          <button
-                            onClick={() =>
-                              showToast('Multiactions documentation opened')
-                            }
-                            className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
-                          >
-                            Discover more about Multiactions
-                          </button>
-                        </div>
+                        {renderHintCard('min-h-[190px]', 'Assign a key or action to each gesture — tap, double-tap, hold, and tap + hold — then bind the multiaction to a button.', 'Multiactions documentation opened', 'Discover more about Multiactions')}
                       </div>
                     ) : creatorModalTab === 'Smart-A' ? (
                       /* ========================================================= */
@@ -6205,22 +5722,7 @@ export default function App() {
                                 placeholder="Add your text here..."
                                 className="w-full h-[112px] rounded-[14px] bg-[#e2e2e2] p-[12px] text-[10.5px] text-[#333333] placeholder:text-[#9c9c9c] resize-none focus:outline-none focus:ring-1 focus:ring-[#0051ff] mb-[12px] shrink-0"
                               />
-                              <div className="flex-1 min-h-[210px] rounded-[20px] border border-dashed border-[#cfcfcf] px-[26px] py-[20px] flex flex-col justify-center">
-                                <h4 className="text-[14.5px] font-semibold text-[#555555] mb-[8px]">
-                                  Hint
-                                </h4>
-                                <p className="text-[10.5px] leading-[1.36] text-[#666666] mb-[22px]">
-                                  Type or paste any phrase. When you press the assigned key, Input types it out for you.
-                                </p>
-                                <button
-                                  onClick={() =>
-                                    showToast('Smart Actions documentation opened')
-                                  }
-                                  className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
-                                >
-                                  Discover more about Smart Actions
-                                </button>
-                              </div>
+                              {renderHintCard('min-h-[210px]', 'Type or paste any phrase. When you press the assigned key, Input types it out for you.')}
                             </motion.div>
                           )}
 
@@ -6257,22 +5759,7 @@ export default function App() {
                                   }
                                 />
                               </div>
-                              <div className="flex-1 min-h-[175px] rounded-[20px] border border-dashed border-[#cfcfcf] px-[26px] py-[20px] flex flex-col justify-center">
-                                <h4 className="text-[14.5px] font-semibold text-[#555555] mb-[8px]">
-                                  Hint
-                                </h4>
-                                <p className="text-[10.5px] leading-[1.36] text-[#666666] mb-[22px]">
-                                  Type a command to run when you press the assigned key. Only use commands you trust.
-                                </p>
-                                <button
-                                  onClick={() =>
-                                    showToast('Smart Actions documentation opened')
-                                  }
-                                  className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
-                                >
-                                  Discover more about Smart Actions
-                                </button>
-                              </div>
+                              {renderHintCard('min-h-[175px]', 'Type a command to run when you press the assigned key. Only use commands you trust.')}
                             </motion.div>
                           )}
 
@@ -6293,22 +5780,7 @@ export default function App() {
                                 placeholder="Type here the URL to open"
                                 className="w-full h-[38px] rounded-[12px] bg-[#e2e2e2] px-[12px] text-[10.5px] text-[#333333] placeholder:text-[#9c9c9c] focus:outline-none focus:ring-1 focus:ring-[#0051ff] mb-[12px] shrink-0"
                               />
-                              <div className="flex-1 min-h-[240px] rounded-[20px] border border-dashed border-[#cfcfcf] px-[26px] py-[20px] flex flex-col justify-center">
-                                <h4 className="text-[14.5px] font-semibold text-[#555555] mb-[8px]">
-                                  Hint
-                                </h4>
-                                <p className="text-[10.5px] leading-[1.36] text-[#666666] mb-[22px]">
-                                  Enter a URL. Pressing the assigned key opens it in your browser.
-                                </p>
-                                <button
-                                  onClick={() =>
-                                    showToast('Smart Actions documentation opened')
-                                  }
-                                  className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
-                                >
-                                  Discover more about Smart Actions
-                                </button>
-                              </div>
+                              {renderHintCard('min-h-[240px]', 'Enter a URL. Pressing the assigned key opens it in your browser.')}
                             </motion.div>
                           )}
 
@@ -6426,22 +5898,7 @@ export default function App() {
                                 </AnimatePresence>
                               </div>
 
-                              <div className="flex-1 min-h-[240px] rounded-[20px] border border-dashed border-[#cfcfcf] px-[26px] py-[20px] flex flex-col justify-center">
-                                <h4 className="text-[14.5px] font-semibold text-[#555555] mb-[8px]">
-                                  Hint
-                                </h4>
-                                <p className="text-[10.5px] leading-[1.36] text-[#666666] mb-[22px]">
-                                  Pick an installed app. Pressing the assigned key launches it.
-                                </p>
-                                <button
-                                  onClick={() =>
-                                    showToast('Smart Actions documentation opened')
-                                  }
-                                  className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
-                                >
-                                  Discover more about Smart Actions
-                                </button>
-                              </div>
+                              {renderHintCard('min-h-[240px]', 'Pick an installed app. Pressing the assigned key launches it.')}
                             </motion.div>
                           )}
                         </AnimatePresence>
@@ -6575,38 +6032,7 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Dashed Hint Box matching Screenshots 1-4 */}
-                            <div className="flex-1 min-h-[230px] rounded-[20px] border border-dashed border-[#cfcfcf] px-[24px] py-[18px] flex flex-col justify-between">
-                              <div>
-                                <h4 className="text-[14.5px] font-semibold text-[#555555] mb-[8px]">
-                                  Hint
-                                </h4>
-                                <p className="text-[10.5px] leading-[1.38] text-[#666666] mb-[8px]">
-                                  Press key combination or a phrase to make an action, such as:
-                                </p>
-                                <ul className="list-disc pl-[16px] text-[10.5px] leading-[1.42] text-[#666666] mb-[10px] space-y-[2px]">
-                                  <li>Shortcuts → Ctrl/Cmd + C for copy;</li>
-                                  <li>
-                                    Text prompt → “Hello” + Enter key to record text or a phrase.
-                                  </li>
-                                </ul>
-                                <p className="text-[10.5px] leading-[1.38] text-[#666666] mb-[10px]">
-                                  Some keys may not be captured during recording because another app is using them.
-                                </p>
-                                <p className="text-[10.5px] leading-[1.38] text-[#666666]">
-                                  Use advance mode to add delays, choose keys manually, or insert missed keys.
-                                </p>
-                              </div>
-
-                              <button
-                                onClick={() =>
-                                  showToast('Actions documentation opened')
-                                }
-                                className="mt-[14px] text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
-                              >
-                                Discover more about Actions
-                              </button>
-                            </div>
+                            {renderHintCard('min-h-[230px]', 'Press a key combination or phrase to make an action (e.g. Ctrl+C or text prompt). Use advance mode to add delays or pick keys manually.', 'Actions documentation opened', 'Discover more about Actions')}
                           </div>
                         ) : (
                           /* Advance Mode ON (Screenshots 1–7) */
@@ -6717,169 +6143,31 @@ export default function App() {
 
                                         <AnimatePresence>
                                           {isDropdownOpen && (
-                                            <motion.div
-                                              initial={{
-                                                opacity: 0,
-                                                y: -4,
-                                                scale: 0.96,
-                                              }}
-                                              animate={{
-                                                opacity: 1,
-                                                y: 0,
-                                                scale: 1,
-                                              }}
-                                              exit={{
-                                                opacity: 0,
-                                                y: -4,
-                                                scale: 0.96,
-                                              }}
-                                              transition={{
-                                                duration: 0.2,
-                                                ease: [0.32, 0.72, 0, 1],
-                                              }}
-                                              className="absolute top-[30px] left-0 right-0 bg-white rounded-[16px] shadow-[0_6px_20px_rgba(0,0,0,0.12)] border border-black/[0.05] overflow-hidden z-50"
-                                            >
-                                              <div className="h-[30px] bg-[#e6e6e6] px-[10px] flex items-center gap-[6px]">
-                                                <Search className="w-[10.5px] h-[10.5px] text-[#555555] stroke-[2] shrink-0" />
-                                                <input
-                                                  type="text"
-                                                  value={gestureKeySearch}
-                                                  onChange={(e) =>
-                                                    setGestureKeySearch(
-                                                      e.target.value
-                                                    )
-                                                  }
-                                                  placeholder="Search a key"
-                                                  className="w-full bg-transparent text-[10px] text-[#333333] placeholder:text-[#9c9c9c] focus:outline-none"
-                                                />
-                                              </div>
-
-                                              <div className="max-h-[220px] overflow-y-auto list-accordion-scroll divide-y divide-[#eeeeee]">
-                                                {BASIC_KEY_SECTIONS.map((sec) => {
-                                                  const matchingItems =
-                                                    sec.items.filter((it) => {
-                                                      if (
-                                                        !gestureKeySearch.trim()
-                                                      )
-                                                        return true;
-                                                      const q =
-                                                        gestureKeySearch.toLowerCase();
-                                                      const lbl = (
-                                                        it.listLabel ||
-                                                        it.main.replace(
-                                                          /\n/g,
-                                                          ' '
-                                                        )
-                                                      ).toLowerCase();
-                                                      return lbl.includes(q);
-                                                    });
-                                                  if (matchingItems.length === 0)
-                                                    return null;
-                                                  const isSecOpen =
-                                                    expandedGestureSection ===
-                                                      sec.title ||
-                                                    !!gestureKeySearch.trim();
-                                                  return (
-                                                    <div key={sec.title}>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          setExpandedGestureSection(
-                                                            expandedGestureSection ===
-                                                              sec.title
-                                                              ? null
-                                                              : sec.title
-                                                          )
+                                            <KeySearchDropdown
+                                              search={gestureKeySearch}
+                                              onSearchChange={setGestureKeySearch}
+                                              expandedSection={expandedGestureSection}
+                                              onToggleSection={(sec) =>
+                                                setExpandedGestureSection(expandedGestureSection === sec ? null : sec)
+                                              }
+                                              dropdownClass="right-0"
+                                              maxHeightClass="max-h-[220px]"
+                                              btnHeightClass="h-[28px]"
+                                              onSelect={(it) => {
+                                                const itemName = it.listLabel || it.main.replace(/\n/g, ' ');
+                                                setActionAdvanceSteps((prev) =>
+                                                  prev.map((s) =>
+                                                    s.id === step.id
+                                                      ? {
+                                                          ...s,
+                                                          keyLabel: it.isClearIcon ? '' : itemName,
                                                         }
-                                                        className={`w-full h-[28px] px-[11px] flex items-center justify-between text-[10.5px] font-normal transition-colors cursor-pointer ${
-                                                          isSecOpen
-                                                            ? 'bg-[#0051ff] text-white'
-                                                            : 'bg-white text-[#555555] hover:bg-[#0051ff] hover:text-white'
-                                                        }`}
-                                                      >
-                                                        <span className="truncate">
-                                                          {sec.title}
-                                                        </span>
-                                                        {isSecOpen ? (
-                                                          <ChevronUp className="w-[11px] h-[11px] shrink-0" />
-                                                        ) : (
-                                                          <ChevronDown className="w-[11px] h-[11px] shrink-0" />
-                                                        )}
-                                                      </button>
-                                                      <AnimatePresence
-                                                        initial={false}
-                                                      >
-                                                        {isSecOpen && (
-                                                          <motion.div
-                                                            initial={{
-                                                              height: 0,
-                                                              opacity: 0,
-                                                            }}
-                                                            animate={{
-                                                              height: 'auto',
-                                                              opacity: 1,
-                                                            }}
-                                                            exit={{
-                                                              height: 0,
-                                                              opacity: 0,
-                                                            }}
-                                                            transition={{
-                                                              duration: 0.2,
-                                                            }}
-                                                            className="bg-white py-[2px] overflow-hidden"
-                                                          >
-                                                            {matchingItems.map(
-                                                              (it) => {
-                                                                const itemName =
-                                                                  it.listLabel ||
-                                                                  it.main.replace(
-                                                                    /\n/g,
-                                                                    ' '
-                                                                  );
-                                                                return (
-                                                                  <button
-                                                                    key={it.id}
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                      setActionAdvanceSteps(
-                                                                        (
-                                                                          prev
-                                                                        ) =>
-                                                                          prev.map(
-                                                                            (
-                                                                              s
-                                                                            ) =>
-                                                                              s.id ===
-                                                                              step.id
-                                                                                ? {
-                                                                                    ...s,
-                                                                                    keyLabel:
-                                                                                      it.isClearIcon
-                                                                                        ? ''
-                                                                                        : itemName,
-                                                                                  }
-                                                                                : s
-                                                                          )
-                                                                      );
-                                                                      setActiveAdvanceStepDropdown(
-                                                                        null
-                                                                      );
-                                                                    }}
-                                                                    className="w-full h-[25px] px-[12px] text-left text-[10.5px] text-[#555555] hover:bg-[#0051ff] hover:text-white transition-colors flex items-center cursor-pointer"
-                                                                  >
-                                                                    {itemName}
-                                                                  </button>
-                                                                );
-                                                              }
-                                                            )}
-                                                          </motion.div>
-                                                        )}
-                                                      </AnimatePresence>
-                                                    </div>
-                                                  );
-                                                })}
-                                              </div>
-                                            </motion.div>
+                                                      : s
+                                                  )
+                                                );
+                                                setActiveAdvanceStepDropdown(null);
+                                              }}
+                                            />
                                           )}
                                         </AnimatePresence>
                                       </div>
@@ -7583,7 +6871,7 @@ export default function App() {
                                           {section.title}
                                         </span>
                                         <span className="text-[11px] font-normal text-[#a6a6a6] truncate">
-                                          {section.listPreview}
+                                          {`[ ${section.items.slice(0, 6).map((it) => it.listLabel || it.main.replace(/\n/g, ' ') || it.id).join(', ')}... ]`}
                                         </span>
                                       </div>
                                       {isExpanded ? (
@@ -7664,31 +6952,7 @@ export default function App() {
                         </button>
 
                         {customItemsByTab.Action.length === 0 ? (
-                          <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] flex flex-col items-center justify-center px-[22px] text-center">
-                            <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] mb-[14px]">
-                              Make your first Action!
-                            </h3>
-                            <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
-                              An action is a recordable macro that captures a sequence of key presses.
-                            </p>
-                            <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
-                              You can record multiple keys in the desired order, and then assign the action to a button.
-                            </p>
-                            <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
-                              Once assigned, pressing the button will automatically perform the entire sequence of recorded keys, saving you time and effort.
-                            </p>
-                            <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[22px]">
-                              This feature is perfect for repetitive tasks, custom shortcuts, or complex commands.
-                            </p>
-                            <button
-                              onClick={() =>
-                                showToast('Actions documentation opened')
-                              }
-                              className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black cursor-pointer"
-                            >
-                              Discover more about Actions
-                            </button>
-                          </div>
+                          renderEmptyState('Make your first Action!', 'An action is a recordable macro that captures a sequence of key presses to perform complex tasks or shortcuts.', 'Actions documentation opened', 'Discover more about Actions')
                         ) : (
                           renderCustomItemGroups('Action', customItemsByTab.Action, 'My Actions')
                         )}
@@ -7716,53 +6980,7 @@ export default function App() {
                         </button>
 
                         {customItemsByTab['Multi-A'].length === 0 ? (
-                          <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] flex flex-col items-center justify-center px-[20px] text-center">
-                            <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] mb-[14px]">
-                              Make your first Multiaction!
-                            </h3>
-                            <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
-                              Multiactions let you assign multiple functions to a single button based on how you interact with it.
-                            </p>
-
-                            <div className="w-full text-[10.5px] leading-[1.45] text-[#666666] mb-[11px] space-y-[2px]">
-                              <div className="flex items-start">
-                                <span className="w-3 text-left shrink-0">•</span>
-                                <span className="flex-1 text-center">
-                                  Tap the button to play or pause your music.
-                                </span>
-                              </div>
-                              <div className="flex items-start">
-                                <span className="w-3 text-left shrink-0">•</span>
-                                <span className="flex-1 text-center">
-                                  Double tap it to skip to the next track.
-                                </span>
-                              </div>
-                              <div className="flex items-start">
-                                <span className="w-3 text-left shrink-0">•</span>
-                                <span className="flex-1 text-center">
-                                  Hold the button to stop.
-                                </span>
-                              </div>
-                              <div className="flex items-start">
-                                <span className="w-3 text-left shrink-0">•</span>
-                                <span className="flex-1 text-center">
-                                  Tap and hold it to activate your voice assistant.
-                                </span>
-                              </div>
-                            </div>
-
-                            <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[22px]">
-                              This flexibility means one button can handle several tasks, streamlining your workflow and reducing the need for additional controls.
-                            </p>
-                            <button
-                              onClick={() =>
-                                showToast('Multiactions documentation opened')
-                              }
-                              className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black cursor-pointer"
-                            >
-                              Discover more about Multiactions
-                            </button>
-                          </div>
+                          renderEmptyState('Make your first Multiaction!', 'Multiactions let you assign multiple functions to a single button based on how you interact with it (tap, double tap, hold, tap+hold).', 'Multiactions documentation opened', 'Discover more about Multiactions')
                         ) : (
                           renderCustomItemGroups('Multi-A', customItemsByTab['Multi-A'], 'My Multiactions')
                         )}
@@ -7790,25 +7008,7 @@ export default function App() {
                         </button>
 
                         {customItemsByTab['Smart-A'].length === 0 ? (
-                          <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] flex flex-col items-center justify-center px-[24px] text-center">
-                            <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] mb-[14px]">
-                              Make your first Smart Action!
-                            </h3>
-                            <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
-                              A smart action lets you type text, run commands, open websites, or launch apps with a single key press.
-                            </p>
-                            <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[22px]">
-                              Create one, then assign it to a button to trigger it instantly.
-                            </p>
-                            <button
-                              onClick={() =>
-                                showToast('Smart Actions documentation opened')
-                              }
-                              className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black cursor-pointer"
-                            >
-                              Discover more about Smart Actions
-                            </button>
-                          </div>
+                          renderEmptyState('Make your first Smart Action!', 'A smart action lets you type text, run commands, open websites, or launch apps with a single key press.', 'Smart Actions documentation opened', 'Discover more about Smart Actions')
                         ) : (
                           renderCustomItemGroups('Smart-A', customItemsByTab['Smart-A'], 'My Smart Actions')
                         )}
@@ -7877,7 +7077,7 @@ export default function App() {
                     viewBox="0 0 14 17"
                     fill="currentColor"
                   >
-                    <path d="M11.66 9.03C11.64 6.95 13.36 5.93 13.44 5.88C12.46 4.46 10.95 4.26 10.42 4.2C9.15 4.07 7.92 4.95 7.27 4.95C6.62 4.95 5.63 4.21 4.57 4.23C3.19 4.25 1.91 5.03 1.21 6.26C-0.24 8.77 0.84 12.47 2.24 14.49C2.93 15.49 3.74 16.6 4.82 16.56C5.86 16.52 6.26 15.89 7.51 15.89C8.76 15.89 9.13 16.56 10.21 16.54C11.33 16.52 12.03 15.53 12.71 14.53C13.51 13.37 13.83 12.24 13.85 12.18C13.82 12.17 11.68 11.35 11.66 9.03ZM9.58 2.86C10.15 2.17 10.54 1.21 10.43 0.25C9.6 0.28 8.58 0.8 7.99 1.49C7.47 2.09 7.01 3.07 7.14 4.01C8.06 4.08 8.99 3.55 9.58 2.86Z" />
+                    <path d="M11.7 9c0-2 1.7-3.1 1.7-3.1-1-1.4-2.5-1.6-3-1.7-1.3-.1-2.5.8-3.2.8s-1.6-.7-2.7-.7c-1.4 0-2.7.8-3.4 2-1.4 2.5-.4 6.2 1 8.2.7 1 1.5 2.1 2.6 2.1 1 0 1.4-.7 2.7-.7s1.6.7 2.7.7c1.1 0 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.1-2.4 0 0-2.1-.8-2-3.2zm-2.1-6.1c.6-.7 1-1.7.9-2.6-.9 0-1.9.5-2.5 1.2-.5.6-1 1.6-.8 2.5.9.1 1.8-.4 2.4-1.1z" />
                   </svg>
                 </button>
                 <button
@@ -7939,28 +7139,15 @@ export default function App() {
                   </div>
 
                   <div className="mt-[10px]">
-                    {preset.hasPreview ? (
-                      <div className="grid grid-cols-2 gap-[8px]">
+                    <div className={preset.hasPreview ? 'grid grid-cols-2 gap-[8px]' : ''}>
+                      {preset.hasPreview && (
                         <button
                           onClick={() => setPreviewPreset(preset)}
                           className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
                         >
                           Preview
                         </button>
-                        <button
-                          onClick={() => handleInstallPreset(preset)}
-                          disabled={isInstalled}
-                          aria-label={
-                            isInstalled
-                              ? `${preset.title} preset already installed on this profile`
-                              : `Install ${preset.title} preset`
-                          }
-                          className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
-                        >
-                          {isInstalled ? 'Installed' : 'Install'}
-                        </button>
-                      </div>
-                    ) : (
+                      )}
                       <button
                         onClick={() => handleInstallPreset(preset)}
                         disabled={isInstalled}
@@ -7969,11 +7156,11 @@ export default function App() {
                             ? `${preset.title} preset already installed on this profile`
                             : `Install ${preset.title} preset`
                         }
-                        className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
+                        className={`${preset.hasPreview ? 'h-[27px]' : 'w-full h-[27px]'} rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white`}
                       >
                         {isInstalled ? 'Installed' : 'Install'}
                       </button>
-                    )}
+                    </div>
                   </div>
                 </div>
               );
@@ -8143,21 +7330,20 @@ export default function App() {
                     <span>Danger zone</span>
                   </div>
                   <div className="space-y-[7px]">
-                    <button
-                      type="button"
-                      onClick={handleResetLocalConfig}
-                      className="w-full h-[27px] rounded-full bg-white hover:bg-[#e01b24] text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
-                    >
-                      Reset local config
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleAdvanceFlash()}
-                      title="Copies a validated RP2040 UF2 to an already-mounted RPI-RP2 BOOTSEL drive in the desktop app"
-                      className="w-full h-[27px] rounded-full bg-white hover:bg-[#e01b24] text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
-                    >
-                      Advance flash
-                    </button>
+                    {[
+                      { label: 'Reset local config', onClick: handleResetLocalConfig },
+                      { label: 'Advance flash', onClick: () => void handleAdvanceFlash(), title: 'Copies a validated RP2040 UF2 to an already-mounted RPI-RP2 BOOTSEL drive in the desktop app' },
+                    ].map(btn => (
+                      <button
+                        key={btn.label}
+                        type="button"
+                        onClick={btn.onClick}
+                        title={btn.title}
+                        className="w-full h-[27px] rounded-full bg-white hover:bg-[#e01b24] text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -8270,11 +7456,7 @@ export default function App() {
                       const keySlot = GRID_MACRO_KEY_SLOTS[index];
                       const isHovered = keySlot !== undefined && hoveredPreviewSlot === keySlot;
                       const shortcut = action.multi
-                        ? `Tap ${formatPresetSequence(action.multi.onTap, presetOs).toLowerCase()}${
-                            action.multi.doubleTap
-                              ? ` · Double tap ${formatPresetSequence(action.multi.doubleTap, presetOs).toLowerCase()}`
-                              : ''
-                          }`
+                        ? `Tap ${formatPresetSequence(action.multi.onTap, presetOs).toLowerCase()}${action.multi.doubleTap ? ` · Double tap ${formatPresetSequence(action.multi.doubleTap, presetOs).toLowerCase()}` : ''}`
                         : formatPresetSequence(action.keys, presetOs).toLowerCase();
                       return (
                         <div
@@ -8285,26 +7467,16 @@ export default function App() {
                         >
                           <span
                             data-preview-action-number={index + 1}
-                            className={`mt-[1px] w-[21px] h-[21px] shrink-0 rounded-full bg-white text-[9px] font-medium flex items-center justify-center transition-all duration-150 ${
-                              isHovered
-                                ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]'
-                                : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
-                            }`}
+                            className={`mt-[1px] w-[21px] h-[21px] shrink-0 rounded-full bg-white text-[9px] font-medium flex items-center justify-center transition-all duration-150 ${isHovered ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]' : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'}`}
                           >
                             {index + 1}
                           </span>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-[2px]">
-                              <span className="text-[14px] font-medium leading-[1.2] text-[#222]">
-                                {action.name}
-                              </span>
-                              <span className="text-[12px] font-medium leading-[1.2] text-[#222]">
-                                {shortcut}
-                              </span>
+                              <span className="text-[14px] font-medium leading-[1.2] text-[#222]">{action.name}</span>
+                              <span className="text-[12px] font-medium leading-[1.2] text-[#222]">{shortcut}</span>
                             </div>
-                            <p className="mt-[4px] text-[11.5px] leading-[1.35] text-[#999]">
-                              {action.description}
-                            </p>
+                            <p className="mt-[4px] text-[11.5px] leading-[1.35] text-[#999]">{action.description}</p>
                           </div>
                         </div>
                       );
@@ -8377,30 +7549,20 @@ export default function App() {
                           onMouseLeave={() => setHoveredPreviewDial(null)}
                           className="flex items-start gap-[11px] min-w-0"
                         >
-                        <span
-                          data-preview-dial-action-number={actionNumber}
-                          className={`mt-[1px] w-[21px] h-[21px] shrink-0 rounded-full bg-white text-[9px] font-medium flex items-center justify-center transition-all duration-150 ${
-                            isHovered
-                              ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]'
-                              : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
-                          }`}
-                        >
-                          {actionNumber}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-[2px]">
-                            <span className="text-[14px] font-medium leading-[1.2] text-[#222]">
-                              {action.name}
-                            </span>
-                            <span className="text-[12px] font-medium leading-[1.2] text-[#222]">
-                              {formatPresetSequence(action.keys, presetOs).toLowerCase()}
-                            </span>
+                          <span
+                            data-preview-dial-action-number={actionNumber}
+                            className={`mt-[1px] w-[21px] h-[21px] shrink-0 rounded-full bg-white text-[9px] font-medium flex items-center justify-center transition-all duration-150 ${isHovered ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]' : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'}`}
+                          >
+                            {actionNumber}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-[2px]">
+                              <span className="text-[14px] font-medium leading-[1.2] text-[#222]">{action.name}</span>
+                              <span className="text-[12px] font-medium leading-[1.2] text-[#222]">{formatPresetSequence(action.keys, presetOs).toLowerCase()}</span>
+                            </div>
+                            <p className="mt-[4px] text-[11.5px] leading-[1.35] text-[#999]">{action.description}</p>
                           </div>
-                          <p className="mt-[4px] text-[11.5px] leading-[1.35] text-[#999]">
-                            {action.description}
-                          </p>
                         </div>
-                      </div>
                       );
                     })}
                   </div>
@@ -8752,27 +7914,14 @@ function CheatSheetModal({
                   <span className="text-[9px] font-mono font-bold text-white/40">
                     {index + 1}
                   </span>
-                  {isSmartAction ? (
-                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300">
-                      Smart
-                    </span>
-                  ) : isMultiAction ? (
-                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-amber-500/20 text-amber-300">
-                      Multi
-                    </span>
-                  ) : isCheatSheetAction ? (
-                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300">
-                      HUD
-                    </span>
-                  ) : isLayerCycle ? (
-                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
-                      Lyr
-                    </span>
-                  ) : isProfileCycle ? (
-                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-purple-500/20 text-purple-300">
-                      Prof
-                    </span>
-                  ) : null}
+                  {(() => {
+                    const badge = isSmartAction ? ['Smart', 'bg-indigo-500/20 text-indigo-300']
+                      : isMultiAction ? ['Multi', 'bg-amber-500/20 text-amber-300']
+                      : isCheatSheetAction ? ['HUD', 'bg-cyan-500/20 text-cyan-300']
+                      : isLayerCycle ? ['Lyr', 'bg-emerald-500/20 text-emerald-300']
+                      : isProfileCycle ? ['Prof', 'bg-purple-500/20 text-purple-300'] : null;
+                    return badge ? <span className={`text-[7.5px] font-semibold px-1 py-0.2 rounded ${badge[1]}`}>{badge[0]}</span> : null;
+                  })()}
                 </div>
 
                 {/* Center: Key Label + Optional Icon */}

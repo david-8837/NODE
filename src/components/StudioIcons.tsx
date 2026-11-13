@@ -203,34 +203,37 @@ type PresetAppIconConfig = {
   iconMode: 'fill' | 'stroke';
 };
 
+const lg = (a: string, b: string) => `linear-gradient(145deg, ${a}, ${b})`;
+const W = '#ffffff';
+
 const PRESET_APP_ICON_CONFIGS: Record<string, PresetAppIconConfig> = {
-  chatgpt: { iconId: 'brand-openai', background: 'linear-gradient(145deg, #20b98e, #087157)', foreground: '#ffffff', iconMode: 'stroke' },
-  vscode: { iconId: 'brand-vscode', background: 'linear-gradient(145deg, #35b8ed, #0068b7)', foreground: '#ffffff', iconMode: 'stroke' },
-  github: { iconId: 'brand-github', background: 'linear-gradient(145deg, #41454d, #17191e)', foreground: '#ffffff', iconMode: 'fill' },
-  terminal: { iconId: 'terminal', background: 'linear-gradient(145deg, #26384b, #101722)', foreground: '#a5f3c3', iconMode: 'stroke' },
-  docker: { iconId: 'brand-docker', background: 'linear-gradient(145deg, #43bdf0, #0878c9)', foreground: '#ffffff', iconMode: 'fill' },
-  chrome_devtools: { iconId: 'brand-chrome', background: 'linear-gradient(145deg, #424854, #20242c)', foreground: '#ffffff', iconMode: 'fill' },
-  photoshop: { iconId: 'brand-adobe-photoshop', background: 'linear-gradient(145deg, #06395a, #001e36)', foreground: '#45b8ff', iconMode: 'stroke' },
-  illustrator: { iconId: 'brand-adobe-illustrator', background: 'linear-gradient(145deg, #542100, #2b0800)', foreground: '#ffad35', iconMode: 'stroke' },
-  premiere: { iconId: 'brand-adobe-premiere', background: 'linear-gradient(145deg, #392d72, #18113e)', foreground: '#b9a8ff', iconMode: 'stroke' },
-  aftereffects: { iconId: 'brand-adobe-after-effects', background: 'linear-gradient(145deg, #342361, #171333)', foreground: '#d9a9ff', iconMode: 'stroke' },
-  davinci: { iconId: 'brand-davinciresolve', background: 'linear-gradient(145deg, #343a46, #171b22)', foreground: '#ffffff', iconMode: 'fill' },
-  blender: { iconId: 'brand-blender', background: 'linear-gradient(145deg, #39576b, #182a39)', foreground: '#ff9a44', iconMode: 'fill' },
-  figma: { iconId: 'brand-figma', background: 'linear-gradient(145deg, #353535, #171717)', foreground: '#ffffff', iconMode: 'fill' },
-  framer: { iconId: 'brand-framer', background: 'linear-gradient(145deg, #25baff, #0751e7)', foreground: '#ffffff', iconMode: 'fill' },
-  canva: { iconId: 'brand-canva', background: 'linear-gradient(145deg, #00c4cc, #7134d8)', foreground: '#ffffff', iconMode: 'fill' },
-  audacity: { iconId: 'brand-audacity', background: 'linear-gradient(145deg, #343b70, #171b37)', foreground: '#ffe36b', iconMode: 'fill' },
-  affinity: { iconId: 'brand-affinity', background: 'linear-gradient(145deg, #6053b7, #14677a)', foreground: '#ffffff', iconMode: 'fill' },
-  excel: { iconId: 'brand-microsoft-excel', background: 'linear-gradient(145deg, #20a366, #075b36)', foreground: '#ffffff', iconMode: 'fill' },
-  word: { iconId: 'brand-microsoft-word', background: 'linear-gradient(145deg, #3d8de6, #1557b0)', foreground: '#ffffff', iconMode: 'fill' },
-  powerpoint: { iconId: 'brand-microsoft-powerpoint', background: 'linear-gradient(145deg, #f17848, #b93c1f)', foreground: '#ffffff', iconMode: 'fill' },
-  notion: { iconId: 'brand-notion', background: 'linear-gradient(145deg, #ffffff, #e8e8e8)', foreground: '#171717', iconMode: 'fill' },
-  slack: { iconId: 'brand-slack', background: 'linear-gradient(145deg, #ffffff, #f0eaf2)', foreground: '#611f69', iconMode: 'fill' },
-  zoom: { iconId: 'brand-zoom', background: 'linear-gradient(145deg, #55a5ff, #1674e8)', foreground: '#ffffff', iconMode: 'fill' },
-  obs: { iconId: 'brand-obsstudio', background: 'linear-gradient(145deg, #424a56, #17191f)', foreground: '#ffffff', iconMode: 'fill' },
-  discord: { iconId: 'brand-discord', background: 'linear-gradient(145deg, #8790ff, #4d58d7)', foreground: '#ffffff', iconMode: 'fill' },
-  spotify: { iconId: 'brand-spotify', background: 'linear-gradient(145deg, #47e184, #14a84e)', foreground: '#102117', iconMode: 'fill' },
-  windows: { iconId: 'brand-windows', background: 'linear-gradient(145deg, #35a6ed, #0068bc)', foreground: '#ffffff', iconMode: 'fill' },
+  chatgpt: { iconId: 'brand-openai', background: lg('#20b98e', '#087157'), foreground: W, iconMode: 'stroke' },
+  vscode: { iconId: 'brand-vscode', background: lg('#35b8ed', '#0068b7'), foreground: W, iconMode: 'stroke' },
+  github: { iconId: 'brand-github', background: lg('#41454d', '#17191e'), foreground: W, iconMode: 'fill' },
+  terminal: { iconId: 'terminal', background: lg('#26384b', '#101722'), foreground: '#a5f3c3', iconMode: 'stroke' },
+  docker: { iconId: 'brand-docker', background: lg('#43bdf0', '#0878c9'), foreground: W, iconMode: 'fill' },
+  chrome_devtools: { iconId: 'brand-chrome', background: lg('#424854', '#20242c'), foreground: W, iconMode: 'fill' },
+  photoshop: { iconId: 'brand-adobe-photoshop', background: lg('#06395a', '#001e36'), foreground: '#45b8ff', iconMode: 'stroke' },
+  illustrator: { iconId: 'brand-adobe-illustrator', background: lg('#542100', '#2b0800'), foreground: '#ffad35', iconMode: 'stroke' },
+  premiere: { iconId: 'brand-adobe-premiere', background: lg('#392d72', '#18113e'), foreground: '#b9a8ff', iconMode: 'stroke' },
+  aftereffects: { iconId: 'brand-adobe-after-effects', background: lg('#342361', '#171333'), foreground: '#d9a9ff', iconMode: 'stroke' },
+  davinci: { iconId: 'brand-davinciresolve', background: lg('#343a46', '#171b22'), foreground: W, iconMode: 'fill' },
+  blender: { iconId: 'brand-blender', background: lg('#39576b', '#182a39'), foreground: '#ff9a44', iconMode: 'fill' },
+  figma: { iconId: 'brand-figma', background: lg('#353535', '#171717'), foreground: W, iconMode: 'fill' },
+  framer: { iconId: 'brand-framer', background: lg('#25baff', '#0751e7'), foreground: W, iconMode: 'fill' },
+  canva: { iconId: 'brand-canva', background: lg('#00c4cc', '#7134d8'), foreground: W, iconMode: 'fill' },
+  audacity: { iconId: 'brand-audacity', background: lg('#343b70', '#171b37'), foreground: '#ffe36b', iconMode: 'fill' },
+  affinity: { iconId: 'brand-affinity', background: lg('#6053b7', '#14677a'), foreground: W, iconMode: 'fill' },
+  excel: { iconId: 'brand-microsoft-excel', background: lg('#20a366', '#075b36'), foreground: W, iconMode: 'fill' },
+  word: { iconId: 'brand-microsoft-word', background: lg('#3d8de6', '#1557b0'), foreground: W, iconMode: 'fill' },
+  powerpoint: { iconId: 'brand-microsoft-powerpoint', background: lg('#f17848', '#b93c1f'), foreground: W, iconMode: 'fill' },
+  notion: { iconId: 'brand-notion', background: lg(W, '#e8e8e8'), foreground: '#171717', iconMode: 'fill' },
+  slack: { iconId: 'brand-slack', background: lg(W, '#f0eaf2'), foreground: '#611f69', iconMode: 'fill' },
+  zoom: { iconId: 'brand-zoom', background: lg('#55a5ff', '#1674e8'), foreground: W, iconMode: 'fill' },
+  obs: { iconId: 'brand-obsstudio', background: lg('#424a56', '#17191f'), foreground: W, iconMode: 'fill' },
+  discord: { iconId: 'brand-discord', background: lg('#8790ff', '#4d58d7'), foreground: W, iconMode: 'fill' },
+  spotify: { iconId: 'brand-spotify', background: lg('#47e184', '#14a84e'), foreground: '#102117', iconMode: 'fill' },
+  windows: { iconId: 'brand-windows', background: lg('#35a6ed', '#0068bc'), foreground: W, iconMode: 'fill' },
 };
 
 function getPresetAppIconPath(iconId: string): string | undefined {
@@ -322,13 +325,9 @@ export function EmptyKeyPlusIcon({
   );
 }
 
-const INLINE_CUSTOM_ICON_IDS = new Set([
-  'copy-plus', 'layers-plus', 'plus-square', 'stop-square', 'rows-two', 'type-square',
-  'diamonds', 'circle-fill', 'square-fill', 'globe', 'sparkles', 'play-square', 'image',
-  'refresh', 'arrow-left', 'arrow-right', 'grid-four', 'lock', 'chat-bubble', 'clock',
-  'pause-circle', 'zap', 'maximize', 'apps-plus', 'hexagon-nut', 'minimize', 'moon',
-  'framer-bolt', 'database', 'play-triangle', 'terminal', 'volume',
-]);
+const INLINE_CUSTOM_ICON_IDS = new Set(
+  'copy-plus,layers-plus,plus-square,stop-square,rows-two,type-square,diamonds,circle-fill,square-fill,globe,sparkles,play-square,image,refresh,arrow-left,arrow-right,grid-four,lock,chat-bubble,clock,pause-circle,zap,maximize,apps-plus,hexagon-nut,minimize,moon,framer-bolt,database,play-triangle,terminal,volume'.split(',')
+);
 
 export function CustomPickerIcon({ id, size = 14 }: { id: string; size?: number }) {
   if (id.startsWith('num-')) {

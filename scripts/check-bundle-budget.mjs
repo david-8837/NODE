@@ -42,7 +42,7 @@ function resolveOutputAsset(reference, htmlPath) {
     const url = new URL(reference, pathToFileURL(htmlPath));
     if (url.protocol !== 'file:' || !url.pathname.endsWith('.js')) return undefined;
     const absolutePath = fileURLToPath(url);
-    const relativePath = path.relative(outputDirectory, absolutePath);
+    const relativePath = path.relative(outputDirectory, absolutePath).replaceAll('\\', '/');
     if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return undefined;
     return relativePath;
   } catch {
@@ -64,7 +64,7 @@ if (javascriptAssets.length === 0) {
 const results = javascriptAssets.map((filePath) => {
   const sourceBytes = readFileSync(filePath);
   return {
-    file: path.relative(outputDirectory, filePath),
+    file: path.relative(outputDirectory, filePath).replaceAll('\\', '/'),
     sourceBytes: sourceBytes.length,
     gzipBytes: gzipSync(sourceBytes, { level: 9 }).length,
   };

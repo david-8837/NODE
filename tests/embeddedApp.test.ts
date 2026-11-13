@@ -405,7 +405,11 @@ describe('Legacy inline app regression runtime', () => {
     const file = new (app.window as any).File([fileText], 'profile.json', { type: 'application/json' });
     Object.defineProperty(fileInput!, 'files', { configurable: true, value: [file] });
     fileInput!.dispatchEvent(new app.window.Event('change', { bubbles: true }));
-    await new Promise<void>((resolve) => app.window.setTimeout(resolve, 80));
+    for (let i = 0; i < 20; i++) {
+      await new Promise<void>((resolve) => app.window.setTimeout(resolve, 50));
+      const testStored = JSON.parse(app.window.localStorage.getItem('cm2.state.v2') || 'null');
+      if (testStored?.profiles?.length === 2) break;
+    }
 
     const stored = JSON.parse(app.window.localStorage.getItem('cm2.state.v2') || 'null');
     expect(stored.profiles).toHaveLength(2);
@@ -573,7 +577,9 @@ describe('Legacy inline app regression runtime', () => {
     const settingsTab = [...root.querySelectorAll<HTMLButtonElement>('nav button')]
       .find((button) => button.textContent?.trim() === 'Settings');
     settingsTab!.click();
-    await new Promise((resolve) => app.window.setTimeout(resolve, 350));
+    for (let i = 0; i < 20 && !root.querySelector('button[role="switch"]'); i++) {
+      await new Promise((resolve) => app.window.setTimeout(resolve, 50));
+    }
 
     root.querySelector<HTMLButtonElement>('button[role="switch"]')!.click();
     await new Promise((resolve) => app.window.setTimeout(resolve, 20));

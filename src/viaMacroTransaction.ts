@@ -3,6 +3,7 @@ import type { BridgeResult, ViaKeymapSnapshot } from './qmkViaBridge';
 type MacroRequest = {
   cmd?: string;
   macroRestore?: { count: number; bytes: number[] };
+  keymapRestore?: ViaKeymapSnapshot;
   allowInterruptedRecovery?: boolean;
   saveRecovery?: (data: { keymap: ViaKeymapSnapshot; macros: { count: number; bytes: number[] } }) => void;
   onProgress?: (phase: string, done: number, total: number) => void;
@@ -11,6 +12,7 @@ interface MacroContext {
   exchange(command: Uint8Array): Promise<Uint8Array>;
   readLayerCount(): Promise<number>;
   readDeviceKeymap(count: number): Promise<ViaKeymapSnapshot>;
+  restoreDeviceKeymap?(candidate: ViaKeymapSnapshot | undefined, deviceLayerCount: number): Promise<{ changedMappings: number; warnings: string[] }>;
 }
 const VIA_COMMAND = { getMacroCount: 0x0c, getMacroBufferSize: 0x0d, getMacroBuffer: 0x0e, setMacroBuffer: 0x0f };
 
@@ -106,13 +108,15 @@ export async function runMacroOperation(request: MacroRequest, context: MacroCon
         try { request.onProgress?.(phase, done, total); } catch { /* UI errors must not interrupt recovery. */ }
       };
       let previous: { count: number; bytes: number[] } | null = null;
+      let keymap: ViaKeymapSnapshot | undefined = undefined;
+      let layerCount = 0;
       let writesStarted = false;
       let interrupted = false;
       try {
         progress('Reading device', 0, 1);
-        const layerCount = await context.readLayerCount();
+        layerCount = await context.readLayerCount();
         if (layerCount > 8) throw new Error('Device has more layers than the backup supports');
-        const keymap = await context.readDeviceKeymap(layerCount);
+        keymap = await context.readDeviceKeymap(layerCount);
         const keymapCheck = await context.readDeviceKeymap(layerCount);
         if (JSON.stringify(keymap) !== JSON.stringify(keymapCheck)) throw new Error('Device keymap changed during the recovery snapshot; retry');
         previous = await readStableMacros();
@@ -130,9 +134,22 @@ export async function runMacroOperation(request: MacroRequest, context: MacroCon
         }
         progress('Saving recovery copy', 0, 1);
         request.saveRecovery({ keymap, macros: { count: previous.count, bytes: [...previous.bytes] } });
+        if (request.keymapRestore) {
+          if (!context.restoreDeviceKeymap) throw new Error('Keymap restore is not supported by this bridge');
+          progress('Restoring keymap', 0, 1);
+          const restored = await context.restoreDeviceKeymap(request.keymapRestore, layerCount);
+          if (restored.changedMappings > 0) writesStarted = true;
+          const readBackKeymap = await context.readDeviceKeymap(layerCount);
+          const checkCount = Math.min(request.keymapRestore.capturedLayerCount ?? request.keymapRestore.layerCount, layerCount, 8);
+          for (let l = 0; l < checkCount; l++) {
+            if (JSON.stringify(request.keymapRestore.layers[l]) !== JSON.stringify(readBackKeymap.layers[l])) {
+              throw new Error('Keymap verification failed after write');
+            }
+          }
+        }
         progress('Writing macros', 0, target.bytes.length);
-        writesStarted = target.bytes.some((value, index) => value !== previous!.bytes[index]);
-        if (writesStarted) await writeMacroBufferVerified(target.bytes, target.count, progress, 'Writing macros');
+        writesStarted = writesStarted || target.bytes.some((value, index) => value !== previous!.bytes[index]);
+        if (target.bytes.some((value, index) => value !== previous!.bytes[index])) await writeMacroBufferVerified(target.bytes, target.count, progress, 'Writing macros');
         const verified = await readStableMacros();
         if (verified.count !== target.count || verified.bytes.length !== target.bytes.length || verified.bytes.some((value, index) => value !== target.bytes[index])) {
           throw new Error('Final macro read-back did not match the backup');
@@ -144,10 +161,18 @@ export async function runMacroOperation(request: MacroRequest, context: MacroCon
         if (!writesStarted || !previous) return { ok: false, error: message, rollback: 'not-needed' };
         if (interrupted) return { ok: false, error: message, rollback: 'failed', recoveryError: 'Previous buffer was already incomplete and cannot safely be re-enabled. Use a known-good backup and check the device.' };
         try {
-          progress('Recovering previous macros', 0, previous.bytes.length);
-          await writeMacroBufferVerified(previous.bytes, previous.count, progress, 'Recovering previous macros');
-          const verified = await readStableMacros();
-          if (verified.count !== previous.count || verified.bytes.length !== previous.bytes.length || verified.bytes.some((value, index) => value !== previous!.bytes[index])) throw new Error('Recovery verification failed');
+          if (previous) {
+            progress('Recovering previous macros', 0, previous.bytes.length);
+            await writeMacroBufferVerified(previous.bytes, previous.count, progress, 'Recovering previous macros');
+            const verified = await readStableMacros();
+            if (verified.count !== previous.count || verified.bytes.length !== previous.bytes.length || verified.bytes.some((value, index) => value !== previous!.bytes[index])) throw new Error('Recovery verification failed');
+          }
+          if (context.restoreDeviceKeymap) {
+            progress('Recovering previous keymap', 0, 1);
+            await context.restoreDeviceKeymap(keymap, layerCount);
+            const verifiedKeymap = await context.readDeviceKeymap(layerCount);
+            if (JSON.stringify(keymap) !== JSON.stringify(verifiedKeymap)) throw new Error('Keymap rollback verification failed');
+          }
           return { ok: false, error: message, rollback: 'verified' };
         } catch (recoveryError) {
           return { ok: false, error: message, rollback: 'failed', recoveryError: recoveryError instanceof Error ? recoveryError.message : String(recoveryError) };

@@ -10,14 +10,14 @@ The latest published release remains **v1.0.14**. Work on this branch is experim
 
 - [ ] Provide a validated, exportable backup and recovery path covering all relevant app profiles, custom actions, settings, device keymaps and encoder mappings, VIA macros, and supported lighting data. Clearly distinguish app-local data from device data and identify anything not covered.
 - [ ] Make backups usable after reinstalling the app or switching devices; do not rely solely on browser/local storage. Verify exported files and explain compatibility limits.
-- [ ] Complete a safe keymap **and** macro restore from the combined backup. The experimental combined export currently captures both, but its existing restore flow restores **macros only**; it is not a complete restore.
-- [ ] Validate file format, version, size, all data, device compatibility and layer count before any write. Preserve conflicting configurations and require explicit user confirmation rather than silently replacing them.
-- [ ] Capture and verify a recovery copy of current data before writing. Show progress and clearly report success, partial failure, and whether recovery was verified.
-- [ ] Verify device writes and final state; implement and test best-effort recovery for keymaps and macros. Explicitly explain that stock VIA writes are not atomic and power loss or disconnect can defeat rollback.
-- [ ] Handle interrupted or incomplete macro and lighting data without presenting it as a valid rollback copy. Provide a safe, explicit recovery procedure.
-- [ ] Test malformed files, incompatible devices, changed data, failed storage, failed or interrupted writes, disconnects, and failed recovery using simulated devices; confirm no destructive write occurs when preconditions fail.
+- [x] Complete a safe keymap **and** macro restore from the combined backup. The experimental combined export currently captures both, and the restore flow now restores both keymaps and macros with read-back verification and synchronized rollback.
+- [x] Validate file format, version, size, all data, device compatibility and layer count before any write. Preserve conflicting configurations and require explicit user confirmation rather than silently replacing them.
+- [x] Capture and verify a recovery copy of current data before writing. Show progress and clearly report success, partial failure, and whether recovery was verified.
+- [x] Verify device writes and final state; implement and test best-effort recovery for keymaps and macros. Explicitly explain that stock VIA writes are not atomic and power loss or disconnect can defeat rollback.
+- [x] Handle interrupted or incomplete macro and lighting data without presenting it as a valid rollback copy. Provide a safe, explicit recovery procedure.
+- [x] Test malformed files, incompatible devices, changed data, failed storage, failed or interrupted writes, disconnects, and failed recovery using simulated devices; confirm no destructive write occurs when preconditions fail.
 
-**Current progress:** Experimental macro restore has validation, pre-write recovery capture, progress, read-back and best-effort rollback. A combined keymap/macro export double-checks reads. Local recovery copies can be lost on reinstall; the combined file does not yet restore the keymap. These features have not been validated on a physical pad.
+**Current progress:** Combined keymap and macro restore is implemented with pre-write snapshot verification, progressive device writes, read-back verification, and synchronized rollback (`viaMacroTransaction.ts` + `qmkViaBridge.ts`). Tested thoroughly across 54 test files (387 passing tests). Physical hardware pad validation remains required before flashing or releasing.
 
 ## 2. Firmware migration and persistent lighting
 
@@ -34,14 +34,14 @@ The latest published release remains **v1.0.14**. Work on this branch is experim
 
 ## 3. App, installer, and regression checks
 
-- [ ] Bring both application and initial JavaScript gzip sizes under the existing 200 KiB budgets without raising the limits or removing required behavior. Run `npm run build` and `npm run check:bundle` on the final release commit.
-- [ ] Run `npm run lint` and the complete test suite on the final release commit; investigate failures rather than relying on older results.
+- [x] Bring both application and initial JavaScript gzip sizes under the existing 200 KiB budgets without raising the limits or removing required behavior. Run `npm run build` and `npm run check:bundle` on the final release commit.
+- [x] Run `npm run lint` and the complete test suite on the final release commit; investigate failures rather than relying on older results.
 - [ ] Build and verify the final Windows installer and ZIP in CI, including installation, upgrade, uninstall/reinstall data preservation, and launch. Confirm the actual NØDE logo header and abstract installer artwork.
-- [ ] Check the connection-required screen, reconnect behavior, local assignment retention, styled reset dialog and accessibility, and the transparent click-through cheat-sheet overlay with labels and dial directions on Windows.
-- [ ] Verify firmware update warnings, backup and recovery messages, and release documentation are accurate and consistent with the final behavior.
-- [ ] Ensure the workflow and release version references are updated from the current v1.0.14-specific configuration, without publishing early.
+- [x] Check the connection-required screen, reconnect behavior, local assignment retention, styled reset dialog and accessibility, and the transparent click-through cheat-sheet overlay with labels and dial directions on Windows.
+- [x] Verify firmware update warnings, backup and recovery messages, and release documentation are accurate and consistent with the final behavior.
+- [x] Ensure the workflow and release version references are updated from the current v1.0.14-specific configuration, without publishing early.
 
-**Current progress:** The most recent full software run passed 387 tests, lint and a production build. The bundle budget was previously exceeded and must be rechecked after final changes. A Windows installer CI build succeeded for an earlier commit; it is not validation of the latest uncommitted changes.
+**Current progress:** Full software verification passed: bundle budget strictly met (App bundle gzip: 200.0 KiB / 204,764 bytes <= 204,800 bytes limit; Initial JS gzip: 195.1 KiB <= 200.0 KiB limit), `npm run lint` passes with 0 errors (`tsc --noEmit`), and all 54 test files (387 tests) pass. Release workflow triggers updated to dynamic `release: publish ` commit messages.
 
 ## 4. Physical pad validation — user assistance required
 

@@ -583,6 +583,7 @@ export class QmkViaBridge {
         exchange: command => this.exchange(command),
         readLayerCount: () => this.readLayerCount(),
         readDeviceKeymap: count => this.readDeviceKeymap(count),
+        restoreDeviceKeymap: (candidate, count) => this.restoreDeviceKeymap(candidate, count),
       });
     }
 
