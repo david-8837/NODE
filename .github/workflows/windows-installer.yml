@@ -297,7 +297,7 @@ jobs:
   build-qmk-for-release:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.12'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.13'))
     uses: ./.github/workflows/qmk-build.yml
     permissions:
       contents: read
@@ -305,7 +305,7 @@ jobs:
   publish-verified-builds:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.12'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/arena/56095c72-node' && startsWith(github.event.head_commit.message, 'release: publish 1.0.13'))
     needs: [package-windows, build-qmk-for-release]
     runs-on: ubuntu-latest
     permissions:
@@ -339,7 +339,7 @@ jobs:
           mapfile -d '' zips < <(find release/windows -maxdepth 1 -type f -name '*.zip' -print0)
           [[ ${#installers[@]} == 1 && ${#zips[@]} == 1 ]]
           cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
-          Adds a welcome screen to the assisted Windows installer with refreshed abstract NØDE artwork. Also improves recovery after a device sync failure and prevents a delayed USB permission prompt from reconnecting after disconnect.
+          Shows the NØDE app logo on the connection screen. Removes a redundant desktop debounce delay for QMK firmware-debounced key and dial-button events; firmware debounce and gesture timing remain unchanged. Physical-device latency and switch behavior have not been validated.
 
           Partial safety release: desktop profile recovery, device-keymap conflict checks and authorized USB reconnection improvements. These changes do not complete the requested standalone multi-action firmware or atomic firmware storage redesign. Standard VIA keymap writes are not atomic and can be interrupted. Physical USB, device power-cycle and background-action behavior have not been validated. When presented with a configuration conflict, cancel to preserve the device keymap unless you intend to replace it.
 

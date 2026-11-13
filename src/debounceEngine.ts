@@ -201,6 +201,22 @@ export class DebounceEngine {
     return this.handleSymmetricDefer(slot, slotState, isDown, currentTime, source);
   }
 
+  /** QMK reports are generated after firmware matrix debouncing, not raw GPIO. */
+  public handleFirmwareTransition(slot: GridMacroSlotId, isDown: boolean): boolean {
+    const state = this.slots.get(slot);
+    if (!state) return false;
+    if (state.timerHandle !== null) this.clearTimeoutFn(state.timerHandle);
+    state.timerHandle = null;
+    state.pendingTargetState = null;
+    const currentTime = this.now();
+    state.lastRawState = isDown;
+    state.lastRawChangeTime = currentTime;
+    state.source = 'hardware';
+    if (state.debouncedState === isDown) return false;
+    this.commitStateChange(slot, state, isDown, currentTime, 'hardware', true);
+    return true;
+  }
+
   /**
    * Symmetric deferred debouncing: waits for signal to be continuously stable
    * for debounceIntervalMs before committing either press or release.
@@ -308,7 +324,8 @@ export class DebounceEngine {
     slotState: PerSlotDebounceState,
     newState: boolean,
     currentTime: number,
-    source: 'hardware' | 'simulation'
+    source: 'hardware' | 'simulation',
+    firmwareDebounced = false
   ): void {
     slotState.debouncedState = newState;
     slotState.lastValidatedTime = currentTime;
@@ -318,7 +335,9 @@ export class DebounceEngine {
     this.logDiagnostic({
       category: 'VALIDATED_BUTTON',
       slot,
-      detail: `Validated event: ${eventType.toUpperCase()} after ${this.debounceIntervalMs}ms debounce stability [${source}]`,
+      detail: firmwareDebounced
+        ? `Validated event: ${eventType.toUpperCase()} (QMK firmware debounced) [${source}]`
+        : `Validated event: ${eventType.toUpperCase()} after ${this.debounceIntervalMs}ms debounce stability [${source}]`,
       timestamp: currentTime,
     });
 

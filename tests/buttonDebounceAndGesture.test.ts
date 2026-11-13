@@ -76,6 +76,27 @@ describe('RP2040 Micro Pad Button Debouncing System (Phase 6 Verification)', () 
     activeTimers = [];
   });
 
+  it('handles firmware-debounced transitions immediately and filters duplicate states', () => {
+    const events: string[] = [];
+    const debouncer = new DebounceEngine({
+      now: () => currentTime,
+      setTimeoutFn: mockSetTimeout,
+      clearTimeoutFn: mockClearTimeout,
+      onPress: (slot) => events.push(`${slot}:down`),
+      onRelease: (slot) => events.push(`${slot}:up`),
+    });
+    expect(debouncer.handleFirmwareTransition('r1c1', true)).toBe(true);
+    expect(debouncer.handleFirmwareTransition('r1c1', true)).toBe(false);
+    expect(debouncer.handleFirmwareTransition('r1c1', false)).toBe(true);
+    expect(debouncer.handleFirmwareTransition('r1c1', false)).toBe(false);
+    expect(events).toEqual(['r1c1:down', 'r1c1:up']);
+    expect(activeTimers).toHaveLength(0);
+    debouncer.handleRawInput('r1c2', true, currentTime, 'simulation');
+    expect(events).toHaveLength(2);
+    drainTimersUntil(currentTime + 10);
+    expect(events).toEqual(['r1c1:down', 'r1c1:up', 'r1c2:down']);
+  });
+
   it('1. Twenty individual button presses: each press produces exactly 1 press and 1 release', () => {
     const pressEvents: string[] = [];
     const releaseEvents: string[] = [];

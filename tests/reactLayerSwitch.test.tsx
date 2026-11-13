@@ -53,6 +53,19 @@ describe('absolute layer switching', () => {
     }
   });
 
+  it('passes firmware-debounced press and release to the app immediately', async () => {
+    const event = (pressed: boolean): DecodedHardwareEvent => ({
+      version: 1, type: pressed ? HardwareEventType.BUTTON_DOWN : HardwareEventType.BUTTON_UP,
+      slotIndex: 0, slotId: 'r1c1', sequence: 1, activeLayer: 0,
+      matrixStateMask: pressed ? 1 : 0, isPressed: pressed, isDialRotation: false,
+    });
+    const debouncer = (window as any).macropadDebounceEngine;
+    await act(async () => { listener(event(true)); });
+    expect(debouncer.getSlotDebouncedState('r1c1')).toBe(true);
+    await act(async () => { listener(event(false)); });
+    expect(debouncer.getSlotDebouncedState('r1c1')).toBe(false);
+  });
+
   it('simulates repeated direct transitions with a single click each', async () => {
     const toggle = [...container.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.includes('Simulation off'))!;
     await act(async () => toggle.click());

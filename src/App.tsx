@@ -1306,12 +1306,12 @@ export default function App() {
           switch (event.type) {
             case HardwareEventType.BUTTON_DOWN:
               if (event.slotId) {
-                debounceEngineRef.current?.handleRawInput(event.slotId, true, undefined, 'hardware');
+                debounceEngineRef.current?.handleFirmwareTransition(event.slotId, true);
               }
               break;
             case HardwareEventType.BUTTON_UP:
               if (event.slotId) {
-                debounceEngineRef.current?.handleRawInput(event.slotId, false, undefined, 'hardware');
+                debounceEngineRef.current?.handleFirmwareTransition(event.slotId, false);
               }
               break;
             case HardwareEventType.ENC_CW:
@@ -1323,10 +1323,10 @@ export default function App() {
               setEncoderAngle((prev) => (prev - 30 + 360) % 360);
               break;
             case HardwareEventType.DIAL_DOWN:
-              debounceEngineRef.current?.handleRawInput(GRID_MACRO_ENCODER_SLOT, true, undefined, 'hardware');
+              debounceEngineRef.current?.handleFirmwareTransition(GRID_MACRO_ENCODER_SLOT, true);
               break;
             case HardwareEventType.DIAL_UP:
-              debounceEngineRef.current?.handleRawInput(GRID_MACRO_ENCODER_SLOT, false, undefined, 'hardware');
+              debounceEngineRef.current?.handleFirmwareTransition(GRID_MACRO_ENCODER_SLOT, false);
               break;
           }
         })
@@ -8449,7 +8449,7 @@ export default function App() {
         </div>
         <div className="flex-1 flex items-center justify-center px-6 py-8">
           <div className="w-full max-w-[410px] text-center">
-            <div aria-hidden="true" className="mx-auto mb-7 w-20 h-20 rounded-[24px] bg-black text-white flex items-center justify-center text-3xl">⌁</div>
+            <img src="./icon.png" alt="" aria-hidden="true" className="mx-auto mb-7 w-20 h-20 rounded-[24px] object-cover" />
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#0051ff] mb-3">Grid Macro 1</p>
             <h1 id="device-required-title" className="text-2xl font-semibold tracking-tight">Connect your macropad</h1>
             <p className="mt-3 text-sm leading-6 text-[#626262]">Plug in your Grid Macro 1 to use NØDE Studio. Your assignments stay saved on this computer and will be available when you reconnect.</p>

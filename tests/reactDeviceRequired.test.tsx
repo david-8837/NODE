@@ -35,6 +35,7 @@ afterEach(async () => { await act(async () => root.unmount()); container.remove(
 describe('connection-required workspace', () => {
   it('blocks the workspace until connected, restores it after reconnect and retains local assignments on restart', async () => {
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Connect your macropad');
+    expect(container.querySelector('[role="dialog"] img')?.getAttribute('src')).toBe('./icon.png');
     expect(container.querySelector('.app-shell')?.hasAttribute('inert')).toBe(true);
     const button = [...container.querySelectorAll('button')].find(b => b.textContent === 'Connect macropad')!;
     await act(async () => button.click());
