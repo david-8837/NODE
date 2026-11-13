@@ -53,3 +53,25 @@ The shipped embedded configurator loads `src/qmkViaBridge.ts` and uses WebHID. C
 - The configurator supports up to eight profile layers; this board declares four. Higher device layers are left unchanged and are called out in warnings/backups.
 
 Fake-HID tests verify command framing, supported keycode translation, read-only snapshots, restore behavior, and failure gates. They are not a physical USB, firmware-flash, or real-browser permission test. No schematic or physical board was available for the current work; see `HARDWARE_PREPARATION_CHECKLIST.md` before flashing or claiming device operation.
+
+## Onboard LED and desktop cheat sheet
+
+The VIA keymap no longer forces a layer color at startup or on layer changes. The
+app can explicitly apply Off, Solid, Breath or Rainbow to the one GP16 WS2812
+using the standard VIA RGBLIGHT channel. The settings apply globally, not per
+layer. The app uses volatile (no-EEPROM) writes and verifies the returned values;
+the LED returns to its firmware-saved/default configuration after power loss.
+There is no automatic LED write at app startup or reconnect. A failed or partially
+completed update is reported; it may leave the volatile LED configuration partly
+changed. The updated firmware is needed to prevent older layer-color callbacks
+from replacing the selected effect. Flashing firmware carries risk to existing
+configuration; back up the keymap first and follow the recovery checklist. Snake,
+Gradient, external backlight, Magic and Speed controls are reserved for later.
+
+The Windows desktop cheat sheet uses a separate transparent always-on-top window,
+without bringing the full configurator forward. The app must remain running and
+the pad connected for a mapped hardware button to trigger it. The overlay shows assigned key icons and home-screen key labels from the current layer with fallback symbols; unassigned
+slots appear as small dots, and switching layers still happens through the device. It is
+click-through and can be closed with the mapped toggle action or global shortcut. Windows secure desktop,
+exclusive fullscreen applications and other topmost windows may prevent it from
+appearing above them. Hardware and actual Windows overlay behavior require testing.

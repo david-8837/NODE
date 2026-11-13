@@ -1,3 +1,4 @@
+import type { OverlayIcon } from './cheatSheetIcons';
 export const APP_SETTINGS_STORAGE_KEY = 'node-studio.settings.v1';
 export const APP_VERSION_FALLBACK = '1.0.0';
 export const LATEST_FIRMWARE_RELEASE_API =
@@ -104,7 +105,8 @@ export interface ElectronApi {
   onHardwareSync?: (callback: () => void) => (() => void) | void;
   onResetMacropadKeys?: (callback: () => void) => (() => void) | void;
   onToggleCheatSheet?: (callback: () => void) => (() => void) | void;
-  setCheatSheetActive?: (active: boolean) => Promise<{ ok: boolean; active?: boolean }>;
+  setCheatSheetActive?: (active: boolean, data?: { activeLayer: number; pressed: number; layers: { keys: { icon: OverlayIcon | null; label: string }[] }[] }) => Promise<{ ok: boolean; active?: boolean }>;
+  onCloseCheatSheet?: (callback: () => void) => (() => void) | void;
   onOpenHardwareModal?: (callback: () => void) => (() => void) | void;
 }
 

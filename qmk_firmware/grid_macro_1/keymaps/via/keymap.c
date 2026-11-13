@@ -65,21 +65,8 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
 };
 #endif
 
-layer_state_t layer_state_set_user(layer_state_t state) {
-    switch (get_highest_layer(state)) {
-        case 0: rgblight_setrgb_at(0, 81, 255, 0); break;   // Electric Blue
-        case 1: rgblight_setrgb_at(16, 185, 129, 0); break; // Green
-        case 2: rgblight_setrgb_at(245, 158, 11, 0); break; // Amber
-        case 3: rgblight_setrgb_at(225, 29, 72, 0); break;  // Red
-        default: rgblight_setrgb_at(0, 81, 255, 0); break;
-    }
-    return state;
-}
-
-void keyboard_post_init_user(void) {
-    rgblight_enable_noeeprom();
-    rgblight_setrgb_at(0, 81, 255, 0);
-}
+/* The onboard LED is controlled through QMK's standard VIA RGB light channel.
+ * Do not overwrite the user's chosen color or effect on boot or layer change. */
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     uint8_t row = record->event.key.row;

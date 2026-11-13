@@ -32,6 +32,7 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
   public readonly keycodes = new Map<string, number>();
   public readonly encoderKeycodes = new Map<string, number>();
   public failNextReport = false;
+  public readonly ledValues = new Map<number, number[]>();
 
   public seedKeycode(layer: number, row: number, col: number, keycode: number) {
     this.keycodes.set(`${layer}:${row}:${col}`, keycode);
@@ -77,6 +78,13 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
         `${request[1]}:${request[2]}:${request[3]}`,
         (request[4] << 8) | request[5]
       );
+    } else if (request[0] === 0x07 && request[1] === 2) {
+      const count = request[2] === 4 ? 2 : 1;
+      this.ledValues.set(request[2], Array.from(request.slice(3, 3 + count)));
+      response.set(request.slice(1, 3), 1);
+    } else if (request[0] === 0x08 && request[1] === 2) {
+      response.set(request.slice(1, 3), 1);
+      response.set(this.ledValues.get(request[2]) ?? [0], 3);
     } else if (request[0] === 0x11) {
       response[1] = this.layerCount;
     } else if (request[0] === 0x14) {
@@ -141,6 +149,23 @@ describe('QMK/VIA keycode translation', () => {
 });
 
 describe('QMK/VIA WebHID bridge', () => {
+  it('applies and verifies volatile onboard LED settings without writing keymaps or EEPROM', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    hid.device.reports.length = 0;
+    const result = await bridge.request({ cmd: 'set_onboard_led', lighting: { effect: 1, hue: 85, saturation: 255, brightness: 128 } });
+    expect(result.ok).toBe(true);
+    expect(hid.device.reports.map(report => [...report.slice(0, 5)])).toEqual([
+      [7, 2, 4, 85, 255], [7, 2, 1, 128, 0], [7, 2, 2, 1, 0],
+      [8, 2, 4, 0, 0], [8, 2, 1, 0, 0], [8, 2, 2, 0, 0],
+    ]);
+    hid.device.reports.length = 0;
+    expect((await bridge.request({ cmd: 'set_onboard_led', lighting: { effect: 15, hue: 0, saturation: 0, brightness: 0 } })).ok).toBe(false);
+    expect(hid.device.reports).toHaveLength(0);
+    await bridge.disconnect();
+  });
+
   it('requests the matching HID interface and verifies VIA version and layer count', async () => {
     const hid = new FakeHidApi();
     const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });

@@ -34,6 +34,8 @@ const desktopActionExecutor = createDesktopActionExecutor({
   },
 });
 let mainWindow = null;
+let cheatSheetWindow = null;
+let cheatSheetData = null;
 let tray = null;
 let isQuitting = false;
 let visualSmokeCaptureStarted = false;
@@ -812,18 +814,58 @@ ipcMain.handle('window-close', (event) => {
   }
 });
 
-ipcMain.handle('set-cheat-sheet-active', (event, active) => {
-  if (!isTrustedRenderer(event) || !mainWindow || mainWindow.isDestroyed()) return { ok: false };
-  if (active) {
-    if (!mainWindow.isVisible()) {
-      mainWindow.show();
-    }
-    mainWindow.setAlwaysOnTop(true, 'screen-saver');
-    mainWindow.focus();
-  } else {
-    mainWindow.setAlwaysOnTop(false);
+function ensureCheatSheetWindow() {
+  if (cheatSheetWindow && !cheatSheetWindow.isDestroyed()) return cheatSheetWindow;
+  const window = new BrowserWindow({
+    width: 360, height: 300, frame: false, transparent: true, resizable: false,
+    show: false, skipTaskbar: true, alwaysOnTop: true,
+    webPreferences: { preload: path.join(__dirname, 'cheatSheetPreload.cjs'),
+      nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+  });
+  cheatSheetWindow = window;
+  window.setAlwaysOnTop(true, 'floating');
+  // The HUD is visual only; the toggle key or global shortcut closes it.
+  window.setIgnoreMouseEvents(true, { forward: true });
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', (event) => event.preventDefault());
+  window.webContents.on('did-finish-load', () => {
+    if (cheatSheetData && !window.isDestroyed()) window.webContents.send('cheat-sheet-update', cheatSheetData);
+  });
+  window.on('closed', () => { if (cheatSheetWindow === window) cheatSheetWindow = null; });
+  window.loadFile(path.join(__dirname, 'cheatSheet.html'));
+  return window;
+}
+
+ipcMain.handle('set-cheat-sheet-active', (event, active, data) => {
+  if (!isTrustedRenderer(event) || typeof active !== 'boolean') return { ok: false };
+  if (!active) {
+    cheatSheetData = null;
+    if (cheatSheetWindow && !cheatSheetWindow.isDestroyed()) cheatSheetWindow.hide();
+    return { ok: true, active: false };
   }
-  return { ok: true, active };
+  const tags = new Set(['path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse']);
+  const attrs = new Set(['d', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'width', 'height', 'points', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin']);
+  const validIcon = icon => icon === null || (icon && ['0 0 16 16', '0 0 24 24'].includes(icon.viewBox) &&
+    Array.isArray(icon.shapes) && icon.shapes.length > 0 && icon.shapes.length <= 32 && icon.shapes.every(shape =>
+      shape && tags.has(shape.tag) && shape.attrs && typeof shape.attrs === 'object' &&
+      Object.entries(shape.attrs).every(([key, value]) => attrs.has(key) && typeof value === 'string' && value.length <= 8192 &&
+        (/^(fill|stroke)$/.test(key) ? /^(none|currentColor|#[0-9a-f]{3,8})$/i.test(value) : /^[a-z0-9.,+\-\s]*$/i.test(value)))));
+  if (!data || !Array.isArray(data.layers) || data.layers.length < 1 || data.layers.length > 8 ||
+      !Number.isInteger(data.activeLayer) || data.activeLayer < 0 || data.activeLayer >= data.layers.length ||
+      !Number.isInteger(data.pressed) || data.pressed < -1 || data.pressed > 8 ||
+      !data.layers.every(layer => layer && Array.isArray(layer.keys) && layer.keys.length === 9 && layer.keys.every(key => key && typeof key.label === 'string' && key.label.length <= 256 && validIcon(key.icon)))) return { ok: false };
+  cheatSheetData = data;
+  const window = ensureCheatSheetWindow();
+  if (!window.webContents.isLoading()) window.webContents.send('cheat-sheet-update', data);
+  if (!window.isVisible()) window.showInactive();
+  return { ok: true, active: true };
+});
+
+ipcMain.on('cheat-sheet-close', (event) => {
+  if (!cheatSheetWindow || event.sender !== cheatSheetWindow.webContents || event.senderFrame !== cheatSheetWindow.webContents.mainFrame) return;
+  cheatSheetWindow.hide();
+  cheatSheetData = null;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('trigger-close-cheat-sheet');
 });
 
 ipcMain.handle('window-is-maximized', (event) => {

@@ -27,6 +27,8 @@ const VIA_COMMAND = {
   getDynamicLayerCount: 0x11,
   getDynamicEncoder: 0x14,
   setDynamicEncoder: 0x15,
+  customSetValue: 0x07,
+  customGetValue: 0x08,
   unhandled: 0xff,
 } as const;
 
@@ -513,6 +515,7 @@ export class QmkViaBridge {
     cmd?: string;
     config?: ViaConfiguration;
     snapshot?: ViaKeymapSnapshot;
+    lighting?: { effect: number; hue: number; saturation: number; brightness: number };
   }): Promise<BridgeResult> {
     const generation = this.connectionGeneration;
     const operation = this.requestQueue.then(async () => {
@@ -531,12 +534,36 @@ export class QmkViaBridge {
     cmd?: string;
     config?: ViaConfiguration;
     snapshot?: ViaKeymapSnapshot;
+    lighting?: { effect: number; hue: number; saturation: number; brightness: number };
   }): Promise<BridgeResult> {
-    if (!['set_config', 'get_config', 'restore_config'].includes(request?.cmd ?? '')) {
+    if (!['set_config', 'get_config', 'restore_config', 'set_onboard_led'].includes(request?.cmd ?? '')) {
       return { ok: false, error: 'Unsupported QMK/VIA request' };
     }
     if (!this.device || this.status.state !== 'connected') {
       return { ok: false, error: 'No QMK/VIA device is connected' };
+    }
+
+    if (request.cmd === 'set_onboard_led') {
+      const led = request.lighting;
+      if (!led || ![0, 1, 2, 6].includes(led.effect) ||
+          ![led.hue, led.saturation, led.brightness].every(value => Number.isInteger(value) && value >= 0 && value <= 255)) {
+        return { ok: false, error: 'Invalid onboard LED settings' };
+      }
+      try {
+        // Volatile QMK VIA RGBLIGHT changes only: never save to EEPROM or alter keymaps.
+        const values = led.effect === 0 ? [[2, 0]] : [[4, led.hue, led.saturation], [1, led.brightness], [2, led.effect]];
+        for (const [id, ...value] of values) {
+          const response = await this.exchange(new Uint8Array([VIA_COMMAND.customSetValue, 2, id, ...value]));
+          if (response[1] !== 2 || response[2] !== id) throw new Error('Device did not acknowledge LED setting');
+        }
+        for (const [id, ...value] of values) {
+          const response = await this.exchange(new Uint8Array([VIA_COMMAND.customGetValue, 2, id]));
+          if (response[1] !== 2 || response[2] !== id || value.some((v, i) => Math.abs(response[3 + i] - v) > (id === 1 ? 2 : 0))) {
+            throw new Error('Device could not verify LED setting; firmware may not support this effect');
+          }
+        }
+        return { ok: true };
+      } catch (error) { return { ok: false, error: this.errorMessage(error) }; }
     }
 
     if (request.cmd === 'get_config' || request.cmd === 'restore_config') {

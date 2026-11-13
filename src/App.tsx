@@ -49,6 +49,8 @@ import {
 } from './appSettings';
 import type { QmkViaStatus } from './qmkViaBridge';
 import { buildViaConfiguration } from './qmkProfileSync';
+import { rgbHexToQmkHsv } from './onboardLed';
+import { fallbackIconForAssignment, overlayIconForAssignment } from './cheatSheetIcons';
 import { deviceMatchesConfiguration } from './deviceSyncSafety';
 import type { EmojiCatalogEntry } from './emojiCatalog';
 import { PRESET_CATALOG } from './presetCatalog';
@@ -1431,7 +1433,7 @@ export default function App() {
   const [layerDeleteConfirm, setLayerDeleteConfirm] = useState(false);
   const [layerNames, setLayerNames] = useState<Record<string, string>>(() => savedProfileState?.layerNames ?? {});
   const [lightingTab, setLightingTab] = useState<'Backlight' | 'Underglow'>(
-    'Backlight'
+    'Underglow'
   );
   const [lightingConfig, setLightingConfig] = useState<LightingSettings>(() => savedProfileState?.lightingConfig ?? ({
     Backlight: {
@@ -1756,8 +1758,19 @@ export default function App() {
   );
 
   useEffect(() => {
-    void window.electronAPI?.setCheatSheetActive?.(cheatSheetOpen);
-  }, [cheatSheetOpen]);
+    const setOverlay = window.electronAPI?.setCheatSheetActive;
+    if (!setOverlay) return;
+    if (!cheatSheetOpen) { void setOverlay(false); return; }
+    const layers = currentProfile.layers.slice(0, 8).map(layer => ({
+      keys: GRID_MACRO_KEY_SLOTS.map(slot => ({ icon: overlayIconForAssignment(layer[slot]), label: (layer[slot]?.label || '').slice(0, 256) })),
+    }));
+    void setOverlay(true, { activeLayer: Math.min(activeLayerIndex, layers.length - 1), pressed: GRID_MACRO_KEY_SLOTS.findIndex(slot => slot === activePhysicalPressedSlot), layers });
+  }, [cheatSheetOpen, currentProfile, activeLayerIndex, activePhysicalPressedSlot]);
+
+  useEffect(() => window.electronAPI?.onCloseCheatSheet?.(() => {
+    setCheatSheetOpen(false);
+    cheatSheetHoldSlotRef.current = null;
+  }), []);
 
   useEffect(() => {
     if (!cheatSheetOpen) return;
@@ -4901,20 +4914,23 @@ export default function App() {
                                 return (
                                   <button
                                     key={mode}
+                                    disabled={mode === 'Backlight'}
+                                    title={mode === 'Backlight' ? 'Reserved for future external backlighting' : 'Onboard RGB LED'}
                                     onClick={() => setLightingTab(mode)}
-                                    className={`h-[26px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] text-[10.5px] font-medium transition-all cursor-pointer ${
+                                    className={`h-[26px] rounded-full disabled:opacity-40 disabled:cursor-not-allowed border-[1.5px] border-transparent hover:border-[#0051ff] text-[10.5px] font-medium transition-all cursor-pointer ${
                                       isActiveMode
                                         ? 'bg-[#000000] text-white'
                                         : 'bg-white text-[#555555]'
                                     }`}
                                   >
-                                    {mode}
+                                    {mode === 'Underglow' ? 'Onboard LED' : 'Backlight'}
                                   </button>
                                 );
                               }
                             )}
                           </div>
 
+                          <p className="mb-2 text-[10px] text-[#555]">Onboard RGB LED · applies to every layer. Changes last until power-off. Requires updated firmware.</p>
                           {/* Presets Card */}
                           <div className="bg-[#eeeeee] rounded-[14px] p-[10px] mb-[8px]">
                             <div className="text-[11px] font-normal text-[#555555] mb-[7px] text-left">
@@ -4937,6 +4953,8 @@ export default function App() {
                                 return (
                                   <button
                                     key={presetName}
+                                    disabled={presetName === 'Snake' || presetName === 'Gradient'}
+                                    title={presetName === 'Snake' || presetName === 'Gradient' ? 'Requires multiple LEDs; reserved for later' : ''}
                                     onClick={() =>
                                       setLightingConfig((prev) => ({
                                         ...prev,
@@ -4946,7 +4964,7 @@ export default function App() {
                                         },
                                       }))
                                     }
-                                    className={`h-[24px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] text-[10px] font-medium transition-all cursor-pointer ${
+                                    className={`h-[24px] rounded-full disabled:opacity-40 disabled:cursor-not-allowed border-[1.5px] border-transparent hover:border-[#0051ff] text-[10px] font-medium transition-all cursor-pointer ${
                                       isActivePreset
                                         ? 'bg-[#000000] text-white'
                                         : 'bg-white text-[#555555]'
@@ -4968,8 +4986,6 @@ export default function App() {
                             {(() => {
                               const cfg = lightingConfig[lightingTab];
                               const isOff = cfg.preset === 'Off';
-                              const isAnimated =
-                                cfg.preset !== 'Off' && cfg.preset !== 'Solid';
 
                               return (
                                 <div className="space-y-[8px]">
@@ -5014,9 +5030,7 @@ export default function App() {
                                   {/* Speed Slider */}
                                   <div
                                     className={`flex items-center gap-[8px] ${
-                                      !isAnimated
-                                        ? 'opacity-30 pointer-events-none'
-                                        : ''
+                                      'opacity-30 pointer-events-none'
                                     }`}
                                   >
                                     <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">
@@ -5026,6 +5040,8 @@ export default function App() {
                                       <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
                                       <input
                                         type="range"
+                                        disabled
+                                        title="Reserved for a later lighting update"
                                         min={0}
                                         max={100}
                                         value={cfg.speed}
@@ -5052,9 +5068,7 @@ export default function App() {
                                   {/* Magic Slider */}
                                   <div
                                     className={`flex items-center gap-[8px] ${
-                                      !isAnimated
-                                        ? 'opacity-30 pointer-events-none'
-                                        : ''
+                                      'opacity-30 pointer-events-none'
                                     }`}
                                   >
                                     <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">
@@ -5064,6 +5078,8 @@ export default function App() {
                                       <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
                                       <input
                                         type="range"
+                                        disabled
+                                        title="Reserved for a later lighting update"
                                         min={0}
                                         max={100}
                                         value={cfg.magic}
@@ -5173,14 +5189,18 @@ export default function App() {
 
                           {/* Apply to all layers button */}
                           <button
-                            onClick={() =>
-                              showToast(
-                                `Applied ${lightingTab.toLowerCase()} settings to all layers`
-                              )
-                            }
+                            onClick={async () => {
+                              const cfg = lightingConfig.Underglow;
+                              const hsv = rgbHexToQmkHsv(cfg.colorHex);
+                              const effect = { Off: 0, Solid: 1, Breath: 2, Rainbow: 6 }[cfg.preset as 'Off' | 'Solid' | 'Breath' | 'Rainbow'];
+                              if (!hsv || effect === undefined) { showToast('Select a supported effect and a valid hex color'); return; }
+                              if (!window.macropad) { showToast('Connect the macropad first'); return; }
+                              const result = await window.macropad.request({ cmd: 'set_onboard_led', lighting: { effect, ...hsv, saturation: effect === 6 ? 255 : hsv.saturation, brightness: Math.round(Math.max(0, Math.min(100, cfg.light)) * 255 / 100) } });
+                              showToast(result.ok ? 'Onboard LED updated until power-off' : `LED update failed: ${result.error || 'device unavailable'}`);
+                            }}
                             className="w-full h-[25px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[10px] font-normal text-[#555555] flex items-center justify-center transition-all cursor-pointer"
                           >
-                            Apply to all layers
+                            Apply to onboard LED
                           </button>
                         </motion.div>
                       )}
@@ -8408,17 +8428,17 @@ export default function App() {
 
       {/* MACROPAD CHEAT-SHEET HUD OVERLAY */}
       <AnimatePresence>
-        {cheatSheetOpen && (
-          <CheatSheetModal
-            profile={currentProfile}
-            activeLayerIndex={activeLayerIndex}
-            onSelectLayer={setActiveLayerIndex}
-            activePhysicalSlot={activePhysicalPressedSlot}
-            onClose={() => {
-              setCheatSheetOpen(false);
-              cheatSheetHoldSlotRef.current = null;
-            }}
-          />
+        {cheatSheetOpen && !window.electronAPI?.setCheatSheetActive && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setCheatSheetOpen(false)} role="dialog" aria-label="Macropad cheat sheet">
+            <div className="grid grid-cols-3 gap-3 w-[210px]" aria-label="Key icons">
+              {GRID_MACRO_KEY_SLOTS.map(slot => (
+                <div key={slot} className={`h-[62px] flex flex-col items-center justify-center text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] ${activePhysicalPressedSlot === slot ? 'text-[#77a8ff] scale-90' : ''}`}>
+                  {fallbackIconForAssignment(currentLayer[slot]) === 'empty' ? <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-white/60" /> : <CustomPickerIcon id={fallbackIconForAssignment(currentLayer[slot])} size={26} />}
+                  {currentLayer[slot]?.label && currentLayer[slot].label !== '—' && <span className="text-[10px] leading-tight text-center truncate w-full mt-1">{currentLayer[slot].label}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
