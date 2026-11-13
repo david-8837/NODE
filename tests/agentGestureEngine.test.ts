@@ -30,7 +30,7 @@ describe('AgentGestureEngine: CommonJS Gesture Recognition Equivalence', () => {
 
   it('waits for doubleTapTimer (180ms) when doubleTap is configured before emitting onTap', () => {
     let now = 1000;
-    let timerCallback: (() => void) | null = null;
+    let timerCallback: any = null;
     let timerDelay = 0;
 
     const recognized: any[] = [];
@@ -112,7 +112,7 @@ describe('AgentGestureEngine: CommonJS Gesture Recognition Equivalence', () => {
 
   it('recognizes onHold when key is held continuously past 300ms', () => {
     let now = 1000;
-    let holdTimerCallback: (() => void) | null = null;
+    let holdTimerCallback: any = null;
     let holdDelay = 0;
 
     const recognized: any[] = [];
@@ -155,7 +155,7 @@ describe('AgentGestureEngine: CommonJS Gesture Recognition Equivalence', () => {
 
   it('recognizes tapHold on second press held past 300ms', () => {
     let now = 1000;
-    let timerCallback: (() => void) | null = null;
+    let timerCallback: any = null;
 
     const recognized: any[] = [];
     const engine = new AgentGestureEngine({

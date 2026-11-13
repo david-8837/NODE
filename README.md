@@ -57,6 +57,7 @@ npm run desktop:dev
 ```sh
 npm run lint          # TypeScript check
 npm test               # Unit and integration tests
+npm run test:phase1    # Phase 1 standalone background agent acceptance suite
 npm run build          # Production UI build
 npm run check:bundle   # Enforce shipped JavaScript size budgets
 npm run test:stress    # Stress-test suite
@@ -83,12 +84,35 @@ Before flashing a physical board, read the [hardware preparation checklist](HARD
 | Path | Contents |
 | --- | --- |
 | `src/` | React/TypeScript configurator, profile logic, device protocol, and action handling |
-| `electron/` | Desktop shell, safe IPC bridge, Windows action execution, app discovery, and firmware validation |
+| `electron/` | Desktop shell, standalone background agent, process supervisor, safe IPC bridge, Windows action execution, and app discovery |
 | `firmware/` | CircuitPython and Arduino firmware sources |
 | `qmk_firmware/grid_macro_1/` | QMK/VIA keyboard definition and keymaps |
 | `website/` | Public download landing page and latest-release link resolver |
 | `windows-installer/` | Editable and compiled NSIS installer artwork |
 | `tests/` | Unit, integration, UI, device-protocol, and installer-contract tests |
+| `scripts/` | Bundle budget checks and Phase 1 background agent acceptance test runner |
+
+## Phase 1 Background Agent
+
+Phase 1 introduces an independent Windows background service process that maintains persistent HID communication with the Micro Pad even when NØDE Studio is closed:
+
+- **Standalone Agent**: `electron/backgroundAgent.cjs` runs directly under Node.js 22 in interactive user sessions (Session 1+).
+- **Process Supervisor**: `electron/agentSupervisor.cjs` launches and monitors the agent, enforces single-instance execution via local Named Pipe reservation, and applies crash-loop detection ($\ge 5$ crashes within 60s throttled to 30s restart backoff).
+- **Exclusive HID Access**: Connects to the device (`VID: 0xFEED`, `PID: 0x6001`, `UsagePage: 0xFF60`, `Usage: 0x61`) via `node-hid`.
+- **Local IPC**: Exposes `\\.\pipe\node-studio-ipc` using streaming JSON-line protocol with bi-directional handshake, status reporting, layer switching, profile synchronization with monotonic generation validation, and raw hardware event streaming.
+- **Controlled Fallback**: NØDE Studio gracefully falls back to browser WebHID when the background agent is offline.
+
+To run the background agent supervisor manually:
+
+```sh
+node electron/agentSupervisor.cjs
+```
+
+To run the full acceptance test suite:
+
+```sh
+npm run test:phase1
+```
 
 ## Project documentation
 

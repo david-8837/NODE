@@ -14,6 +14,7 @@
     "clean": "node -e \"for (const target of ['dist', 'server.js', 'dist_electron']) require('node:fs').rmSync(target, { recursive: true, force: true })\"",
     "lint": "tsc --noEmit",
     "test": "vitest run",
+    "test:phase1": "node scripts/run-phase1-acceptance.cjs",
     "test:stress": "vitest run tests/stressTesting.test.ts",
     "audit:cpp": "npx tsx tests/cppcheck_audit.ts",
     "audit:mem": "npx tsx tests/memlab_audit.ts",
