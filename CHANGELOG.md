@@ -14,6 +14,6 @@
 - Validation: 23 targeted tests passed; 406 full-suite tests passed and 2 skipped; Phase 1 acceptance 12/12 passed; TypeScript check and Vite production build passed.
 - The user ran `npm run diagnose:hid`; it found six descriptors, including the expected Raw HID collection on interface 1 (Usage Page `0xFF60`, Usage `0x61`). The Agent opened that collection. During the user's unplug/replug check, it logged `0x48F` on disconnect and reopened the interface; no later read error was reported.
 - The user approved syncing the disposable Studio test profile to the Agent; the sync dialog stated the prior Agent profile would be backed up.
-- The user's physical action check exposed duplicate output (two letters per single action). The Agent now yields foreground dispatch to connected Studio and skips ordinary firmware-native keypresses when standalone. One-letter hardware retest is pending.
+- The user's physical action check exposed duplicate output (two letters per single action). The Agent now yields foreground dispatch to connected Studio and skips ordinary firmware-native keypresses when standalone. After restarting the Agent, the user confirmed a single tap now types one letter.
 - No firmware was flashed and no hardware was modified.
 - Implementation and test results will be appended as phases are completed.
