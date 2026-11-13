@@ -180,6 +180,22 @@ describe('production React app device sync', () => {
     expect(container.textContent).toContain('Original data preserved');
   });
 
+  it('keeps a failed device write paused and visibly preserves the backup', async () => {
+    const request = vi.fn(async ({ cmd }: { cmd: string }) => cmd === 'get_config'
+      ? { ok: true, snapshot: deviceSnapshot() }
+      : { ok: false, error: 'simulated partial write' });
+    Object.defineProperty(window, 'macropad', { configurable: true, value: {
+      getStatus: async () => ({ state: 'connected', device: 'test' }), onStatus: () => () => {}, onHardwareEvent: () => () => {}, onEvent: () => () => {}, request,
+    } });
+    await act(async () => root.render(createElement(App)));
+    await act(async () => { await vi.waitFor(() => expect(request.mock.calls.some(([p]) => p.cmd === 'set_config')).toBe(true), { timeout: 3000 }); });
+    await act(async () => { await new Promise(r => setTimeout(r, 2300)); });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('device sync failed');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('backup');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Restore device backup');
+    expect(localStorage.getItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY)).not.toBeNull();
+  });
+
   it('restores a multi-action and the selected simulator layer after a restart', async () => {
     const multi = { kind: 'multi', gestures: { onTap: 'A', doubleTap: 'B', onHold: 'C', tapHold: 'D' }, tappingTermMs: 250 };
     localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify({ v: 1, activeProfileIndex: 0, activeLayerIndex: 1, profiles: [{ id: 'saved', name: 'Saved', layers: [{}, { r2c1: { label: 'Multi', binding: 'Multi', actionType: 'Multi-step action', execution: multi } }] }] }));

@@ -432,7 +432,7 @@ export class QmkViaBridge {
     try {
       await this.openDevice(device);
     } catch (error) {
-      if (this.isStatusState('connecting')) {
+      if (this.isStatusState('connecting') && !this.device) {
         this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
       }
     }
@@ -450,8 +450,10 @@ export class QmkViaBridge {
     if (this.status.state === 'connecting') return this.status;
 
     this.setStatus({ state: 'connecting' });
+    const generation = this.connectionGeneration;
+    let devices: HidDeviceLike[];
     try {
-      const devices = await this.hid.requestDevice({
+      devices = await this.hid.requestDevice({
         filters: [{
           vendorId: VIA_USB_VENDOR_ID,
           productId: VIA_USB_PRODUCT_ID,
@@ -459,14 +461,24 @@ export class QmkViaBridge {
           usage: VIA_RAW_USAGE_ID,
         }],
       });
-      const device = devices.find((candidate) => this.isTarget(candidate));
-      if (!device) {
-        this.setStatus({ state: 'disconnected' });
-        return this.status;
+    } catch (error) {
+      if (generation === this.connectionGeneration && this.autoReconnect) {
+        this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
       }
+      return this.status;
+    }
+    if (generation !== this.connectionGeneration || !this.autoReconnect || !this.isStatusState('connecting')) return this.status;
+    const device = devices.find((candidate) => this.isTarget(candidate));
+    if (!device) {
+      this.setStatus({ state: 'disconnected' });
+      return this.status;
+    }
+    try {
       await this.openDevice(device);
     } catch (error) {
-      this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
+      if (this.isStatusState('connecting') && !this.device) {
+        this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
+      }
     }
     return this.status;
   }

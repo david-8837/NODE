@@ -21,7 +21,7 @@ describe('Windows installer artwork', () => {
     expect(sidebarSvg).toContain('MAKE IT');
     expect(sidebarSvg).toContain('YOUR OWN.');
     expect(sidebarSvg).toContain('Your keys. Your flow.');
-    expect(sidebarSvg).toContain('NINE KEYS. ONE DIAL.');
+    expect(sidebarSvg).toContain('DESIGNED FOR YOUR FLOW.');
     expect(readBitmapDimensions('installerSidebar.bmp')).toEqual({
       signature: 'BM',
       width: 164,
@@ -37,5 +37,19 @@ describe('Windows installer artwork', () => {
       height: 57,
       bitsPerPixel: 24,
     });
+  });
+});
+
+describe('Windows assisted installer welcome page', () => {
+  it('registers the MUI welcome page without replacing the install flow', () => {
+    const config = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+    expect(config.build.nsis.oneClick).toBe(false);
+    expect(config.build.nsis.include).toBe('windows-installer/installer.nsh');
+    expect(config.build.nsis.allowToChangeInstallationDirectory).toBe(true);
+    expect(config.build.nsis.deleteAppDataOnUninstall).toBe(false);
+    const include = readFileSync(join(process.cwd(), config.build.nsis.include), 'utf8');
+    expect(include).toMatch(/!macro customWelcomePage[\s\S]*!insertmacro MUI_PAGE_WELCOME[\s\S]*!macroend/);
+    expect(include).toContain('Your keys. Your flow.');
+    expect(include).not.toMatch(/!macro custom(?:Install|UnInstall|FinishPage)\b/i);
   });
 });

@@ -1863,13 +1863,14 @@ export default function App() {
 
     let cancelled = false;
     const syncTimer = window.setTimeout(() => {
-      if (configKey === lastSyncedConfigKeyRef.current) return;
+      if (configKey === lastSyncedConfigKeyRef.current || !localProfileSavedRef.current) return;
       void (async () => {
         try {
           const current = await bridge.request({ cmd: 'get_config' });
           if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
           if (!current.ok || !current.snapshot) {
-            showToast(
+            setDeviceSyncReady(false);
+            setSyncIssue(
               `Profile saved locally; device sync paused because a pre-sync backup could not be read: ${
                 current.error || 'no keymap snapshot returned'
               }`
@@ -1882,7 +1883,8 @@ export default function App() {
             return;
           }
           if (!deviceKeymapFileTools) {
-            showToast('Profile saved locally; device sync paused because local backup tools are unavailable');
+            setDeviceSyncReady(false);
+            setSyncIssue('Profile saved locally; device sync paused because local backup tools are unavailable');
             return;
           }
 
@@ -1891,20 +1893,22 @@ export default function App() {
             firmware: deviceStatus.fw,
           });
           if (!backup.ok) {
-            showToast(
+            setDeviceSyncReady(false);
+            setSyncIssue(
               `Profile saved locally; device sync paused because the pre-sync backup could not be saved: ${
                 backup.error || 'unknown storage error'
               }`
             );
             return;
           }
-          if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
+          if (cancelled || !localProfileSavedRef.current || configKey === lastSyncedConfigKeyRef.current) return;
 
           const synced = await bridge.request({ cmd: 'set_config', config });
           if (cancelled) return;
           if (!synced.ok) {
-            showToast(
-              `Profile saved locally; device sync failed: ${synced.error || 'unknown error'}. A pre-sync backup was saved locally.`
+            setDeviceSyncReady(false);
+            setSyncIssue(
+              `Profile saved locally; device sync failed: ${synced.error || 'unknown error'}. The device may be partially updated. A pre-sync backup was saved locally; reconnect to review it.`
             );
             return;
           }
@@ -1931,8 +1935,9 @@ export default function App() {
           );
         } catch (error) {
           if (!cancelled) {
-            showToast(
-              `Profile saved locally; device sync failed: ${error instanceof Error ? error.message : String(error)}. Keymap writes require a locally saved pre-sync backup.`
+            setDeviceSyncReady(false);
+            setSyncIssue(
+              `Profile saved locally; device sync failed: ${error instanceof Error ? error.message : String(error)}. The device may be partially updated; reconnect to review the backup.`
             );
           }
         }
@@ -4123,6 +4128,17 @@ export default function App() {
               const result = deviceKeymapFileTools!.downloadLatestBackup();
               if (!result.ok) showToast(result.error || 'Could not download backup');
             }}>Download device backup</button>
+          )}
+          {!profileLoadFailed && syncIssue && deviceStatus.state === 'connected' && deviceKeymapFileTools && (
+            <button type="button" className="underline" onClick={() => {
+              setDeviceSyncReady(false);
+              void deviceKeymapFileTools!.restoreFromFile(window.macropad, {
+                device: deviceStatus.device, firmware: deviceStatus.fw,
+              }).then(result => {
+                if (result.ok) setSyncIssue('Device backup restored. Sync remains paused; reconnect to review the desktop and device configurations.');
+                else if (result.error !== 'Restore cancelled') setSyncIssue(`Restore failed: ${result.error || 'unknown error'}. Sync remains paused.`);
+              });
+            }}>Restore device backup…</button>
           )}
         </div>
       )}

@@ -405,6 +405,32 @@ describe('QMK/VIA WebHID bridge', () => {
       .resolves.toMatchObject({ ok: false, error: 'No QMK/VIA device is connected' });
   });
 
+  it('ignores a permission chooser that finishes after an explicit disconnect', async () => {
+    const hid = new FakeHidApi();
+    let finish!: (devices: FakeViaDevice[]) => void;
+    vi.spyOn(hid, 'requestDevice').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    const connecting = bridge.connect();
+    await bridge.disconnect();
+    finish([hid.device]);
+    await connecting;
+    expect(hid.device.opened).toBe(false);
+    expect(hid.device.reports).toHaveLength(0);
+  });
+
+  it('ignores a silent scan that finishes after an explicit disconnect', async () => {
+    const hid = new FakeHidApi();
+    let finish!: (devices: HidDeviceLike[]) => void;
+    vi.spyOn(hid, 'getDevices').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    const scanning = bridge.getStatus();
+    await bridge.disconnect();
+    finish([hid.device]);
+    await scanning;
+    expect(hid.device.opened).toBe(false);
+    expect(hid.device.reports).toHaveLength(0);
+  });
+
   it('reconnects previously authorized devices on USB connect without resetting mappings', async () => {
     const hid = new FakeHidApi();
     const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });

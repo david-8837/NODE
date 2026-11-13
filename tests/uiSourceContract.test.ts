@@ -316,7 +316,7 @@ describe('Production React source and legacy inline regression checks', () => {
       'utf8'
     );
     expect(installerSidebarSource).toContain('NØDE');
-    expect(installerSidebarSource).toContain('NINE KEYS.');
+    expect(installerSidebarSource).toContain('DESIGNED FOR YOUR FLOW.');
   });
 
   it('renders the complete Macropad 3x3 direct matrix in the production React app', () => {
