@@ -14,10 +14,9 @@ This checklist is for the **QMK/VIA HID** target. It separates repository/host c
 
 ## Build and artifact provenance
 
-- [ ] Run the QMK workflow and verify both keymaps for the exact integrated release commit; no such build has been verified here.
-- [ ] Download the artifact from that exact run and reconcile its VIA UF2 with the checked-in file and checksum manifest before flashing.
-- [ ] Confirm `BUILD-INFO.txt` records the same source commit and artifact digest as the downloaded file. The checked-in metadata currently records commit `19f60b8518a8b9786d489e3a96f0a7c0f9615a0d` and run `43155494378`; that commit's `package.json` reports version `1.0.6`, not the current `1.0.14`.
-- [ ] Resolve the checked-in hash mismatch: `grid_macro_1_via.uf2` hashes to `0f1a86d8039e943718da057bef4079f31d1d19448105d15a3abccbfc831bd395`, while the manifest/build-info digest `9972aed247f693ba369194eb5b981ff58b45611f8038c19550f3bfe576da2039` matches `grid_macro_1_via_rawhid.uf2`.
+- [x] Run the QMK workflow for the integrated source commit `b773ebcf759afe1bdd0df926b6e7c53ebf8c2433`; run [43467960280](https://github.com/david-8837/NODE/actions/runs/43467960280) passed both `via` and `default` builds and uploaded artifact `grid-macro-1-via-firmware` (artifact ID `14059108512`).
+- [ ] Download that run's artifact and independently verify its included `SHA256SUMS.txt` against `grid_macro_1_via.uf2` before flashing. The artifact can be downloaded from the Actions run; it was not retrievable from this sandbox.
+- [ ] Do not flash the checked-in UF2s until their provenance is resolved. Current `grid_macro_1_via.uf2` hashes to `0f1a86d8039e943718da057bef4079f31d1d19448105d15a3abccbfc831bd395`, while the checked-in manifest/build-info digest `9972aed247f693ba369194eb5b981ff58b45611f8038c19550f3bfe576da2039` matches `grid_macro_1_via_rawhid.uf2`. The older metadata refers to commit `19f60b8518a8b9786d489e3a96f0a7c0f9615a0d` and run `43155494378`; that commit's `package.json` reports version `1.0.6`, not `1.0.14`.
 - [x] Automated binary test in `tests/qmkKeyboardDefinition.test.ts` checks UF2 block structure, RP2040 family ID, and the `Grid Macro 1` product string. This is a format/target check, not source provenance or physical validation.
 
 ## First boot and physical I/O checks
