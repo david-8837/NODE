@@ -56,9 +56,10 @@ Copy `boot.py` and `code.py` from this `firmware/` directory into the root of yo
 
 ---
 
-## 🌐 Web Serial Live Sync & Configuration
-1. Open this **Grid Macro 1 Studio** web app in Google Chrome, Edge, or Opera.
-2. Click **Connect RP2040** on the top right navigation badge or in the **Settings** tab.
-3. Select your RP2040-Zero USB Serial port (`/dev/ttyACM0` or `COMx`).
-4. Click **Flash to RP2040** to instantly transfer your custom layers, macros, shortcuts, and dial actions directly to the microcontroller over USB!
-5. When you press physical keys or turn the knob on your hardware, the web app's macropad will light up and track live in real time.
+## QMK/VIA firmware
+
+The repository contains `grid_macro_1_via.uf2` and `grid_macro_1_via_rawhid.uf2`. **Do not rely on the checked-in checksum manifest:** `SHA256SUMS.txt` names `grid_macro_1_via.uf2`, but its recorded digest does not match that file; it matches `grid_macro_1_via_rawhid.uf2`. The provenance and intended distinction between these binaries require independent verification. Verify the intended board, firmware source, checksum and recovery procedure before flashing. A compiled binary does not establish correct wiring or physical operation. See the [hardware checklist](../HARDWARE_PREPARATION_CHECKLIST.md) and the [QMK build notes](../qmk_firmware/grid_macro_1/README.md).
+
+## Connecting the configurator
+
+The current configurator connects to compatible QMK/VIA firmware using **WebHID**, not the CircuitPython JSON/USB-serial protocol. Use the app's Connect control in a supported Chromium browser or desktop app. The app stores complete profiles locally and synchronizes only supported VIA key and encoder mappings; it does not flash firmware or transfer full custom profiles over Web Serial. CircuitPython and Arduino are separate firmware alternatives and must not be assumed to use the same transport or features. Consult the hardware checklist before attempting a flash.

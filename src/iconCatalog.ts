@@ -11,7 +11,7 @@ export interface IconMetadataEntry {
 
 export interface IconLibrary {
   d?: Record<string, string>;
-  l?: Record<string, IconMetadataEntry>;
+  l?: IconMetadataEntry[] | Record<string, IconMetadataEntry>;
 }
 
 export interface IconSearchResults {
@@ -71,10 +71,7 @@ const CURATED_ICON_IDS = new Set(CURATED_ICON_LIST.map(({ id }) => id));
 let cachedIconSource: IconLibrary['l'] | undefined;
 let cachedIconPaths: IconLibrary['d'] | undefined;
 let cachedIconCatalog: IconCatalogItem[] | undefined;
-const iconMetadataIndexes = new WeakMap<
-  Record<string, IconMetadataEntry>,
-  Map<string, IconMetadataEntry>
->();
+const iconMetadataIndexes = new WeakMap<object, Map<string, IconMetadataEntry>>();
 
 export function buildIconCatalog(library?: IconLibrary): IconCatalogItem[] {
   if (

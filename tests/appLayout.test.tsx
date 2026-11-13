@@ -81,9 +81,11 @@ describe('Grid Macro 1 rendered hardware', () => {
       root.render(createElement(App));
     });
 
-    expect(container.firstElementChild).not.toBeNull();
-    expect(snapshotElement(container.firstElementChild!)).toEqual(
-      reactAppBaseline.tree
-    );
+    const workspace = container.querySelector('.app-shell')?.cloneNode(true) as Element | undefined;
+    expect(workspace).toBeDefined();
+    // The connection gate marks the unchanged workspace inert while disconnected.
+    workspace!.removeAttribute('inert');
+    workspace!.removeAttribute('aria-hidden');
+    expect(snapshotElement(workspace!)).toEqual(reactAppBaseline.tree);
   });
 });

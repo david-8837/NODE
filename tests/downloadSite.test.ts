@@ -57,6 +57,15 @@ describe('Public download website', () => {
     expect(windowsWorkflow).toContain('GH_TOKEN: ${{ github.token }}');
   });
 
+  it('publishes manual releases only after the Windows and fresh QMK builds succeed', () => {
+    expect(windowsWorkflow).toContain('needs: [package-windows, build-qmk-for-release]');
+    expect(windowsWorkflow).toContain('inputs.publish_release');
+    expect(windowsWorkflow).toContain('sha256sum -c SHA256SUMS.txt');
+    expect(windowsWorkflow).toContain('Repository commit: $GITHUB_SHA');
+    expect(windowsWorkflow).toContain('--draft');
+    expect(windowsWorkflow).toContain('has not been validated on a physical board');
+  });
+
   it('points both download buttons at matching assets in the latest GitHub release', async () => {
     const release = {
       tag_name: 'v1.0.0',

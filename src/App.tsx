@@ -1,15 +1,12 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
+import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { AnimatePresence, motion, useMotionValue, useSpring } from 'motion/react';
 import {
-  APP_READY_EVENT,
   getEntranceMotionProps,
-  getKeycapEntranceOptions,
   type EntrancePhase,
 } from './entranceAnimations';
 import {
   GRID_MACRO_ENCODER_SLOT,
   GRID_MACRO_KEY_SLOTS,
-  type GridMacroSlotId,
 } from './deviceLayout';
 import { clampMacropadOffsetToArea } from './macropadMovement';
 import { deviceKeymapFileTools } from './deviceKeymapFiles';
@@ -22,6 +19,22 @@ import {
   type SimulationAction,
   type SmartActionSubTab,
 } from './actionExecution';
+import {
+  GestureEngine,
+  type RecognizedGestureEvent,
+  type RecognizedDialEvent,
+} from './gestureEngine';
+import { DebounceEngine } from './debounceEngine';
+import {
+  resolveActionForGesture,
+  resolveActionForDial,
+  dispatchResolvedAction,
+  type ActionDispatcherLayer,
+} from './actionDispatcher';
+import {
+  HardwareEventType,
+  type DecodedHardwareEvent,
+} from './hardwareEventProtocol';
 import { MAX_PROFILE_COUNT, PROFILE_FILE_STORAGE_KEY, profileFileTools } from './profileFiles';
 import {
   APP_VERSION_FALLBACK,
@@ -36,15 +49,18 @@ import {
 } from './appSettings';
 import type { QmkViaStatus } from './qmkViaBridge';
 import { buildViaConfiguration } from './qmkProfileSync';
+import { latestViaRecoveryKey, parseViaMacroFile, saveViaRecovery } from './viaMacroBackup';
+import { rp2040ZeroColorToQmkHsv } from './onboardLed';
+import { fallbackIconForAssignment, overlayIconForAssignment } from './cheatSheetIcons';
+import { deviceMatchesConfiguration } from './deviceSyncSafety';
 import type { EmojiCatalogEntry } from './emojiCatalog';
 import { PRESET_CATALOG } from './presetCatalog';
 import {
   buildIconCatalog,
-  findIconMetadata,
   ICON_SEARCH_PAGE_SIZE,
   searchIconCatalog,
-  type IconLibrary,
 } from './iconCatalog';
+import { getMacroIconLibrary, loadFullMacroIconLibrary } from './iconLibrary';
 import {
   ChevronDown,
   ChevronUp,
@@ -52,58 +68,25 @@ import {
   Check,
   X,
   Search,
+  RotateCcw,
+  RotateCw,
 } from 'lucide-react';
+
+import {
+  BLANK_ENCODER_ACTIONS, formatEncoderShortLabel, getEncoderActions,
+  type KeySlotId, type MappingTabId, type EncoderSubActionId,
+  type KeyAssignment, type LayerKeymap, type EncoderSubBinding,
+} from './keymapModel';
+import { MacropadDevice } from './components/MacropadDevice';
+import { ResetKeysDialog } from './components/ResetKeysDialog';
+import {
+  ArrowKeyGlyph, CustomPickerIcon, EmptyKeyPlusIcon,
+  InfoCircleIcon, IsometricKeyIcon, PresetAppIcon, SettingsSwitch, WarningTriangleIcon,
+} from './components/StudioIcons';
 
 declare const __APP_VERSION__: string;
 
-type KeySlotId = GridMacroSlotId;
-
-type MappingTabId = 'Basic' | 'Action' | 'Multi-A' | 'Smart-A';
-type EncoderSubActionId = 'cw' | 'press' | 'ccw';
-
-interface EncoderSubBinding {
-  label: string;
-  binding: string;
-  execution?: DesktopExecutionDefinition;
-}
-
-const BLANK_ENCODER_ACTIONS: Record<EncoderSubActionId, EncoderSubBinding> = {
-  cw: { label: '', binding: 'blank' },
-  press: { label: '', binding: 'blank' },
-  ccw: { label: '', binding: 'blank' },
-};
-
-interface KeyAssignment {
-  label: string;
-  actionType:
-    | 'Basic input'
-    | 'Shortcut'
-    | 'Multi-step action'
-    | 'Smart Action'
-    | 'Layer Cycle';
-  binding: string;
-  iconId?: string;
-  actionId?: string;
-  color?: string;
-  execution?: DesktopExecutionDefinition;
-  encoderActions?: Record<EncoderSubActionId, EncoderSubBinding>;
-}
-
-type LayerKeymap = Record<KeySlotId, KeyAssignment> & { presetId?: string };
-
-function formatEncoderShortLabel(text: string): string {
-  const clean = text.trim();
-  if (!clean) return '—';
-  if (clean.length <= 3) return clean;
-  return `${clean.slice(0, 2).toLowerCase()}...`;
-}
-
-function getEncoderActions(
-  assignment: KeyAssignment
-): Record<EncoderSubActionId, EncoderSubBinding> {
-  return assignment.encoderActions || BLANK_ENCODER_ACTIONS;
-}
-
+const LazyIconPickerPopover = lazy(() => import('./IconPickerPopover'));
 interface ProfileData {
   id: string;
   name: string;
@@ -204,9 +187,17 @@ function groupCustomItemsByPreset(
   });
 }
 
+type LightingSettings = Record<'Backlight' | 'Underglow', {
+  preset: 'Off' | 'Solid' | 'Snake' | 'Rainbow' | 'Breath' | 'Gradient';
+  light: number; speed: number; magic: number; hue: number; colorHex: string;
+}>;
+
 interface PersistedAppProfileState {
   profiles: ProfileData[];
   activeProfileIndex: number;
+  activeLayerIndex: number;
+  layerNames?: Record<string, string>;
+  lightingConfig?: LightingSettings;
   customItems: CustomItemsByTab;
 }
 
@@ -794,11 +785,11 @@ function normalizeCustomItemsForEditor(items: CustomItemsByTab): CustomItemsByTa
   };
 }
 
-function loadSavedProfileState(): PersistedAppProfileState | null {
+function loadSavedProfileState(storageKey = PROFILE_FILE_STORAGE_KEY): PersistedAppProfileState | null {
   if (typeof window === 'undefined' || !profileFileTools) return null;
 
   try {
-    const text = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+    const text = window.localStorage.getItem(storageKey);
     if (!text) return null;
 
     const saved = JSON.parse(text) as Record<string, unknown>;
@@ -829,9 +820,22 @@ function loadSavedProfileState(): PersistedAppProfileState | null {
       }
     });
 
+    if (saved.layerNames !== undefined && (!isRecordValue(saved.layerNames) || Object.values(saved.layerNames).some(value => typeof value !== 'string'))) throw new Error('Invalid saved layer names');
+    if (saved.lightingConfig !== undefined) {
+      if (!isRecordValue(saved.lightingConfig)) throw new Error('Invalid saved lighting');
+      for (const side of ['Backlight', 'Underglow']) {
+        const entry = saved.lightingConfig[side];
+        if (!isRecordValue(entry) || !['Off', 'Solid', 'Snake', 'Rainbow', 'Breath', 'Gradient'].includes(String(entry.preset)) ||
+          ['light', 'speed', 'magic', 'hue'].some(key => typeof entry[key] !== 'number' || !Number.isFinite(entry[key])) || typeof entry.colorHex !== 'string') throw new Error('Invalid saved lighting');
+      }
+    }
     return {
       profiles: (parsed.profiles as unknown as ProfileData[]).map(normalizeProfileForEditor),
       activeProfileIndex: parsed.activeProfileIndex,
+      activeLayerIndex: Number.isInteger(saved.activeLayerIndex) && (saved.activeLayerIndex as number) >= 0 && (saved.activeLayerIndex as number) < (parsed.profiles[parsed.activeProfileIndex].layers as unknown[]).length
+        ? saved.activeLayerIndex as number : 0,
+      layerNames: saved.layerNames as Record<string, string> | undefined,
+      lightingConfig: saved.lightingConfig as LightingSettings | undefined,
       customItems: normalizeCustomItemsForEditor(
         parsed.customItems as unknown as CustomItemsByTab
       ),
@@ -873,60 +877,23 @@ const TIPS = [
 ];
 
 export default function App() {
-  const prefersReducedMotion = useReducedMotion();
-  const prefersReducedMotionRef = useRef(Boolean(prefersReducedMotion));
-  prefersReducedMotionRef.current = Boolean(prefersReducedMotion);
-  const [entrancePhase, setEntrancePhase] = useState<EntrancePhase>(() =>
-    typeof document !== 'undefined' &&
-    document.getElementById('root')?.classList.contains('is-ready')
-      ? 'complete'
-      : 'waiting'
-  );
-
-  useEffect(() => {
-    const beginEntrance = () => {
-      setEntrancePhase((phase) => {
-        if (phase !== 'waiting') return phase;
-        return prefersReducedMotionRef.current ? 'complete' : 'entering';
-      });
-    };
-
-    window.addEventListener(APP_READY_EVENT, beginEntrance);
-    if (document.getElementById('root')?.classList.contains('is-ready')) {
-      beginEntrance();
-    }
-    return () => window.removeEventListener(APP_READY_EVENT, beginEntrance);
-  }, []);
-
-  useEffect(() => {
-    if (entrancePhase !== 'entering') return;
-    const completionTimer = window.setTimeout(() => {
-      setEntrancePhase('complete');
-    }, 1900);
-    return () => window.clearTimeout(completionTimer);
-  }, [entrancePhase]);
-
-  useEffect(() => {
-    if (prefersReducedMotion && entrancePhase === 'entering') {
-      setEntrancePhase('complete');
-    }
-  }, [entrancePhase, prefersReducedMotion]);
-
+  // Render the workspace directly; keep the loading screen to a simple spinner.
+  const entrancePhase: EntrancePhase = 'complete';
   const [activeNav, setActiveNav] = useState<'Keymap' | 'Preset' | 'Settings'>('Keymap');
-
-  useEffect(() => {
-    if (activeNav !== 'Keymap' && entrancePhase === 'entering') {
-      setEntrancePhase('complete');
-    }
-  }, [activeNav, entrancePhase]);
   const [savedProfileState] = useState(loadSavedProfileState);
+  const [profileLoadFailed] = useState(() => {
+    try { return window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) !== null && !savedProfileState; }
+    catch { return true; }
+  });
+  const localProfileSavedRef = useRef(false);
+  const [profileSaveError, setProfileSaveError] = useState('');
   const [profiles, setProfiles] = useState<ProfileData[]>(
     () => savedProfileState?.profiles ?? INITIAL_PROFILES
   );
   const [activeProfileIndex, setActiveProfileIndex] = useState(
     () => savedProfileState?.activeProfileIndex ?? 0
   );
-  const [activeLayerIndex, setActiveLayerIndex] = useState(0);
+  const [activeLayerIndex, setActiveLayerIndex] = useState(() => savedProfileState?.activeLayerIndex ?? 0);
   const [selectedKey, setSelectedKey] = useState<KeySlotId | null>(null);
   const [selectedEncoderSub, setSelectedEncoderSub] =
     useState<EncoderSubActionId | null>(null);
@@ -961,7 +928,9 @@ export default function App() {
   const [iconPickerShowAll, setIconPickerShowAll] = useState(false);
   const [iconPickerPage, setIconPickerPage] = useState(0);
   const [selectableEmojiList, setSelectableEmojiList] = useState<EmojiCatalogEntry[]>([]);
-  const iconCatalog = useMemo(() => buildIconCatalog(getMacroIconLibrary()), []);
+  const [iconCatalog, setIconCatalog] = useState(() =>
+    buildIconCatalog(getMacroIconLibrary())
+  );
   const iconSearchResults = useMemo(
     () =>
       searchIconCatalog(
@@ -987,7 +956,7 @@ export default function App() {
     onHold: '',
     tapHold: '',
   });
-  const [tappingTermMs, setTappingTermMs] = useState('250');
+  const [tappingTermMs, setTappingTermMs] = useState('180');
   const [activeGestureDropdown, setActiveGestureDropdown] =
     useState<MultiGestureKey | null>(null);
   const [gestureKeySearch, setGestureKeySearch] = useState('');
@@ -1201,6 +1170,7 @@ export default function App() {
 
   useEffect(() => {
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       setTipIndex((prev) => (prev + 1) % TIPS.length);
     }, 5000);
     return () => clearInterval(interval);
@@ -1233,7 +1203,64 @@ export default function App() {
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
+  const [syncIssue, setSyncIssue] = useState('');
+  const [macroRestoreBusy, setMacroRestoreBusy] = useState(false);
+  const macroRestoreBusyRef = useRef(false);
+  const [macroRestoreReport, setMacroRestoreReport] = useState('');
+  const [macroDiagnosticKey, setMacroDiagnosticKey] = useState(() => { try { return latestViaRecoveryKey(window.localStorage, true); } catch { return ''; } });
+  const [macroRecoveryKey, setMacroRecoveryKey] = useState(() => { try { return latestViaRecoveryKey(window.localStorage); } catch { return ''; } });
   const lastSyncedConfigKeyRef = useRef('');
+  const lastDeviceSnapshotRef = useRef('');
+
+  // Hardware layout, physical event visual mirroring, and desktop execution mode
+  const [encoderAngle, setEncoderAngle] = useState(45);
+  const [activePhysicalPressedSlot, setActivePhysicalPressedSlot] = useState<string | null>(null);
+
+  // Macropad Cheat-Sheet HUD overlay states
+  const [cheatSheetOpen, setCheatSheetOpen] = useState(false);
+  const cheatSheetHoldSlotRef = useRef<string | null>(null);
+
+  const gestureEngineRef = useRef<GestureEngine | null>(null);
+  if (!gestureEngineRef.current) {
+    gestureEngineRef.current = new GestureEngine();
+  }
+  const lastSimPointerUpRef = useRef<Record<string, number>>({});
+
+  const debounceEngineRef = useRef<DebounceEngine | null>(null);
+  if (!debounceEngineRef.current) {
+    debounceEngineRef.current = new DebounceEngine({
+      debounceIntervalMs: 10,
+      onPress: (slotId, _timestamp, source) => {
+        gestureEngineRef.current?.buttonDown(slotId, source);
+        setActivePhysicalPressedSlot(slotId);
+        const slotEntry =
+          slotId === GRID_MACRO_ENCODER_SLOT
+            ? currentLayerRef.current[GRID_MACRO_ENCODER_SLOT]?.encoderActions?.press
+            : currentLayerRef.current[slotId];
+        if (
+          slotEntry &&
+          (slotEntry.actionId === 'cs-hold' ||
+            /cheat-?sheet hold/i.test(slotEntry.binding || '') ||
+            /cheat-?sheet hold/i.test(slotEntry.label || ''))
+        ) {
+          setCheatSheetOpen(true);
+          cheatSheetHoldSlotRef.current = slotId;
+        }
+      },
+      onRelease: (slotId) => {
+        gestureEngineRef.current?.buttonUp(slotId);
+        setActivePhysicalPressedSlot((cur) => (cur === slotId || (cur === GRID_MACRO_ENCODER_SLOT && slotId === GRID_MACRO_ENCODER_SLOT) ? null : cur));
+        if (cheatSheetHoldSlotRef.current === slotId) {
+          setCheatSheetOpen(false);
+          cheatSheetHoldSlotRef.current = null;
+        }
+      },
+    });
+    if (typeof window !== 'undefined') {
+      (window as unknown as { macropadDebounceEngine?: DebounceEngine }).macropadDebounceEngine =
+        debounceEngineRef.current;
+    }
+  }
 
   useEffect(() => {
     const bridge = window.macropad;
@@ -1250,9 +1277,79 @@ export default function App() {
       if (active) setDeviceStatus(status);
     });
 
+    // Native QMK layer keys are executed by the device, not by the gesture engine.
+    // Remember ownership from key-down: key-up reports the destination layer.
+    const nativeLayerPresses = new Set<KeySlotId>();
+    const unsubscribeHardware = bridge.onHardwareEvent
+      ? bridge.onHardwareEvent((event: DecodedHardwareEvent) => {
+          if (!active) return;
+          const engine = gestureEngineRef.current;
+          if (!engine) return;
+
+          if (
+            typeof event.activeLayer === 'number' &&
+            event.activeLayer >= 0 &&
+            event.activeLayer < currentProfileRef.current.layers.length &&
+            event.activeLayer !== activeLayerIndexRef.current
+          ) {
+            activeLayerIndexRef.current = event.activeLayer;
+            currentLayerRef.current = currentProfileRef.current.layers[event.activeLayer];
+            setActiveLayerIndex(event.activeLayer);
+          }
+
+          const isDown = event.type === HardwareEventType.BUTTON_DOWN || event.type === HardwareEventType.DIAL_DOWN;
+          const isUp = event.type === HardwareEventType.BUTTON_UP || event.type === HardwareEventType.DIAL_UP;
+          if (event.slotId && isDown && !nativeLayerPresses.has(event.slotId)) {
+            const layer = buildViaConfiguration(currentProfileRef.current, 'win').config.layers[event.activeLayer];
+            const mapped = event.slotId === GRID_MACRO_ENCODER_SLOT
+              ? layer?.enc?.press : layer?.keys?.[event.slotId];
+            if (mapped?.t === 'layer' && (mapped.op === 'set' || mapped.op === 'hold')) {
+              nativeLayerPresses.add(event.slotId);
+            }
+          }
+          if (event.slotId && nativeLayerPresses.has(event.slotId) && (isDown || isUp)) {
+            if (isUp) nativeLayerPresses.delete(event.slotId);
+            return;
+          }
+
+          switch (event.type) {
+            case HardwareEventType.BUTTON_DOWN:
+              if (event.slotId) {
+                debounceEngineRef.current?.handleFirmwareTransition(event.slotId, true);
+              }
+              break;
+            case HardwareEventType.BUTTON_UP:
+              if (event.slotId) {
+                debounceEngineRef.current?.handleFirmwareTransition(event.slotId, false);
+              }
+              break;
+            case HardwareEventType.ENC_CW:
+              engine.dialRotate('cw', 'hardware');
+              setEncoderAngle((prev) => (prev + 30) % 360);
+              break;
+            case HardwareEventType.ENC_CCW:
+              engine.dialRotate('ccw', 'hardware');
+              setEncoderAngle((prev) => (prev - 30 + 360) % 360);
+              break;
+            case HardwareEventType.DIAL_DOWN:
+              debounceEngineRef.current?.handleFirmwareTransition(GRID_MACRO_ENCODER_SLOT, true);
+              break;
+            case HardwareEventType.DIAL_UP:
+              debounceEngineRef.current?.handleFirmwareTransition(GRID_MACRO_ENCODER_SLOT, false);
+              break;
+          }
+        })
+      : () => {};
+
+    const unsubscribeCheatSheet = window.electronAPI?.onToggleCheatSheet
+      ? window.electronAPI.onToggleCheatSheet(() => setCheatSheetOpen((v) => !v))
+      : undefined;
+
     return () => {
       active = false;
       unsubscribe();
+      unsubscribeHardware();
+      unsubscribeCheatSheet?.();
     };
   }, []);
 
@@ -1308,26 +1405,25 @@ export default function App() {
   const [history, setHistory] = useState<ProfileData[][]>([]);
   const [redoStack, setRedoStack] = useState<ProfileData[][]>([]);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        PROFILE_FILE_STORAGE_KEY,
-        JSON.stringify({
-          v: 1,
-          profiles,
-          activeProfileIndex,
-          customItems: customItemsByTab,
-        })
-      );
-    } catch {
-      // Keep in-memory profile editing usable if browser storage is unavailable.
-    }
-  }, [profiles, activeProfileIndex, customItemsByTab]);
 
-  // Hardware layout and desktop execution mode
-  const [encoderAngle, setEncoderAngle] = useState(45);
+  // Desktop execution simulation mode
   const [simulationMode, setSimulationMode] = useState(false);
   const [simulationTransition, setSimulationTransition] = useState(false);
+
+  useEffect(() => {
+    if (deviceStatus.state === 'connected') return;
+    debounceEngineRef.current?.reset();
+    gestureEngineRef.current?.resetAll();
+    setActivePhysicalPressedSlot(null);
+    setCheatSheetOpen(false);
+    dragSessionRef.current = null;
+    setDraggedTile(null);
+    setDragOverTarget(null);
+    if (simulationMode) {
+      setSimulationMode(false);
+      void requestSimulationMode(false, window);
+    }
+  }, [deviceStatus.state]);
 
   useEffect(() => {
     const disableSimulationOnPageHide = () => {
@@ -1342,23 +1438,13 @@ export default function App() {
   const [layerToolbarOpen, setLayerToolbarOpen] = useState(false);
   const [layerLightingOpen, setLayerLightingOpen] = useState(false);
   const [layerDeleteConfirm, setLayerDeleteConfirm] = useState(false);
-  const [layerNames, setLayerNames] = useState<Record<string, string>>({});
+  const [resetKeysPending, setResetKeysPending] = useState<{ allLayers: boolean; layerIndex: number; profileIndex: number } | null>(null);
+  useEffect(() => { if (deviceStatus.state !== 'connected') setResetKeysPending(null); }, [deviceStatus.state]);
+  const [layerNames, setLayerNames] = useState<Record<string, string>>(() => savedProfileState?.layerNames ?? {});
   const [lightingTab, setLightingTab] = useState<'Backlight' | 'Underglow'>(
-    'Backlight'
+    'Underglow'
   );
-  const [lightingConfig, setLightingConfig] = useState<
-    Record<
-      'Backlight' | 'Underglow',
-      {
-        preset: 'Off' | 'Solid' | 'Snake' | 'Rainbow' | 'Breath' | 'Gradient';
-        light: number;
-        speed: number;
-        magic: number;
-        hue: number;
-        colorHex: string;
-      }
-    >
-  >({
+  const [lightingConfig, setLightingConfig] = useState<LightingSettings>(() => savedProfileState?.lightingConfig ?? ({
     Backlight: {
       preset: 'Solid',
       light: 100,
@@ -1375,7 +1461,30 @@ export default function App() {
       hue: 220,
       colorHex: '#FFFFFF',
     },
-  });
+  }));
+
+  useEffect(() => {
+    if (profileLoadFailed) {
+      showToast('Saved profile could not be loaded. Original data preserved; device sync is paused.');
+      return;
+    }
+    try {
+      const text = JSON.stringify({ v: 1, profiles, activeProfileIndex, activeLayerIndex, layerNames, lightingConfig, customItems: customItemsByTab });
+      // Validate before replacing durable data. Empty draft names are allowed in the editor.
+      profileFileTools?.parse(JSON.stringify({ v: 1, profiles: profiles.map(profile => ({ ...profile, name: profile.name.trim() || 'Untitled Profile' })), activeProfileIndex, customItems: customItemsByTab }));
+      const previous = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+      if (previous !== null && previous !== text) {
+        if (!loadSavedProfileState()) throw new Error('Existing saved profile is unreadable');
+        window.localStorage.setItem('cm2.state.backup.v1', previous);
+      }
+      window.localStorage.setItem(PROFILE_FILE_STORAGE_KEY, text);
+      localProfileSavedRef.current = true;
+      setProfileSaveError('');
+    } catch {
+      localProfileSavedRef.current = false;
+      setProfileSaveError('Profile could not be saved locally; device sync is paused. Your latest edits are not safely saved.');
+    }
+  }, [profiles, activeProfileIndex, activeLayerIndex, customItemsByTab, profileLoadFailed, layerNames, lightingConfig]);
 
   const currentProfile = profiles[activeProfileIndex] || profiles[0];
   const currentLayer =
@@ -1390,11 +1499,318 @@ export default function App() {
     }, 2200);
   };
 
+  const simulationModeRef = useRef(simulationMode);
+  simulationModeRef.current = simulationMode;
+
+  const currentLayerRef = useRef(currentLayer);
+  currentLayerRef.current = currentLayer;
+
+  const activeLayerIndexRef = useRef(activeLayerIndex);
+  activeLayerIndexRef.current = activeLayerIndex;
+
+  const currentProfileRef = useRef(currentProfile);
+  currentProfileRef.current = currentProfile;
+
+  const profilesRef = useRef(profiles);
+  profilesRef.current = profiles;
+
+  const activeProfileIndexRef = useRef(activeProfileIndex);
+  activeProfileIndexRef.current = activeProfileIndex;
+
+  useEffect(() => {
+    const engine = gestureEngineRef.current;
+    if (!engine) return;
+
+    engine.configureAllSlots((slot) => {
+      const assignment =
+        slot === GRID_MACRO_ENCODER_SLOT
+          ? currentLayer[slot]?.encoderActions?.press || currentLayer[slot]
+          : currentLayer[slot];
+      if (!assignment) return {};
+      const execution = assignment.execution;
+      if (execution?.kind === 'multi') {
+        const gestures = execution.gestures || {};
+        return {
+          hasDoubleTap: Boolean(gestures.doubleTap?.trim()),
+          hasHold: Boolean(gestures.onHold?.trim()),
+          hasTapHold: Boolean(gestures.tapHold?.trim()),
+          tappingTermMs: execution.tappingTermMs || 180,
+        };
+      }
+      const binding = assignment.binding || '';
+      const hasDoubleTap = /doubleTap:/i.test(binding);
+      const hasHold = /onHold:/i.test(binding);
+      const hasTapHold = /tapHold:/i.test(binding);
+      if (hasDoubleTap || hasHold || hasTapHold) {
+        return {
+          hasDoubleTap,
+          hasHold,
+          hasTapHold,
+          tappingTermMs: 180,
+        };
+      }
+      return {};
+    });
+  }, [currentLayer]);
+
+  const handleRecognizedGesture = useCallback(
+    (event: RecognizedGestureEvent) => {
+      const { slot, gesture, source: eventSource } = event;
+      const isSim = simulationModeRef.current;
+      const layer = currentLayerRef.current;
+      const profile = currentProfileRef.current;
+      const layerIdx = activeLayerIndexRef.current;
+      const source = eventSource || (isSim ? 'simulation' : 'hardware');
+
+      const slotAssignment = layer[slot];
+      if (slotAssignment?.actionType === 'Layer Cycle') {
+        const nextLayer = (layerIdx + 1) % profile.layers.length;
+        setActiveLayerIndex(nextLayer);
+        setSelectedKey(null);
+        setSelectedEncoderSub(null);
+        setMappingDrawerOpen(false);
+        showToast(`Switched to Layer ${nextLayer + 1}`);
+        return;
+      }
+
+      debounceEngineRef.current?.logDiagnostic({
+        category: 'GESTURE',
+        slot,
+        detail: `Recognized gesture: ${gesture} [${source}]`,
+        timestamp: event.timestamp || Date.now(),
+      });
+
+      const action = resolveActionForGesture(
+        slot,
+        gesture,
+        layer as ActionDispatcherLayer
+      );
+      if (!action) return;
+
+      // If this action was triggered by physical hardware, check whether the slot is handled
+      // natively by QMK firmware over USB HID. If it is a native key (e.g. Basic key or standard
+      // shortcut), QMK already sent it over USB HID, so avoid re-dispatching to prevent duplicate keystrokes!
+      const isMultiAction =
+        slotAssignment?.actionType === 'Multi-step action' ||
+        slotAssignment?.execution?.kind === 'multi' ||
+        /(?:onTap|doubleTap|onHold|tapHold):/i.test(slotAssignment?.binding || '');
+      const isSmartAction =
+        slotAssignment?.actionType === 'Smart Action' ||
+        slotAssignment?.execution?.kind === 'smart' ||
+        /\((?:Text|Cmd|Web|App):/i.test(slotAssignment?.binding || '');
+      const isSequence =
+        slotAssignment?.execution?.kind === 'sequence' &&
+        slotAssignment.execution.steps.length > 1;
+      const isCheatSheet =
+        action.type === 'CheatSheet' ||
+        /cheat-?sheet/i.test(slotAssignment?.binding || '');
+
+      const isDesktopHandledAction =
+        isMultiAction ||
+        isSmartAction ||
+        isSequence ||
+        isCheatSheet ||
+        action.type === 'Layer' ||
+        action.type === 'Profile' ||
+        action.type === 'Layer Cycle';
+
+      if (source === 'hardware' && !isDesktopHandledAction) {
+        debounceEngineRef.current?.logDiagnostic({
+          category: 'HID_EXECUTION',
+          slot,
+          detail: `Suppressed desktop injection for hardware-native key: ${action.value} [${source}]`,
+          timestamp: Date.now(),
+        });
+        return;
+      }
+
+      debounceEngineRef.current?.logDiagnostic({
+        category: 'HID_EXECUTION',
+        slot,
+        detail: `Executing action: ${action.type} -> ${action.value} [${source}]`,
+        timestamp: Date.now(),
+      });
+
+      if (action.type === 'Layer Cycle') {
+        const nextLayer = (layerIdx + 1) % profile.layers.length;
+        setActiveLayerIndex(nextLayer);
+        setSelectedKey(null);
+        setSelectedEncoderSub(null);
+        setMappingDrawerOpen(false);
+        showToast(`Switched to Layer ${nextLayer + 1}`);
+        return;
+      }
+
+      void dispatchResolvedAction(action, {
+        source,
+        host: window,
+        showToast,
+        onCheatSheetToggle: (mode) => {
+          if (mode === 'show') setCheatSheetOpen(true);
+          else if (mode === 'hide') setCheatSheetOpen(false);
+          else if (mode === 'toggle') setCheatSheetOpen((v) => !v);
+        },
+        onLayerChange: (targetLayer) => {
+          if (targetLayer >= profile.layers.length) {
+            showToast(`Layer ${targetLayer + 1} is not available on this profile`);
+            return false;
+          }
+          setActiveLayerIndex(targetLayer);
+          setSelectedKey(null);
+          setSelectedEncoderSub(null);
+          setMappingDrawerOpen(false);
+          showToast(`Switched to Layer ${targetLayer + 1}`);
+          return true;
+        },
+        onProfileChange: (targetProfile) => {
+          const profList = profilesRef.current;
+          if (targetProfile >= profList.length) {
+            showToast(`Profile ${targetProfile + 1} does not exist`);
+            return false;
+          }
+          setActiveProfileIndex(targetProfile);
+          setActiveLayerIndex(0);
+          setSelectedKey(null);
+          setSelectedEncoderSub(null);
+          setMappingDrawerOpen(false);
+          const profName = profList[targetProfile]?.name || `Profile ${targetProfile + 1}`;
+          showToast(`Switched to ${profName}`);
+          return true;
+        },
+      });
+    },
+    [showToast]
+  );
+
+  const handleRecognizedDial = useCallback(
+    (event: RecognizedDialEvent) => {
+      const { direction, source: eventSource } = event;
+      const isSim = simulationModeRef.current;
+      const layer = currentLayerRef.current;
+      const profile = currentProfileRef.current;
+      const source = eventSource || (isSim ? 'simulation' : 'hardware');
+
+      setEncoderAngle((angle) =>
+        direction === 'cw' ? (angle + 30) % 360 : (angle - 30 + 360) % 360
+      );
+
+      const action = resolveActionForDial(
+        direction,
+        layer as ActionDispatcherLayer
+      );
+      if (!action) return;
+
+      const dialEntry = layer[GRID_MACRO_ENCODER_SLOT];
+      const subEntry = dialEntry?.encoderActions?.[direction];
+      const isSmart =
+        subEntry?.actionType === 'Smart Action' ||
+        subEntry?.execution?.kind === 'smart' ||
+        /\((?:Text|Cmd|Web|App):/i.test(subEntry?.binding || '');
+      const isSequence =
+        subEntry?.execution?.kind === 'sequence' &&
+        subEntry.execution.steps.length > 1;
+      const isCheatSheet =
+        action.type === 'CheatSheet' ||
+        /cheat-?sheet/i.test(subEntry?.binding || '');
+
+      const isDesktopHandled =
+        isSmart ||
+        isSequence ||
+        isCheatSheet ||
+        action.type === 'Layer' ||
+        action.type === 'Profile' ||
+        action.type === 'Layer Cycle';
+      if (source === 'hardware' && !isDesktopHandled) {
+        // Handled natively by QMK firmware encoder map over USB HID!
+        return;
+      }
+
+      void dispatchResolvedAction(action, {
+        source,
+        host: window,
+        showToast,
+        onCheatSheetToggle: (mode) => {
+          if (mode === 'show') setCheatSheetOpen(true);
+          else if (mode === 'hide') setCheatSheetOpen(false);
+          else if (mode === 'toggle') setCheatSheetOpen((v) => !v);
+        },
+        onLayerChange: (targetLayer) => {
+          if (targetLayer >= profile.layers.length) {
+            showToast(`Layer ${targetLayer + 1} is not available on this profile`);
+            return false;
+          }
+          setActiveLayerIndex(targetLayer);
+          setSelectedKey(null);
+          setSelectedEncoderSub(null);
+          setMappingDrawerOpen(false);
+          showToast(`Switched to Layer ${targetLayer + 1}`);
+          return true;
+        },
+        onProfileChange: (targetProfile) => {
+          const profList = profilesRef.current;
+          if (targetProfile >= profList.length) {
+            showToast(`Profile ${targetProfile + 1} does not exist`);
+            return false;
+          }
+          setActiveProfileIndex(targetProfile);
+          setActiveLayerIndex(0);
+          setSelectedKey(null);
+          setSelectedEncoderSub(null);
+          setMappingDrawerOpen(false);
+          const profName = profList[targetProfile]?.name || `Profile ${targetProfile + 1}`;
+          showToast(`Switched to ${profName}`);
+          return true;
+        },
+      });
+    },
+    [showToast]
+  );
+
+  useEffect(() => {
+    const setOverlay = window.electronAPI?.setCheatSheetActive;
+    if (!setOverlay) return;
+    if (!cheatSheetOpen) { void setOverlay(false); return; }
+    const layers = currentProfile.layers.slice(0, 8).map(layer => {
+      const dial = getEncoderActions(layer[GRID_MACRO_ENCODER_SLOT]);
+      return {
+        keys: GRID_MACRO_KEY_SLOTS.map(slot => ({ icon: overlayIconForAssignment(layer[slot]), label: (layer[slot]?.label || '').slice(0, 256) })),
+        dial: [dial.ccw, dial.press, dial.cw].map(action => (action?.label || '').slice(0, 256)),
+      };
+    });
+    const pressed = activePhysicalPressedSlot === GRID_MACRO_ENCODER_SLOT ? 9 : GRID_MACRO_KEY_SLOTS.findIndex(slot => slot === activePhysicalPressedSlot);
+    void setOverlay(true, { activeLayer: Math.min(activeLayerIndex, layers.length - 1), pressed, layers });
+  }, [cheatSheetOpen, currentProfile, activeLayerIndex, activePhysicalPressedSlot]);
+
+  useEffect(() => window.electronAPI?.onCloseCheatSheet?.(() => {
+    setCheatSheetOpen(false);
+    cheatSheetHoldSlotRef.current = null;
+  }), []);
+
+  useEffect(() => {
+    if (!cheatSheetOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setCheatSheetOpen(false);
+        cheatSheetHoldSlotRef.current = null;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cheatSheetOpen]);
+
+  useEffect(() => {
+    const engine = gestureEngineRef.current;
+    if (!engine) return;
+    engine.setOnGesture(handleRecognizedGesture);
+    engine.setOnDial(handleRecognizedDial);
+  }, [handleRecognizedGesture, handleRecognizedDial]);
+
   const toggleSimulationMode = async () => {
     if (simulationTransition) return;
     const enabled = !simulationMode;
     setSimulationTransition(true);
     if (!enabled) setSimulationMode(false);
+    gestureEngineRef.current?.resetAll();
     try {
       const result = await requestSimulationMode(enabled, window);
       if (result.ok && result.enabled === enabled) {
@@ -1416,6 +1832,7 @@ export default function App() {
     const bridge = window.macropad;
     if (!bridge || deviceStatus.state !== 'connected') {
       lastSyncedConfigKeyRef.current = '';
+      lastDeviceSnapshotRef.current = '';
       setDeviceSyncReady(false);
       return;
     }
@@ -1425,38 +1842,36 @@ export default function App() {
     lastSyncedConfigKeyRef.current = '';
 
     void (async () => {
+      if (profileLoadFailed || !localProfileSavedRef.current) return;
       try {
-        const remote = await bridge.getFile('app_state') as {
-          ok: boolean;
-          text?: string;
-        };
+        const current = await bridge.request({ cmd: 'get_config' });
         if (cancelled) return;
-        if (remote.ok && typeof remote.text === 'string' && profileFileTools) {
-          try {
-            const saved = profileFileTools.parse(remote.text);
-            const nextProfiles = saved.profiles.map((profile) =>
-              normalizeProfileForEditor(profile as unknown as ProfileData)
-            );
-            setProfiles(nextProfiles);
-            setActiveProfileIndex(saved.activeProfileIndex);
-            setActiveLayerIndex(0);
-            setCustomItemsByTab(normalizeCustomItemsForEditor(
-              saved.customItems as unknown as CustomItemsByTab
-            ));
-            const selected = nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0];
-            lastSyncedConfigKeyRef.current = JSON.stringify(
-              buildViaConfiguration(selected, presetOs).config
-            );
-            showToast('Loaded keymap profile from Grid Macro 1');
-          } catch {
-            // Ignore malformed device metadata; the validated local profile remains authoritative.
+        if (!current.ok || !current.snapshot || !deviceKeymapFileTools) {
+          setSyncIssue('Device sync paused: could not read and preserve the existing device keymap.');
+          return;
+        }
+        const backup = deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot, {
+          device: deviceStatus.device, firmware: deviceStatus.fw,
+        });
+        if (!backup.ok) {
+          setSyncIssue(`Device sync paused: could not preserve the device keymap: ${backup.error || 'storage error'}`);
+          return;
+        }
+        lastDeviceSnapshotRef.current = JSON.stringify(current.snapshot);
+        const config = buildViaConfiguration(currentProfileRef.current, presetOs).config;
+        if (deviceMatchesConfiguration(config, current.snapshot)) {
+          lastSyncedConfigKeyRef.current = JSON.stringify(config);
+        } else {
+          const approved = window.confirm('The device keymap differs from the desktop profile. A device keymap backup was saved locally. Replace the device mappings with the desktop profile? Cancel keeps both unchanged and pauses sync.');
+          if (!approved || cancelled) {
+            setSyncIssue('Device sync paused. Your desktop profile and device keymap were preserved. Reconnect to review the conflict.');
+            return;
           }
         }
-      } catch {
-        // A stock VIA device stores keymaps, not profile metadata. Sync local profiles below.
+        if (!cancelled) { setSyncIssue(''); setDeviceSyncReady(true); }
+      } catch (error) {
+        if (!cancelled) setSyncIssue(`Device sync paused: ${error instanceof Error ? error.message : String(error)}`);
       }
-
-      if (!cancelled) setDeviceSyncReady(true);
     })();
 
     return () => {
@@ -1466,7 +1881,7 @@ export default function App() {
 
   useEffect(() => {
     const bridge = window.macropad;
-    if (!bridge || deviceStatus.state !== 'connected' || !deviceSyncReady) return;
+    if (!bridge || deviceStatus.state !== 'connected' || !deviceSyncReady || profileLoadFailed || !localProfileSavedRef.current) return;
 
     const { config, warnings: configWarnings } = buildViaConfiguration(currentProfile, presetOs);
     if (config.layers.length === 0) return;
@@ -1475,21 +1890,28 @@ export default function App() {
 
     let cancelled = false;
     const syncTimer = window.setTimeout(() => {
-      if (configKey === lastSyncedConfigKeyRef.current) return;
+      if (configKey === lastSyncedConfigKeyRef.current || !localProfileSavedRef.current) return;
       void (async () => {
         try {
           const current = await bridge.request({ cmd: 'get_config' });
           if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
           if (!current.ok || !current.snapshot) {
-            showToast(
+            setDeviceSyncReady(false);
+            setSyncIssue(
               `Profile saved locally; device sync paused because a pre-sync backup could not be read: ${
                 current.error || 'no keymap snapshot returned'
               }`
             );
             return;
           }
+          if (JSON.stringify(current.snapshot) !== lastDeviceSnapshotRef.current) {
+            setDeviceSyncReady(false);
+            setSyncIssue('Device keymap changed externally; sync paused to preserve it. Reconnect to review the conflict.');
+            return;
+          }
           if (!deviceKeymapFileTools) {
-            showToast('Profile saved locally; device sync paused because local backup tools are unavailable');
+            setDeviceSyncReady(false);
+            setSyncIssue('Profile saved locally; device sync paused because local backup tools are unavailable');
             return;
           }
 
@@ -1498,37 +1920,35 @@ export default function App() {
             firmware: deviceStatus.fw,
           });
           if (!backup.ok) {
-            showToast(
+            setDeviceSyncReady(false);
+            setSyncIssue(
               `Profile saved locally; device sync paused because the pre-sync backup could not be saved: ${
                 backup.error || 'unknown storage error'
               }`
             );
             return;
           }
-          if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
+          if (cancelled || !localProfileSavedRef.current || configKey === lastSyncedConfigKeyRef.current) return;
 
           const synced = await bridge.request({ cmd: 'set_config', config });
           if (cancelled) return;
           if (!synced.ok) {
-            showToast(
-              `Profile saved locally; device sync failed: ${synced.error || 'unknown error'}. A pre-sync backup was saved locally.`
+            setDeviceSyncReady(false);
+            setSyncIssue(
+              `Profile saved locally; device sync failed: ${synced.error || 'unknown error'}. The device may be partially updated. A pre-sync backup was saved locally; reconnect to review it.`
             );
             return;
           }
 
-          lastSyncedConfigKeyRef.current = configKey;
-          const state = JSON.stringify({
-            v: 1,
-            profiles,
-            activeProfileIndex,
-            customItems: customItemsByTab,
-          });
-          const saved = await bridge.putFile('app_state', state);
+          const verified = await bridge.request({ cmd: 'get_config' });
           if (cancelled) return;
-          if (!saved.ok) {
-            showToast(`Keymap synced to device; local profile save failed: ${saved.error || 'unknown error'}`);
+          if (!verified.ok || !verified.snapshot || !deviceMatchesConfiguration(config, verified.snapshot)) {
+            setDeviceSyncReady(false);
+            setSyncIssue('Device sync could not be verified; further writes are paused. The pre-sync backup is preserved.');
             return;
           }
+          lastDeviceSnapshotRef.current = JSON.stringify(verified.snapshot);
+          lastSyncedConfigKeyRef.current = configKey;
 
           const syncWarnings = [
             ...configWarnings,
@@ -1542,8 +1962,9 @@ export default function App() {
           );
         } catch (error) {
           if (!cancelled) {
-            showToast(
-              `Profile saved locally; device sync failed: ${error instanceof Error ? error.message : String(error)}. Keymap writes require a locally saved pre-sync backup.`
+            setDeviceSyncReady(false);
+            setSyncIssue(
+              `Profile saved locally; device sync failed: ${error instanceof Error ? error.message : String(error)}. The device may be partially updated; reconnect to review the backup.`
             );
           }
         }
@@ -1566,6 +1987,17 @@ export default function App() {
     presetOs,
   ]);
 
+  const ensureIconCatalog = async () => {
+    try {
+      const library = await loadFullMacroIconLibrary();
+      setIconCatalog(buildIconCatalog(library));
+      return true;
+    } catch {
+      showToast('Could not load the icon choices');
+      return false;
+    }
+  };
+
   const ensureEmojiCatalog = async () => {
     if (selectableEmojiList.length > 0) return true;
     try {
@@ -1583,11 +2015,13 @@ export default function App() {
       setIconPickerOpen(false);
       return;
     }
+    if (iconPickerTab === 'Icon' && !(await ensureIconCatalog())) return;
     if (iconPickerTab === 'Emoji' && !(await ensureEmojiCatalog())) return;
     setIconPickerOpen(true);
   };
 
   const handleIconPickerTabChange = async (tab: 'Icon' | 'Emoji') => {
+    if (tab === 'Icon' && !(await ensureIconCatalog())) return;
     if (tab === 'Emoji' && !(await ensureEmojiCatalog())) return;
     setIconPickerTab(tab);
   };
@@ -1630,6 +2064,75 @@ export default function App() {
     } finally {
       setFirmwareCheckPending(false);
     }
+  };
+
+  const handleExportViaMacros = async () => {
+    if (!window.macropad) { showToast('Connect the macropad before backing up VIA macros'); return; }
+    const result = await window.macropad.request({ cmd: 'read_via_macros' });
+    if (!result.ok || !result.macroBackup) { showToast(`Macro backup failed: ${result.error || 'no macro data returned'}`); return; }
+    try {
+      const backup = { format: 'node-studio-via-macros', version: 1, device: deviceStatus.device || 'Grid Macro 1', firmware: deviceStatus.fw || null, createdAt: new Date().toISOString(), count: result.macroBackup.count, bytes: result.macroBackup.bytes };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a'); link.href = url; link.download = `grid-macro-1-via-macros-${Date.now()}.json`;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      showToast('Macro backup download started. Verify that the file was saved.');
+    } catch (error) { showToast(`Could not download macro backup: ${error instanceof Error ? error.message : String(error)}`); }
+  };
+
+  const handleRestoreViaMacros = async (file: File | undefined) => {
+    if (!file || !window.macropad || macroRestoreBusyRef.current) return;
+    macroRestoreBusyRef.current = true;
+    setMacroRestoreBusy(true);
+    let submitted = false;
+    setMacroRestoreReport('Validating backup…');
+    try {
+      if (file.size > 100_000) throw new Error('Macro backup is too large');
+      const backup = parseViaMacroFile(await file.text());
+      if (!window.confirm(`Restore VIA macros from ${backup.device}, saved ${backup.createdAt}? The current device macros will be replaced. A recovery copy of the current keymap and macros will be saved locally first. An interruption can still cause data loss. Continue?`)) {
+        setMacroRestoreReport('Restore cancelled. No changes were made.'); return;
+      }
+      submitted = true;
+      const restoreRequest = {
+        cmd: 'restore_via_macros', macroRestore: { count: backup.count, bytes: backup.bytes },
+        saveRecovery: ({ keymap, macros }: { keymap: import('./qmkViaBridge').ViaKeymapSnapshot; macros: { count: number; bytes: number[] } }) => {
+          const incomplete = macros.bytes[macros.bytes.length - 1] !== 0 || macros.bytes.filter(byte => byte === 0).length < macros.count;
+          const key = saveViaRecovery(window.localStorage, { format: 'node-studio-via-macros', version: 1, device: deviceStatus.device || 'Grid Macro 1', firmware: deviceStatus.fw || null, createdAt: new Date().toISOString(), count: macros.count, bytes: macros.bytes, keymap }, incomplete);
+          if (incomplete) setMacroDiagnosticKey(key); else setMacroRecoveryKey(key);
+        },
+        onProgress: (phase: string, done: number, total: number) => setMacroRestoreReport(`${phase}${total > 1 ? `: ${done} / ${total} bytes` : '…'}`),
+      };
+      let usedInterruptedRecovery = false;
+      let result = await window.macropad.request(restoreRequest);
+      if (result.interruptedMacroBuffer && window.confirm('The device contains an incomplete macro buffer from an interrupted write. Restore this known-good backup? The incomplete bytes will be saved locally for diagnosis, but cannot be safely rolled back or used as a restore file. Failure could leave macros disabled.')) {
+        usedInterruptedRecovery = true;
+        result = await window.macropad.request({ ...restoreRequest, allowInterruptedRecovery: true });
+      }
+      if (result.ok) setMacroRestoreReport(usedInterruptedRecovery ? 'Restore complete. All macro bytes were read back and verified. The previous incomplete buffer was saved for diagnosis only.' : 'Restore complete. All macro bytes were read back and verified. The previous configuration is saved locally.');
+      else if (result.rollback === 'verified') setMacroRestoreReport(`Restore failed: ${result.error}. Previous macro bytes were restored and verified.`);
+      else if (result.rollback === 'failed') {
+        setMacroRestoreReport(`Restore failed: ${result.error}. Recovery could not be verified: ${result.recoveryError || 'unknown error'}. Keep the recovery copy and do not retry until the device is checked.`);
+        setDeviceSyncReady(false);
+        setSyncIssue('Macro recovery could not be verified; device state may be incomplete. Reconnect only after checking the recovery copy.');
+      } else setMacroRestoreReport(`Restore stopped before a device write: ${result.error || 'unknown error'}.`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (submitted) {
+        setDeviceSyncReady(false);
+        setSyncIssue('Macro restore ended unexpectedly; device state is unknown. Keep the recovery copy and check the device.');
+        setMacroRestoreReport(`Restore ended unexpectedly: ${detail}. Device state is unknown; check the recovery copy.`);
+      } else setMacroRestoreReport(`Restore stopped: ${detail}. No changes were made.`);
+    } finally { macroRestoreBusyRef.current = false; setMacroRestoreBusy(false); }
+  };
+
+  const downloadMacroRecovery = (key = macroRecoveryKey, diagnostic = false) => {
+    try {
+      const text = window.localStorage.getItem(key);
+      if (!text) throw new Error('Recovery copy is unavailable');
+      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      const link = document.createElement('a'); link.href = url; link.download = diagnostic ? 'grid-macro-1-incomplete-macro-diagnostic.json' : 'grid-macro-1-macro-recovery.json';
+      document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) { setMacroRestoreReport(`Recovery download failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
 
   const handleAdvanceFlash = async () => {
@@ -1734,6 +2237,40 @@ export default function App() {
     setLayerDeleteConfirm(false);
   };
 
+  const handleResetLayerKeys = (allLayers = false) => {
+    setResetKeysPending({ allLayers, layerIndex: activeLayerIndex, profileIndex: activeProfileIndex });
+  };
+
+  const confirmResetLayerKeys = () => {
+    const pending = resetKeysPending;
+    setResetKeysPending(null);
+    if (!pending || deviceStatus.state !== 'connected' || pending.profileIndex !== activeProfileIndex || pending.layerIndex !== activeLayerIndex) return;
+    const { allLayers } = pending;
+    const layerNumber = pending.layerIndex + 1;
+    const blankLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
+    const nextProfiles = profiles.map((p, idx) => {
+      if (idx !== activeProfileIndex) return p;
+      return {
+        ...p,
+        layers: allLayers
+          ? p.layers.map(() => JSON.parse(JSON.stringify(INITIAL_LAYER_1)))
+          : p.layers.map((l, lIdx) => (lIdx === activeLayerIndex ? blankLayer : l)),
+      };
+    });
+
+    lastSyncedConfigKeyRef.current = '';
+    pushState(nextProfiles);
+    setSelectedKey(null);
+    setSelectedEncoderSub(null);
+    setMappingDrawerOpen(false);
+    gestureEngineRef.current?.resetAll();
+    showToast(
+      allLayers
+        ? 'All macropad keys reset to blank'
+        : `Layer ${layerNumber} keys reset to blank`
+    );
+  };
+
   const handleUpdateKeyAssignment = (
     slotId: KeySlotId,
     updates: Partial<KeyAssignment>
@@ -1742,12 +2279,26 @@ export default function App() {
       if (pIdx !== activeProfileIndex) return p;
       const nextLayers = p.layers.map((layer, lIdx) => {
         if (lIdx !== activeLayerIndex) return layer;
+        const currentSlot = layer[slotId];
+        const merged: KeyAssignment = {
+          ...currentSlot,
+          ...updates,
+        };
+        if (updates.execution === undefined) {
+          delete merged.execution;
+        }
+        if (updates.iconId === undefined && updates.binding === 'blank') {
+          delete merged.iconId;
+        }
+        if (updates.actionId === undefined && updates.binding === 'blank') {
+          delete merged.actionId;
+        }
+        if (updates.color === undefined && updates.binding === 'blank') {
+          delete merged.color;
+        }
         return {
           ...layer,
-          [slotId]: {
-            ...layer[slotId],
-            ...updates,
-          },
+          [slotId]: merged,
         };
       });
       return { ...p, layers: nextLayers };
@@ -1780,24 +2331,38 @@ export default function App() {
         [subTarget]: {
           label: item.isClearIcon ? '—' : formatEncoderShortLabel(displayBinding),
           binding: item.isClearIcon ? 'blank' : displayBinding,
-          execution: item.isClearIcon ? undefined : item.execution,
+          ...(item.isClearIcon ? {} : item.execution ? { execution: item.execution } : {}),
         },
       };
       handleUpdateKeyAssignment(targetSlot, {
-        actionType: actionTypeMap[effectiveTab],
+        actionType: item.isClearIcon ? 'Basic input' : actionTypeMap[effectiveTab],
         encoderActions: updatedActions,
       });
-      showToast(`Assigned "${displayBinding}" to Encoder (${subTarget.toUpperCase()})`);
+      showToast(item.isClearIcon ? `Cleared Encoder (${subTarget.toUpperCase()})` : `Assigned "${displayBinding}" to Encoder (${subTarget.toUpperCase()})`);
+      return;
+    }
+
+    if (item.isClearIcon) {
+      handleUpdateKeyAssignment(targetSlot, {
+        label: '',
+        binding: 'blank',
+        actionType: 'Basic input',
+        iconId: undefined,
+        actionId: undefined,
+        execution: undefined,
+        color: undefined,
+      });
+      showToast(`Cleared ${targetSlot.toUpperCase()} to blank`);
       return;
     }
 
     handleUpdateKeyAssignment(targetSlot, {
-      label: item.isClearIcon ? '' : item.macropadLabel,
-      binding: item.isClearIcon ? 'blank' : displayBinding,
+      label: item.macropadLabel,
+      binding: displayBinding,
       actionType: actionTypeMap[effectiveTab],
-      iconId: item.isClearIcon ? undefined : item.iconId,
-      actionId: item.isClearIcon ? undefined : item.id,
-      execution: item.isClearIcon ? undefined : item.execution,
+      iconId: item.iconId,
+      actionId: item.id,
+      execution: item.execution,
     });
     showToast(`Assigned "${displayBinding}" to ${targetSlot.toUpperCase()}`);
   };
@@ -2012,6 +2577,7 @@ export default function App() {
   // Keyboard recording listener for Action editing when Advance mode is OFF
   useEffect(() => {
     if (
+      deviceStatus.state !== 'connected' ||
       creatorModalTab !== 'Action' ||
       actionAdvanceMode ||
       actionRecordingStatus !== 'recording'
@@ -2268,7 +2834,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleActionKeyDown);
     };
-  }, [creatorModalTab, actionAdvanceMode, actionRecordingStatus]);
+  }, [creatorModalTab, actionAdvanceMode, actionRecordingStatus, deviceStatus.state]);
 
   useEffect(() => {
     const handleWindowPointerMove = (e: PointerEvent) => {
@@ -2527,6 +3093,20 @@ export default function App() {
     subAction?: EncoderSubActionId
   ) => {
     if (e.button !== 0) return;
+    if (simulationMode) {
+      if (slotId === GRID_MACRO_ENCODER_SLOT) {
+        if (subAction === 'cw') {
+          gestureEngineRef.current?.dialRotate('cw', 'simulation');
+        } else if (subAction === 'ccw') {
+          gestureEngineRef.current?.dialRotate('ccw', 'simulation');
+        } else {
+          debounceEngineRef.current?.handleRawInput(GRID_MACRO_ENCODER_SLOT, true, undefined, 'simulation');
+        }
+        return;
+      }
+      debounceEngineRef.current?.handleRawInput(slotId, true, undefined, 'simulation');
+      return;
+    }
     // Drag encoder bindings from their CW / Press / CCW capsule, not the knob body.
     if (slotId === GRID_MACRO_ENCODER_SLOT && !subAction) return;
 
@@ -2578,6 +3158,35 @@ export default function App() {
     };
   };
 
+  const handleKeyPointerUp = (
+    _e: React.PointerEvent,
+    slotId: KeySlotId,
+    subAction?: EncoderSubActionId
+  ) => {
+    if (!simulationMode) return;
+    lastSimPointerUpRef.current[slotId] = Date.now();
+    if (slotId === GRID_MACRO_ENCODER_SLOT) {
+      if (subAction === 'press' || !subAction) {
+        debounceEngineRef.current?.handleRawInput(GRID_MACRO_ENCODER_SLOT, false, undefined, 'simulation');
+      }
+      return;
+    }
+    debounceEngineRef.current?.handleRawInput(slotId, false, undefined, 'simulation');
+  };
+
+  const handleKeyPointerLeave = (
+    _e: React.PointerEvent,
+    slotId: KeySlotId
+  ) => {
+    if (!simulationMode) return;
+    const targetSlot = slotId === GRID_MACRO_ENCODER_SLOT ? GRID_MACRO_ENCODER_SLOT : slotId;
+    const state = gestureEngineRef.current?.getSlotState(targetSlot);
+    if (state === 'PRESSED_1' || state === 'PRESSED_2') {
+      lastSimPointerUpRef.current[targetSlot] = Date.now();
+      debounceEngineRef.current?.handleRawInput(targetSlot, false, undefined, 'simulation');
+    }
+  };
+
   const runSimulationAction = (
     assignment: SimulationAction & { actionId?: string },
     gesture?: MultiGestureKey
@@ -2603,10 +3212,13 @@ export default function App() {
     if (suppressNextClickRef.current) return;
     if (simulationMode) {
       if (slotId === GRID_MACRO_ENCODER_SLOT) {
-        setEncoderAngle((angle) => (angle + 30) % 360);
-        runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
-      } else {
-        runSimulationAction(currentLayer[slotId]);
+        gestureEngineRef.current?.dialRotate('cw', 'simulation');
+        return;
+      }
+      const lastUp = lastSimPointerUpRef.current[slotId] || 0;
+      if (Date.now() - lastUp > 350) {
+        gestureEngineRef.current?.buttonDown(slotId, 'simulation');
+        gestureEngineRef.current?.buttonUp(slotId);
       }
       return;
     }
@@ -2643,9 +3255,17 @@ export default function App() {
   ) => {
     if (suppressNextClickRef.current) return;
     if (simulationMode) {
-      if (subAction === 'cw') setEncoderAngle((angle) => (angle + 30) % 360);
-      if (subAction === 'ccw') setEncoderAngle((angle) => (angle - 30 + 360) % 360);
-      runSimulationAction(getEncoderActions(currentLayer[slotId])[subAction]);
+      if (subAction === 'cw') {
+        gestureEngineRef.current?.dialRotate('cw', 'simulation');
+      } else if (subAction === 'ccw') {
+        gestureEngineRef.current?.dialRotate('ccw', 'simulation');
+      } else {
+        const lastUp = lastSimPointerUpRef.current[slotId] || 0;
+        if (Date.now() - lastUp > 350) {
+          gestureEngineRef.current?.buttonDown(GRID_MACRO_ENCODER_SLOT, 'simulation');
+          gestureEngineRef.current?.buttonUp(GRID_MACRO_ENCODER_SLOT);
+        }
+      }
       return;
     }
     if (selectedDrawerTile) {
@@ -2797,7 +3417,7 @@ export default function App() {
               onHold: fromDisplay('onHold'),
               tapHold: fromDisplay('tapHold'),
             });
-        setTappingTermMs(String(execution?.kind === 'multi' ? execution.tappingTermMs ?? 250 : 250));
+        setTappingTermMs(String(execution?.kind === 'multi' ? execution.tappingTermMs ?? 180 : 180));
       } else if (tab === 'Smart-A') {
         const execution = existingItem.execution;
         const displaySmart = (existingItem.listLabel || '').match(/\((Text|Cmd|Web|App):\s*([\s\S]*)\)$/i);
@@ -2832,7 +3452,7 @@ export default function App() {
           onHold: '',
           tapHold: '',
         });
-        setTappingTermMs('250');
+        setTappingTermMs('180');
       } else if (tab === 'Smart-A') {
         setNewCustomName('My Smart action');
         setSmartSubTab('Text');
@@ -2904,7 +3524,7 @@ export default function App() {
             .filter(([, value]) => value.trim())
             .map(([gesture, value]) => [gesture, value.trim()])
         ) as Partial<Record<MultiGestureKey, string>>,
-        tappingTermMs: Math.max(0, Number.parseInt(tappingTermMs, 10) || 250),
+        tappingTermMs: Math.max(0, Number.parseInt(tappingTermMs, 10) || 180),
       };
     } else if (creatorModalTab === 'Smart-A') {
       const val = smartSubTab === 'App'
@@ -2978,6 +3598,104 @@ export default function App() {
       };
     });
 
+    const actionTypeMap: Record<Exclude<MappingTabId, 'Basic'>, KeyAssignment['actionType']> = {
+      Action: 'Shortcut',
+      'Multi-A': 'Multi-step action',
+      'Smart-A': 'Smart Action',
+    };
+    const targetActionType = actionTypeMap[creatorModalTab];
+    const isEditing = Boolean(editingCustomItemId);
+    const targetItemId = created.id;
+
+    let modifiedProfiles = false;
+    const nextProfiles = profiles.map((p, pIdx) => {
+      let profileChanged = false;
+      const nextLayers = p.layers.map((layer, lIdx) => {
+        let layerChanged = false;
+        const updatedLayer: LayerKeymap = { ...layer };
+
+        for (const slot of GRID_MACRO_KEY_SLOTS) {
+          const entry = updatedLayer[slot];
+          const isSelected =
+            pIdx === activeProfileIndex &&
+            lIdx === activeLayerIndex &&
+            selectedKey === slot;
+          const matchesAction =
+            entry?.actionId === targetItemId ||
+            (isEditing && entry?.actionId === editingCustomItemId);
+
+          if (matchesAction || isSelected) {
+            updatedLayer[slot] = {
+              ...entry,
+              label: created.macropadLabel,
+              binding: summaryBinding,
+              actionType: targetActionType,
+              iconId: created.iconId,
+              actionId: created.id,
+              execution: created.execution,
+            };
+            layerChanged = true;
+          }
+        }
+
+        const dialEntry = updatedLayer[GRID_MACRO_ENCODER_SLOT];
+        if (dialEntry) {
+          const encActions = getEncoderActions(dialEntry);
+          let encChanged = false;
+          const nextEncActions = { ...encActions };
+
+          for (const dir of ['cw', 'ccw', 'press'] as const) {
+            const sub = nextEncActions[dir];
+            const isSelectedSub =
+              pIdx === activeProfileIndex &&
+              lIdx === activeLayerIndex &&
+              selectedKey === GRID_MACRO_ENCODER_SLOT &&
+              (selectedEncoderSub === dir || (!selectedEncoderSub && dir === 'press'));
+            const matchesSub =
+              sub?.actionId === targetItemId ||
+              (isEditing && sub?.actionId === editingCustomItemId);
+
+            if (matchesSub || isSelectedSub) {
+              nextEncActions[dir] = {
+                ...sub,
+                label: formatEncoderShortLabel(summaryBinding),
+                binding: summaryBinding,
+                actionId: created.id,
+                execution: created.execution,
+              };
+              encChanged = true;
+            }
+          }
+
+          if (encChanged) {
+            updatedLayer[GRID_MACRO_ENCODER_SLOT] = {
+              ...dialEntry,
+              actionType: targetActionType,
+              encoderActions: nextEncActions,
+            };
+            layerChanged = true;
+          }
+        }
+
+        if (layerChanged) {
+          profileChanged = true;
+          return updatedLayer;
+        }
+        return layer;
+      });
+
+      if (profileChanged) {
+        modifiedProfiles = true;
+        return { ...p, layers: nextLayers };
+      }
+      return p;
+    });
+
+    if (modifiedProfiles) {
+      lastSyncedConfigKeyRef.current = '';
+      pushState(nextProfiles);
+    }
+
     setIconPickerOpen(false);
     setActiveGestureDropdown(null);
     setActiveAdvanceStepDropdown(null);
@@ -2994,12 +3712,77 @@ export default function App() {
   const handleDeleteCustomItem = () => {
     if (!creatorModalTab) return;
     if (editingCustomItemId) {
+      const deletedId = editingCustomItemId;
       setCustomItemsByTab((prev) => ({
         ...prev,
         [creatorModalTab]: prev[creatorModalTab].filter(
-          (i) => i.id !== editingCustomItemId
+          (i) => i.id !== deletedId
         ),
       }));
+
+      let modifiedProfiles = false;
+      const nextProfiles = profiles.map((p) => {
+        let profileChanged = false;
+        const nextLayers = p.layers.map((layer) => {
+          let layerChanged = false;
+          const updatedLayer: LayerKeymap = { ...layer };
+
+          for (const slot of GRID_MACRO_KEY_SLOTS) {
+            if (updatedLayer[slot]?.actionId === deletedId) {
+              updatedLayer[slot] = {
+                label: '',
+                binding: 'blank',
+                actionType: 'Basic input',
+                iconId: undefined,
+                actionId: undefined,
+                execution: undefined,
+                color: undefined,
+              };
+              layerChanged = true;
+            }
+          }
+
+          const dialEntry = updatedLayer[GRID_MACRO_ENCODER_SLOT];
+          if (dialEntry) {
+            const encActions = getEncoderActions(dialEntry);
+            let encChanged = false;
+            const nextEncActions = { ...encActions };
+
+            for (const dir of ['cw', 'ccw', 'press'] as const) {
+              if (nextEncActions[dir]?.actionId === deletedId) {
+                nextEncActions[dir] = { label: '', binding: 'blank' };
+                encChanged = true;
+              }
+            }
+
+            if (encChanged) {
+              updatedLayer[GRID_MACRO_ENCODER_SLOT] = {
+                ...dialEntry,
+                encoderActions: nextEncActions,
+              };
+              layerChanged = true;
+            }
+          }
+
+          if (layerChanged) {
+            profileChanged = true;
+            return updatedLayer;
+          }
+          return layer;
+        });
+
+        if (profileChanged) {
+          modifiedProfiles = true;
+          return { ...p, layers: nextLayers };
+        }
+        return p;
+      });
+
+      if (modifiedProfiles) {
+        lastSyncedConfigKeyRef.current = '';
+        pushState(nextProfiles);
+      }
+
       showToast('Deleted item');
     }
     setIconPickerOpen(false);
@@ -3408,7 +4191,56 @@ export default function App() {
   })).filter((sec) => sec.items.length > 0);
 
   return (
-    <div className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
+    <>
+    <div inert={deviceStatus.state !== 'connected' || resetKeysPending !== null} aria-hidden={deviceStatus.state !== 'connected' || resetKeysPending !== null ? true : undefined} className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
+      {(profileLoadFailed || profileSaveError || syncIssue) && (
+        <div role="alert" className="bg-amber-100 text-amber-950 px-4 py-2 text-xs flex flex-wrap items-center gap-3">
+          <span>{profileLoadFailed ? 'Saved profile could not be loaded. Original data preserved; saving and device sync are paused.' : profileSaveError || syncIssue}</span>
+          {profileLoadFailed && (
+            <button type="button" className="underline" onClick={() => {
+              try {
+                const original = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+                if (original === null) throw new Error('No saved profile found');
+                const url = URL.createObjectURL(new Blob([original], { type: 'application/json' }));
+                const link = document.createElement('a'); link.href = url; link.download = 'node-unreadable-profile.json';
+                link.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
+              } catch (error) { showToast(`Download failed: ${error instanceof Error ? error.message : String(error)}`); }
+            }}>Download original profile</button>
+          )}
+          {profileLoadFailed && loadSavedProfileState('cm2.state.backup.v1') && (
+            <button type="button" className="underline" onClick={() => {
+              if (!window.confirm('Restore the previous local profile backup? The unreadable original will be preserved separately.')) return;
+              try {
+                const original = window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY);
+                const backup = window.localStorage.getItem('cm2.state.backup.v1');
+                const quarantine = 'cm2.state.unreadable.v1';
+                if (!backup || !loadSavedProfileState('cm2.state.backup.v1')) throw new Error('Backup is invalid');
+                if (window.localStorage.getItem(quarantine) !== null) throw new Error('An unreadable profile is already preserved; export it before recovering another');
+                if (original !== null) window.localStorage.setItem(quarantine, original);
+                window.localStorage.setItem(PROFILE_FILE_STORAGE_KEY, backup);
+                window.location.reload();
+              } catch (error) { showToast(`Recovery failed: ${error instanceof Error ? error.message : String(error)}`); }
+            }}>Restore previous local backup</button>
+          )}
+          {!profileLoadFailed && deviceKeymapFileTools?.getLatestBackup() && (
+            <button type="button" className="underline" onClick={() => {
+              const result = deviceKeymapFileTools!.downloadLatestBackup();
+              if (!result.ok) showToast(result.error || 'Could not download backup');
+            }}>Download device backup</button>
+          )}
+          {!profileLoadFailed && syncIssue && deviceStatus.state === 'connected' && deviceKeymapFileTools && (
+            <button type="button" className="underline" onClick={() => {
+              setDeviceSyncReady(false);
+              void deviceKeymapFileTools!.restoreFromFile(window.macropad, {
+                device: deviceStatus.device, firmware: deviceStatus.fw,
+              }).then(result => {
+                if (result.ok) setSyncIssue('Device backup restored. Sync remains paused; reconnect to review the desktop and device configurations.');
+                else if (result.error !== 'Restore cancelled') setSyncIssue(`Restore failed: ${result.error || 'unknown error'}. Sync remains paused.`);
+              });
+            }}>Restore device backup…</button>
+          )}
+        </div>
+      )}
       {/* TOP NAVIGATION BAR */}
       <motion.header
         {...getEntranceMotionProps(entrancePhase, {
@@ -3571,7 +4403,7 @@ export default function App() {
         </button>
       </motion.header>
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="wait" initial={false}>
         {/* ===================================================================== */}
         {/* 1. KEYMAP VIEW                                                        */}
         {/* ===================================================================== */}
@@ -4119,6 +4951,15 @@ export default function App() {
                             </svg>
                           </button>
 
+                          {/* Reset Layer Keys Button */}
+                          <button
+                            onClick={() => handleResetLayerKeys(false)}
+                            title="Reset all keys on this layer to blank"
+                            className="w-[28px] h-[28px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#dc0000] flex items-center justify-center text-[#555555] hover:text-[#dc0000] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
+                          >
+                            <RotateCcw className="w-[12px] h-[12px] stroke-[1.8]" />
+                          </button>
+
                           {/* Delete Layer × Button (only shown when more than 1 layer exists; turns solid red on hover) */}
                           {currentProfile.layers.length > 1 && (
                             <button
@@ -4159,20 +5000,23 @@ export default function App() {
                                 return (
                                   <button
                                     key={mode}
+                                    disabled={mode === 'Backlight'}
+                                    title={mode === 'Backlight' ? 'Reserved for future external backlighting' : 'Onboard RGB LED'}
                                     onClick={() => setLightingTab(mode)}
-                                    className={`h-[26px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] text-[10.5px] font-medium transition-all cursor-pointer ${
+                                    className={`h-[26px] rounded-full disabled:opacity-40 disabled:cursor-not-allowed border-[1.5px] border-transparent hover:border-[#0051ff] text-[10.5px] font-medium transition-all cursor-pointer ${
                                       isActiveMode
                                         ? 'bg-[#000000] text-white'
                                         : 'bg-white text-[#555555]'
                                     }`}
                                   >
-                                    {mode}
+                                    {mode === 'Underglow' ? 'Onboard LED' : 'Backlight'}
                                   </button>
                                 );
                               }
                             )}
                           </div>
 
+                          <p className="mb-2 text-[10px] text-[#555]">Onboard RGB LED · applies to every layer. Changes last until power-off. Requires updated firmware.</p>
                           {/* Presets Card */}
                           <div className="bg-[#eeeeee] rounded-[14px] p-[10px] mb-[8px]">
                             <div className="text-[11px] font-normal text-[#555555] mb-[7px] text-left">
@@ -4195,6 +5039,8 @@ export default function App() {
                                 return (
                                   <button
                                     key={presetName}
+                                    disabled={presetName === 'Snake' || presetName === 'Gradient'}
+                                    title={presetName === 'Snake' || presetName === 'Gradient' ? 'Requires multiple LEDs; reserved for later' : ''}
                                     onClick={() =>
                                       setLightingConfig((prev) => ({
                                         ...prev,
@@ -4204,7 +5050,7 @@ export default function App() {
                                         },
                                       }))
                                     }
-                                    className={`h-[24px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] text-[10px] font-medium transition-all cursor-pointer ${
+                                    className={`h-[24px] rounded-full disabled:opacity-40 disabled:cursor-not-allowed border-[1.5px] border-transparent hover:border-[#0051ff] text-[10px] font-medium transition-all cursor-pointer ${
                                       isActivePreset
                                         ? 'bg-[#000000] text-white'
                                         : 'bg-white text-[#555555]'
@@ -4226,8 +5072,6 @@ export default function App() {
                             {(() => {
                               const cfg = lightingConfig[lightingTab];
                               const isOff = cfg.preset === 'Off';
-                              const isAnimated =
-                                cfg.preset !== 'Off' && cfg.preset !== 'Solid';
 
                               return (
                                 <div className="space-y-[8px]">
@@ -4272,9 +5116,7 @@ export default function App() {
                                   {/* Speed Slider */}
                                   <div
                                     className={`flex items-center gap-[8px] ${
-                                      !isAnimated
-                                        ? 'opacity-30 pointer-events-none'
-                                        : ''
+                                      'opacity-30 pointer-events-none'
                                     }`}
                                   >
                                     <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">
@@ -4284,6 +5126,8 @@ export default function App() {
                                       <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
                                       <input
                                         type="range"
+                                        disabled
+                                        title="Reserved for a later lighting update"
                                         min={0}
                                         max={100}
                                         value={cfg.speed}
@@ -4310,9 +5154,7 @@ export default function App() {
                                   {/* Magic Slider */}
                                   <div
                                     className={`flex items-center gap-[8px] ${
-                                      !isAnimated
-                                        ? 'opacity-30 pointer-events-none'
-                                        : ''
+                                      'opacity-30 pointer-events-none'
                                     }`}
                                   >
                                     <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">
@@ -4322,6 +5164,8 @@ export default function App() {
                                       <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
                                       <input
                                         type="range"
+                                        disabled
+                                        title="Reserved for a later lighting update"
                                         min={0}
                                         max={100}
                                         value={cfg.magic}
@@ -4431,14 +5275,18 @@ export default function App() {
 
                           {/* Apply to all layers button */}
                           <button
-                            onClick={() =>
-                              showToast(
-                                `Applied ${lightingTab.toLowerCase()} settings to all layers`
-                              )
-                            }
+                            onClick={async () => {
+                              const cfg = lightingConfig.Underglow;
+                              const hsv = rp2040ZeroColorToQmkHsv(cfg.colorHex);
+                              const effect = { Off: 0, Solid: 1, Breath: 2, Rainbow: 6 }[cfg.preset as 'Off' | 'Solid' | 'Breath' | 'Rainbow'];
+                              if (!hsv || effect === undefined) { showToast('Select a supported effect and a valid hex color'); return; }
+                              if (!window.macropad) { showToast('Connect the macropad first'); return; }
+                              const result = await window.macropad.request({ cmd: 'set_onboard_led', lighting: { effect, ...hsv, saturation: effect === 6 ? 255 : hsv.saturation, brightness: Math.round(Math.max(0, Math.min(100, cfg.light)) * 255 / 100) } });
+                              showToast(result.ok ? 'Onboard LED updated until power-off' : `LED update failed: ${result.error || 'device unavailable'}`);
+                            }}
                             className="w-full h-[25px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[10px] font-normal text-[#555555] flex items-center justify-center transition-all cursor-pointer"
                           >
-                            Apply to all layers
+                            Apply to onboard LED
                           </button>
                         </motion.div>
                       )}
@@ -4633,31 +5481,51 @@ export default function App() {
                   dragOverTarget={dragOverTarget}
                   draggedFromSlot={draggedTile?.fromSlotId || null}
                   encoderAngle={encoderAngle}
+                  activePhysicalSlot={activePhysicalPressedSlot}
                   onSelectKey={handleSelectKey}
                   onSelectEncoderSub={handleSelectEncoderSubAction}
                   onStartKeyDrag={handleStartMacropadKeyDrag}
+                  onKeyPointerUp={handleKeyPointerUp}
+                  onKeyPointerLeave={handleKeyPointerLeave}
                   entrancePhase={entrancePhase}
                 />
               </motion.div>
 
-              <motion.button
-                {...getEntranceMotionProps(entrancePhase, {
-                  delay: 1.2,
-                  duration: 0.42,
-                  offsetY: 8,
-                  initialScale: 0.99,
-                })}
-                onClick={() => void toggleSimulationMode()}
-                disabled={simulationTransition}
-                className="mt-[15px] h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
-              >
-                <span
-                  className={`w-[8px] h-[8px] rounded-full transition-colors ${
-                    simulationMode ? 'bg-[#0051ff]' : 'bg-[#b5b5b5]'
-                  }`}
-                />
-                <span>{simulationMode ? 'Simulation on' : 'Simulation off'}</span>
-              </motion.button>
+              <div className="mt-[15px] flex items-center gap-[8px]">
+                <motion.button
+                  {...getEntranceMotionProps(entrancePhase, {
+                    delay: 1.2,
+                    duration: 0.42,
+                    offsetY: 8,
+                    initialScale: 0.99,
+                  })}
+                  onClick={() => void toggleSimulationMode()}
+                  disabled={simulationTransition}
+                  className="h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
+                >
+                  <span
+                    className={`w-[8px] h-[8px] rounded-full transition-colors ${
+                      simulationMode ? 'bg-[#0051ff]' : 'bg-[#b5b5b5]'
+                    }`}
+                  />
+                  <span>{simulationMode ? 'Simulation on' : 'Simulation off'}</span>
+                </motion.button>
+
+                <motion.button
+                  {...getEntranceMotionProps(entrancePhase, {
+                    delay: 1.25,
+                    duration: 0.42,
+                    offsetY: 8,
+                    initialScale: 0.99,
+                  })}
+                  onClick={() => handleResetLayerKeys(false)}
+                  className="h-[28px] px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#dc0000] text-[#3a3a3a] hover:text-[#dc0000] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[11px] font-medium transition-all cursor-pointer"
+                  title="Reset all keys on this layer to blank defaults"
+                >
+                  <RotateCcw className="w-[12px] h-[12px]" />
+                  <span>Reset keys</span>
+                </motion.button>
+              </div>
             </motion.div>
           </div>
 
@@ -4932,185 +5800,45 @@ export default function App() {
                       {/* ======================================================= */}
                       {/* SELECT ICON / EMOJI POPOVER DRAWER (Screenshot 2)       */}
                       {/* ======================================================= */}
-                      <AnimatePresence>
-                        {iconPickerOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                            transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
-                            className="absolute top-[68px] left-0 w-[216px] bg-[#efefef] rounded-[18px] p-[11px] shadow-[0_8px_28px_rgba(0,0,0,0.16)] border border-black/[0.06] z-50"
-                          >
-                            <div className="flex items-center justify-between mb-[10px]">
-                              <button
-                                onClick={() => setIconPickerOpen(false)}
-                                className="w-[22px] h-[22px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555555] hover:text-black transition-all cursor-pointer"
-                              >
-                                <X className="w-[13px] h-[13px] stroke-[1.8]" />
-                              </button>
-                              <span className="text-[11px] font-medium text-[#555555]">
-                                Select Icon
-                              </span>
-                              <div className="w-5" />
-                            </div>
-
-                            {/* Icon | Emoji Segmented Toggle */}
-                            <div className="h-[26px] rounded-full bg-white flex overflow-hidden mb-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-                              {(['Icon', 'Emoji'] as const).map((t) => (
-                                <button
-                                  key={t}
-                                  onClick={() => void handleIconPickerTabChange(t)}
-                                  className={`flex-1 h-full text-[10.5px] font-medium transition-colors cursor-pointer ${
-                                    iconPickerTab === t
-                                      ? 'bg-[#000000] text-white rounded-full'
-                                      : 'text-[#555555] hover:text-black'
-                                  }`}
-                                >
-                                  {t}
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Search Icon / Emoji */}
-                            <div className="h-[25px] rounded-full bg-white px-[9px] flex items-center gap-[5px] mb-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                              <Search className="w-[10px] h-[10px] text-[#666666] stroke-[2] shrink-0" />
-                              <input
-                                type="text"
-                                value={iconPickerSearch}
-                                onChange={(e) => {
-                                  setIconPickerSearch(e.target.value);
-                                  setIconPickerPage(0);
-                                }}
-                                placeholder={
-                                  iconPickerTab === 'Icon'
-                                    ? 'Search icon'
-                                    : 'Search emoji'
-                                }
-                                className="w-full bg-transparent text-[10px] text-[#333333] placeholder:text-[#a0a0a0] focus:outline-none"
-                              />
-                            </div>
-
-                            {/* Grid of Real Icons or Real Emojis */}
-                            <div className="bg-white rounded-[14px] p-[8px] h-[196px] overflow-y-auto list-accordion-scroll grid grid-cols-6 gap-[6px] content-start">
-                              {iconPickerTab === 'Icon' ? (
-                                iconSearchResults.icons.length > 0 ? (
-                                  iconSearchResults.icons.map((ic) => {
-                                    const isChosen = selectedIconId === ic.id;
-                                    return (
-                                      <button
-                                        key={ic.id}
-                                        onClick={() => {
-                                          setSelectedIconId(ic.id);
-                                          setSelectedEmoji(undefined);
-                                          setIconPickerOpen(false);
-                                        }}
-                                        title={ic.id}
-                                        aria-label={`Select icon ${ic.id.replaceAll('-', ' ')}`}
-                                        aria-pressed={isChosen}
-                                        className={`w-[26px] h-[26px] rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-                                          isChosen
-                                            ? 'bg-[#0051ff] text-white'
-                                            : 'bg-[#dcdcdc] text-[#444444] hover:bg-[#0051ff] hover:text-white'
-                                        }`}
-                                      >
-                                        <CustomPickerIcon id={ic.id} size={13} />
-                                      </button>
-                                    );
-                                  })
-                                ) : (
-                                  <p className="col-span-6 py-4 text-center text-[10px] text-[#777777]">
-                                    No icons found
-                                  </p>
-                                )
-                              ) : (
-                                selectableEmojiList
-                                  .filter(
-                                    (em) =>
-                                      !iconPickerSearch.trim() ||
-                                      em.keywords
-                                        .toLowerCase()
-                                        .includes(iconPickerSearch.toLowerCase()) ||
-                                      em.emoji.includes(iconPickerSearch)
-                                  )
-                                  .map((em) => {
-                                    const isChosen = selectedEmoji === em.emoji;
-                                    return (
-                                      <button
-                                        key={em.emoji}
-                                        onClick={() => {
-                                          setSelectedEmoji(em.emoji);
-                                          setSelectedIconId(undefined);
-                                          setIconPickerOpen(false);
-                                        }}
-                                        title={em.keywords.split(' ')[0]}
-                                        className={`w-[26px] h-[26px] rounded-full flex items-center justify-center text-[14px] transition-colors cursor-pointer ${
-                                          isChosen
-                                            ? 'bg-[#0051ff] text-white'
-                                            : 'bg-[#efefef] hover:bg-[#0051ff]'
-                                        }`}
-                                      >
-                                        {em.emoji}
-                                      </button>
-                                    );
-                                  })
-                              )}
-                            </div>
-                            {iconPickerTab === 'Icon' && (
-                              <div className="mt-[7px] flex min-h-[17px] items-center justify-between px-[3px]">
-                                {!iconPickerSearch.trim() && !iconPickerShowAll ? (
-                                  <button
-                                    onClick={() => {
-                                      setIconPickerShowAll(true);
-                                      setIconPickerPage(0);
-                                    }}
-                                    className="text-[9px] font-medium text-[#0051ff] hover:underline cursor-pointer"
-                                  >
-                                    Browse all {iconCatalog.length.toLocaleString()} icons
-                                  </button>
-                                ) : (
-                                  <>
-                                    <span className="text-[8px] text-[#777777]" aria-live="polite">
-                                      Showing{' '}
-                                      {iconSearchResults.total === 0
-                                        ? '0'
-                                        : `${(iconPickerPage * ICON_SEARCH_PAGE_SIZE + 1).toLocaleString()}–${Math.min(
-                                            (iconPickerPage + 1) * ICON_SEARCH_PAGE_SIZE,
-                                            iconSearchResults.total
-                                          ).toLocaleString()}`}{' '}
-                                      of {iconSearchResults.total.toLocaleString()}
-                                    </span>
-                                    <div className="flex items-center gap-[4px]">
-                                      {iconPickerPage > 0 && (
-                                        <button
-                                          aria-label="Previous icon results"
-                                          title="Previous icons"
-                                          onClick={() =>
-                                            setIconPickerPage((page) => Math.max(0, page - 1))
-                                          }
-                                          className="w-[18px] h-[18px] rounded-full text-[12px] text-[#555555] hover:bg-[#e8e8e8] cursor-pointer"
-                                        >
-                                          ‹
-                                        </button>
-                                      )}
-                                      {(iconPickerPage + 1) * ICON_SEARCH_PAGE_SIZE <
-                                        iconSearchResults.total && (
-                                        <button
-                                          aria-label="Next icon results"
-                                          title="Next icons"
-                                          onClick={() => setIconPickerPage((page) => page + 1)}
-                                          className="w-[18px] h-[18px] rounded-full text-[12px] text-[#555555] hover:bg-[#e8e8e8] cursor-pointer"
-                                        >
-                                          ›
-                                        </button>
-                                      )}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      <Suspense fallback={null}>
+                        <LazyIconPickerPopover
+                          open={iconPickerOpen}
+                          selectedIconId={selectedIconId}
+                          selectedEmoji={selectedEmoji}
+                          iconPickerTab={iconPickerTab}
+                          iconPickerSearch={iconPickerSearch}
+                          iconPickerShowAll={iconPickerShowAll}
+                          iconPickerPage={iconPickerPage}
+                          iconCatalogLength={iconCatalog.length}
+                          iconSearchResults={iconSearchResults}
+                          selectableEmojiList={selectableEmojiList}
+                          IconRenderer={CustomPickerIcon}
+                          onClose={() => setIconPickerOpen(false)}
+                          onTabChange={handleIconPickerTabChange}
+                          onSearchChange={(search) => {
+                            setIconPickerSearch(search);
+                            setIconPickerPage(0);
+                          }}
+                          onSelectIcon={(iconId) => {
+                            setSelectedIconId(iconId);
+                            setSelectedEmoji(undefined);
+                            setIconPickerOpen(false);
+                          }}
+                          onSelectEmoji={(emoji) => {
+                            setSelectedEmoji(emoji);
+                            setSelectedIconId(undefined);
+                            setIconPickerOpen(false);
+                          }}
+                          onBrowseAll={() => {
+                            setIconPickerShowAll(true);
+                            setIconPickerPage(0);
+                          }}
+                          onPreviousPage={() =>
+                            setIconPickerPage((page) => Math.max(0, page - 1))
+                          }
+                          onNextPage={() => setIconPickerPage((page) => page + 1)}
+                        />
+                      </Suspense>
                     </div>
 
                     {/* Notched Center Horizontal Divider Line */}
@@ -5356,14 +6084,14 @@ export default function App() {
                                 }
                                 onBlur={() => {
                                   if (!tappingTermMs.trim()) {
-                                    setTappingTermMs('250');
+                                    setTappingTermMs('180');
                                   }
                                 }}
                                 onKeyDown={(e) => {
                                   e.stopPropagation();
                                   if (e.key === 'Enter') {
                                     if (!tappingTermMs.trim()) {
-                                      setTappingTermMs('250');
+                                      setTappingTermMs('180');
                                     }
                                     e.currentTarget.blur();
                                   }
@@ -5371,7 +6099,7 @@ export default function App() {
                                 style={{
                                   width: `${Math.max(
                                     2,
-                                    (tappingTermMs || '250').length
+                                    (tappingTermMs || '180').length
                                   )}ch`,
                                 }}
                                 className="min-w-[20px] max-w-[44px] bg-transparent text-left text-[10.5px] text-[#444444] focus:outline-none tabular-nums"
@@ -6545,7 +7273,54 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div className="w-[24px]" />
+                      {selectedKey ? (
+                        <button
+                          onClick={() => {
+                            if (!selectedKey) return;
+                            if (selectedKey === GRID_MACRO_ENCODER_SLOT) {
+                              if (selectedEncoderSub) {
+                                const currentActions = getEncoderActions(currentLayer[GRID_MACRO_ENCODER_SLOT]);
+                                handleUpdateKeyAssignment(GRID_MACRO_ENCODER_SLOT, {
+                                  encoderActions: {
+                                    ...currentActions,
+                                    [selectedEncoderSub]: {
+                                      label: '—',
+                                      binding: 'blank',
+                                    },
+                                  },
+                                });
+                                showToast(`Reset Dial ${selectedEncoderSub.toUpperCase()} to blank`);
+                              } else {
+                                handleUpdateKeyAssignment(GRID_MACRO_ENCODER_SLOT, {
+                                  label: '',
+                                  actionType: 'Basic input',
+                                  binding: 'blank',
+                                  encoderActions: BLANK_ENCODER_ACTIONS,
+                                  execution: undefined,
+                                });
+                                showToast('Reset Dial to blank');
+                              }
+                            } else {
+                              handleUpdateKeyAssignment(selectedKey, {
+                                label: '',
+                                actionType: 'Basic input',
+                                binding: 'blank',
+                                iconId: undefined,
+                                actionId: undefined,
+                                execution: undefined,
+                                color: undefined,
+                              });
+                              showToast(`Reset ${selectedKey.toUpperCase()} to blank`);
+                            }
+                          }}
+                          title="Reset this key to blank"
+                          className="w-[24px] h-[24px] rounded-full border-[1.5px] border-transparent hover:border-[#dc0000] text-[#777] hover:text-[#dc0000] flex items-center justify-center transition-all cursor-pointer"
+                        >
+                          <RotateCcw className="w-[13px] h-[13px] stroke-[1.8]" />
+                        </button>
+                      ) : (
+                        <div className="w-[24px]" />
+                      )}
 
                       <AnimatePresence>
                         {activeTooltip === 'drawer-mapping' && (
@@ -7314,9 +8089,19 @@ export default function App() {
                     <WarningTriangleIcon color="#e09100" />
                     <span>Device update</span>
                   </div>
+                  <button type="button" onClick={() => void handleExportViaMacros()} disabled={deviceStatus.state !== 'connected'} title="Read and download the VIA macro buffer" className="w-full h-[27px] mb-2 rounded-full bg-white disabled:opacity-50 text-[10.5px] font-medium text-[#444444] cursor-pointer disabled:cursor-not-allowed">
+                    Download VIA macro backup
+                  </button>
+                  <label className="block w-full rounded-full bg-white text-center text-[10.5px] text-[#444] py-1 mb-2 cursor-pointer">
+                    Restore VIA macro backup…
+                    <input type="file" accept="application/json,.json" aria-label="Restore VIA macro backup" disabled={macroRestoreBusy || deviceStatus.state !== 'connected'} className="sr-only" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void handleRestoreViaMacros(file); }} />
+                  </label>
+                  {macroRecoveryKey && <button type="button" onClick={() => downloadMacroRecovery()} className="w-full rounded-full bg-white text-[10.5px] text-[#444] py-1 mb-2">Download previous recovery copy</button>}
+                  {macroDiagnosticKey && <button type="button" onClick={() => downloadMacroRecovery(macroDiagnosticKey, true)} className="w-full rounded-full bg-white text-[10.5px] text-[#444] py-1 mb-2">Download incomplete buffer diagnostic</button>}
+                  {macroRestoreReport && <p role="status" aria-live="polite" className="text-[10px] leading-relaxed text-[#604400] mb-2">{macroRestoreReport}</p>}
                   <button
                     type="button"
-                    onClick={() => void handleCheckFirmwareUpdate()}
+                    onClick={() => void handleCheckFirmwareUpdate() }
                     disabled={firmwareCheckPending}
                     title="Checks the published firmware release feed; it does not flash the device"
                     className="w-full h-[27px] rounded-full bg-white hover:bg-[#f59e0b] disabled:opacity-50 text-[10.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-wait"
@@ -7737,6 +8522,33 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* MACROPAD CHEAT-SHEET HUD OVERLAY */}
+      <AnimatePresence>
+        {cheatSheetOpen && !window.electronAPI?.setCheatSheetActive && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setCheatSheetOpen(false)} role="dialog" aria-label="Macropad cheat sheet">
+            <div className="w-[210px]">
+              <div className="grid grid-cols-3 gap-3 mb-3 text-white" aria-label="Dial actions">
+                {(['ccw', 'press', 'cw'] as const).map((direction) => {
+                  const action = getEncoderActions(currentLayer[GRID_MACRO_ENCODER_SLOT])[direction];
+                  return <div key={direction} className="h-[50px] flex flex-col items-center justify-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]">
+                    {direction === 'ccw' ? <RotateCcw size={21} /> : direction === 'cw' ? <RotateCw size={21} /> : <span className="w-5 h-5 rounded-full border-2 border-current" />}
+                    {action?.label && action.label !== '—' && <span className="text-[10px] leading-tight text-center truncate w-full mt-1">{action.label}</span>}
+                  </div>;
+                })}
+              </div>
+              <div className="grid grid-cols-3 gap-3" aria-label="Key icons">
+              {GRID_MACRO_KEY_SLOTS.map(slot => (
+                <div key={slot} className={`h-[62px] flex flex-col items-center justify-center text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] ${activePhysicalPressedSlot === slot ? 'text-[#77a8ff] scale-90' : ''}`}>
+                  {fallbackIconForAssignment(currentLayer[slot]) === 'empty' ? <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-white/60" /> : <CustomPickerIcon id={fallbackIconForAssignment(currentLayer[slot])} size={26} />}
+                  {currentLayer[slot]?.label && currentLayer[slot].label !== '—' && <span className="text-[10px] leading-tight text-center truncate w-full mt-1">{currentLayer[slot].label}</span>}
+                </div>
+              ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* SUBTLE FEEDBACK TOAST */}
       <AnimatePresence>
         {toastMessage && (
@@ -7753,6 +8565,32 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
+    <ResetKeysDialog open={resetKeysPending !== null && deviceStatus.state === 'connected'} layerNumber={(resetKeysPending?.layerIndex ?? 0) + 1} allLayers={resetKeysPending?.allLayers ?? false} onCancel={() => setResetKeysPending(null)} onConfirm={confirmResetLayerKeys} />
+    {deviceStatus.state !== 'connected' && (
+      <section role="dialog" aria-modal="true" aria-labelledby="device-required-title" className="fixed inset-0 z-[200] bg-[#efefef] flex flex-col text-[#171717]">
+        <div className="h-[38px] bg-black text-white flex items-center justify-between px-5 shrink-0">
+          <span className="font-bold text-[13px] tracking-[0.16em]">NØDE</span>
+          {window.electronAPI && <div className="flex gap-5 text-sm">
+            <button type="button" aria-label="Minimize window" onClick={() => void window.electronAPI?.minimize?.()}>−</button>
+            <button type="button" aria-label="Close window" onClick={() => void window.electronAPI?.close?.()}>×</button>
+          </div>}
+        </div>
+        <div className="flex-1 flex items-center justify-center px-6 py-8">
+          <div className="w-full max-w-[410px] text-center">
+            <img src="./icon.png" alt="" aria-hidden="true" className="mx-auto mb-7 w-20 h-20 rounded-[24px] object-cover" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#0051ff] mb-3">Grid Macro 1</p>
+            <h1 id="device-required-title" className="text-2xl font-semibold tracking-tight">Connect your macropad</h1>
+            <p className="mt-3 text-sm leading-6 text-[#626262]">Plug in your Grid Macro 1 to use NØDE Studio. Your assignments stay saved on this computer and will be available when you reconnect.</p>
+            <p role="status" className="mt-5 text-xs text-[#626262]">
+              {deviceStatus.state === 'connecting' ? 'Connecting to your macropad…' : deviceStatus.state === 'searching' ? 'Looking for your macropad…' : deviceStatus.state === 'unavailable' ? 'Device access is unavailable. Open the installed desktop app or use a WebHID-compatible browser.' : deviceStatus.error || 'Waiting for your macropad.'}
+            </p>
+            {deviceStatus.state !== 'unavailable' && <button type="button" autoFocus onClick={() => void handleToggleDeviceConnection()} disabled={deviceStatus.state === 'connecting' || deviceStatus.state === 'searching'} className="mt-6 rounded-full bg-[#0051ff] px-7 py-3 text-sm font-medium text-white disabled:opacity-50">Connect macropad</button>}
+            <p className="mt-5 text-xs leading-5 text-[#777]">Previously authorized devices reconnect automatically. If needed, use the button to select your device.</p>
+          </div>
+        </div>
+      </section>
+    )}
+    </>
   );
 }
 
@@ -7760,1170 +8598,214 @@ export default function App() {
 /* SUBCOMPONENTS                                                              */
 /* ========================================================================== */
 
-function IsometricKeyIcon({
-  type,
-  active,
-}: {
-  type: 'B' | 'A' | 'MA' | 'S';
-  active: boolean;
-}) {
-  const strokeColor = active ? '#000000' : '#4a4a4a';
-
-  if (type === 'MA') {
-    return (
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <path
-          d="M14 13.5L22.5 18L14 22.5L5.5 18L14 13.5Z"
-          stroke={strokeColor}
-          strokeWidth="1.2"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M5.5 18V20.2L14 24.7L22.5 20.2V18"
-          stroke={strokeColor}
-          strokeWidth="1.2"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M14 4.2L22.5 8.7L14 13.2L5.5 8.7L14 4.2Z"
-          fill={active ? '#0051ff' : 'white'}
-          stroke={strokeColor}
-          strokeWidth="1.2"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M5.5 8.7V10.9L14 15.4L22.5 10.9V8.7"
-          fill={active ? '#0051ff' : 'white'}
-          stroke={strokeColor}
-          strokeWidth="1.2"
-          strokeLinejoin="round"
-        />
-        <text
-          x="14"
-          y="10.2"
-          textAnchor="middle"
-          fill={strokeColor}
-          fontSize="5.4"
-          fontWeight="600"
-          transform="rotate(-25 14 9)"
-        >
-          M
-        </text>
-        <text
-          x="14"
-          y="20.2"
-          textAnchor="middle"
-          fill={strokeColor}
-          fontSize="5.4"
-          fontWeight="600"
-          transform="rotate(-25 14 19)"
-        >
-          A
-        </text>
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="30" height="26" viewBox="0 0 30 26" fill="none">
-      <path
-        d="M15 4.2L26.2 10.4L15 16.6L3.8 10.4L15 4.2Z"
-        stroke={strokeColor}
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M3.8 10.4V14.2L15 20.4L26.2 14.2V10.4"
-        stroke={strokeColor}
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <text
-        x="15"
-        y="12.5"
-        textAnchor="middle"
-        fill={strokeColor}
-        fontSize="7.5"
-        fontWeight="600"
-        transform="rotate(-26 15 11)"
-      >
-        {type}
-      </text>
-      {type === 'S' && (
-        <path
-          d="M20.5 3.2L21.4 5.9L24.1 6.8L21.4 7.7L20.5 10.4L19.6 7.7L16.9 6.8L19.6 5.9L20.5 3.2Z"
-          fill={strokeColor}
-        />
-      )}
-    </svg>
-  );
+interface CheatSheetModalProps {
+  profile: ProfileData;
+  activeLayerIndex: number;
+  onSelectLayer: (layerIndex: number) => void;
+  activePhysicalSlot: string | null;
+  onClose: () => void;
 }
 
-function ArrowKeyGlyph({ dir }: { dir: 'right' | 'left' | 'down' | 'up' }) {
-  const rotation =
-    dir === 'right'
-      ? 0
-      : dir === 'down'
-      ? 90
-      : dir === 'left'
-      ? 180
-      : -90;
-  return (
-    <svg
-      width="11"
-      height="11"
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="#222222"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ transform: `rotate(${rotation}deg)` }}
-    >
-      <path d="M2.5 6H9.5M9.5 6L6.5 3M9.5 6L6.5 9" />
-    </svg>
-  );
-}
+function CheatSheetModal({
+  profile,
+  activeLayerIndex,
+  onSelectLayer,
+  activePhysicalSlot,
+  onClose,
+}: CheatSheetModalProps) {
+  const [selectedLayerIndex, setSelectedLayerIndex] = useState(activeLayerIndex);
 
-function InfoCircleIcon({ size = 13 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-    >
-      <circle cx="8" cy="8" r="6.5" />
-      <path d="M8 7.2V11.2" strokeLinecap="round" />
-      <circle cx="8" cy="4.9" r="0.7" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
+  useEffect(() => {
+    setSelectedLayerIndex(activeLayerIndex);
+  }, [activeLayerIndex]);
 
-function WarningTriangleIcon({ color }: { color: string }) {
-  return (
-    <svg
-      width="15"
-      height="14"
-      viewBox="0 0 16 15"
-      fill="none"
-      stroke={color}
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M8 1.5L14.8 13.5H1.2L8 1.5Z" />
-      <path d="M8 6V9.2" />
-      <circle cx="8" cy="11.4" r="0.6" fill={color} stroke="none" />
-    </svg>
-  );
-}
-
-function SettingsSwitch({
-  checked,
-  onChange,
-  disabled = false,
-  title,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-disabled={disabled}
-      disabled={disabled}
-      title={title}
-      onClick={onChange}
-      className={`w-[29px] h-[16px] rounded-full p-[2px] flex items-center transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-        checked ? 'bg-[#000000] justify-end' : 'bg-[#b3b3b3] justify-start'
-      }`}
-    >
-      <motion.span
-        layout
-        transition={{ type: 'spring', stiffness: 520, damping: 32 }}
-        className="w-[12px] h-[12px] rounded-full bg-white shadow-xs"
-      />
-    </button>
-  );
-}
-
-type PresetAppIconConfig = {
-  iconId?: string;
-  label: string;
-  background: string;
-  foreground: string;
-  iconMode?: 'fill' | 'stroke';
-};
-
-const PRESET_APP_ICON_CONFIGS: Record<string, PresetAppIconConfig> = {
-  chatgpt: { iconId: 'brand-openai', label: 'AI', background: 'linear-gradient(145deg, #20b98e, #087157)', foreground: '#ffffff', iconMode: 'stroke' },
-  vscode: { iconId: 'brand-vscode', label: 'VS', background: 'linear-gradient(145deg, #35b8ed, #0068b7)', foreground: '#ffffff', iconMode: 'stroke' },
-  github: { iconId: 'brand-github', label: 'GH', background: 'linear-gradient(145deg, #41454d, #17191e)', foreground: '#ffffff', iconMode: 'fill' },
-  terminal: { iconId: 'terminal', label: '>_', background: 'linear-gradient(145deg, #26384b, #101722)', foreground: '#a5f3c3', iconMode: 'stroke' },
-  docker: { iconId: 'brand-docker', label: 'D', background: 'linear-gradient(145deg, #43bdf0, #0878c9)', foreground: '#ffffff', iconMode: 'fill' },
-  chrome_devtools: { iconId: 'brand-chrome', label: 'C', background: 'linear-gradient(145deg, #424854, #20242c)', foreground: '#ffffff', iconMode: 'fill' },
-  photoshop: { iconId: 'brand-adobe-photoshop', label: 'Ps', background: 'linear-gradient(145deg, #06395a, #001e36)', foreground: '#45b8ff', iconMode: 'stroke' },
-  illustrator: { iconId: 'brand-adobe-illustrator', label: 'Ai', background: 'linear-gradient(145deg, #542100, #2b0800)', foreground: '#ffad35', iconMode: 'stroke' },
-  premiere: { iconId: 'brand-adobe-premiere', label: 'Pr', background: 'linear-gradient(145deg, #392d72, #18113e)', foreground: '#b9a8ff', iconMode: 'stroke' },
-  aftereffects: { iconId: 'brand-adobe-after-effects', label: 'Ae', background: 'linear-gradient(145deg, #342361, #171333)', foreground: '#d9a9ff', iconMode: 'stroke' },
-  davinci: { iconId: 'brand-davinciresolve', label: 'DR', background: 'linear-gradient(145deg, #343a46, #171b22)', foreground: '#ffffff', iconMode: 'fill' },
-  blender: { iconId: 'brand-blender', label: 'Bl', background: 'linear-gradient(145deg, #39576b, #182a39)', foreground: '#ff9a44', iconMode: 'fill' },
-  figma: { iconId: 'brand-figma', label: 'F', background: 'linear-gradient(145deg, #353535, #171717)', foreground: '#ffffff', iconMode: 'fill' },
-  framer: { iconId: 'brand-framer', label: 'F', background: 'linear-gradient(145deg, #25baff, #0751e7)', foreground: '#ffffff', iconMode: 'fill' },
-  canva: { label: 'C', background: 'linear-gradient(145deg, #00c4cc, #7134d8)', foreground: '#ffffff' },
-  audacity: { iconId: 'brand-audacity', label: 'Au', background: 'linear-gradient(145deg, #343b70, #171b37)', foreground: '#ffe36b', iconMode: 'fill' },
-  affinity: { label: 'A', background: 'linear-gradient(145deg, #6053b7, #14677a)', foreground: '#ffffff' },
-  excel: { label: 'X', background: 'linear-gradient(145deg, #20a366, #075b36)', foreground: '#ffffff' },
-  word: { label: 'W', background: 'linear-gradient(145deg, #3d8de6, #1557b0)', foreground: '#ffffff' },
-  powerpoint: { label: 'P', background: 'linear-gradient(145deg, #f17848, #b93c1f)', foreground: '#ffffff' },
-  notion: { iconId: 'brand-notion', label: 'N', background: 'linear-gradient(145deg, #ffffff, #e8e8e8)', foreground: '#171717', iconMode: 'fill' },
-  slack: { iconId: 'brand-slack', label: 'S', background: 'linear-gradient(145deg, #ffffff, #f0eaf2)', foreground: '#611f69', iconMode: 'fill' },
-  zoom: { iconId: 'brand-zoom', label: 'Z', background: 'linear-gradient(145deg, #55a5ff, #1674e8)', foreground: '#ffffff', iconMode: 'fill' },
-  obs: { iconId: 'brand-obsstudio', label: 'OBS', background: 'linear-gradient(145deg, #424a56, #17191f)', foreground: '#ffffff', iconMode: 'fill' },
-  discord: { iconId: 'brand-discord', label: 'D', background: 'linear-gradient(145deg, #8790ff, #4d58d7)', foreground: '#ffffff', iconMode: 'fill' },
-  spotify: { iconId: 'brand-spotify', label: 'S', background: 'linear-gradient(145deg, #47e184, #14a84e)', foreground: '#102117', iconMode: 'fill' },
-  windows: { iconId: 'brand-windows', label: '⊞', background: 'linear-gradient(145deg, #35a6ed, #0068bc)', foreground: '#ffffff', iconMode: 'fill' },
-};
-
-function getMacroIconLibrary(): IconLibrary | undefined {
-  if (typeof window === 'undefined') return undefined;
-  return (window as Window & { __MACRO_ICONS__?: IconLibrary }).__MACRO_ICONS__;
-}
-
-function getPresetAppIconPath(iconId: string): string | undefined {
-  return getMacroIconLibrary()?.d?.[iconId];
-}
-
-function PresetAppIcon({ id, size = 30 }: { id: string; size?: number }) {
-  const config = PRESET_APP_ICON_CONFIGS[id] ?? {
-    label: '?',
-    background: 'linear-gradient(145deg, #515866, #20242c)',
-    foreground: '#ffffff',
-  };
-  const iconPath = config.iconId ? getPresetAppIconPath(config.iconId) : undefined;
-  const iconMode = config.iconMode ?? 'fill';
-
-  return (
-    <div
-      data-preset-icon={id}
-      aria-hidden="true"
-      className="flex items-center justify-center shrink-0 overflow-hidden"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: Math.round(size * 0.3),
-        background: config.background,
-        color: config.foreground,
-        border: '1px solid rgba(255,255,255,0.22)',
-        boxShadow: '0 2px 7px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.18)',
-      }}
-    >
-      {iconPath ? (
-        <svg
-          width={Math.round(size * 0.6)}
-          height={Math.round(size * 0.6)}
-          viewBox="0 0 24 24"
-          fill={iconMode === 'fill' ? 'currentColor' : 'none'}
-          stroke={iconMode === 'stroke' ? 'currentColor' : 'none'}
-          strokeWidth={iconMode === 'stroke' ? 1.7 : 0}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d={iconPath} />
-        </svg>
-      ) : id === 'affinity' ? (
-        <svg
-          width={Math.round(size * 0.6)}
-          height={Math.round(size * 0.6)}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M4.5 19L10.4 5.8c.6-1.3 2.6-1.3 3.2 0L19.5 19M7.8 13.2h8.4" />
-        </svg>
-      ) : (
-        <span
-          className={`font-bold leading-none tracking-tight select-none ${
-            id === 'canva'
-              ? 'font-serif italic text-[18px]'
-              : id === 'affinity'
-                ? 'text-[18px]'
-                : ['excel', 'word', 'powerpoint'].includes(id)
-                  ? 'text-[14px]'
-                  : 'text-[12px]'
-          }`}
-          style={size > 30 ? { fontSize: `${Math.round(size * 0.36)}px` } : undefined}
-        >
-          {config.label}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function EmptyKeyPlusIcon({
-  size = 16,
-  stroke = '#ffffff',
-}: {
-  size?: number;
-  stroke?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 18 18"
-      fill="none"
-      className="pointer-events-none"
-    >
-      <rect
-        x="1.75"
-        y="1.75"
-        width="14.5"
-        height="14.5"
-        rx="6"
-        stroke={stroke}
-        strokeWidth="1.6"
-      />
-      <line
-        x1="9"
-        y1="5.8"
-        x2="9"
-        y2="12.2"
-        stroke={stroke}
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <line
-        x1="5.8"
-        y1="9"
-        x2="12.2"
-        y2="9"
-        stroke={stroke}
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-interface MacropadDeviceProps {
-  layer: LayerKeymap;
-  selectedKey: KeySlotId | null;
-  selectedEncoderSub: EncoderSubActionId | null;
-  dragOverTarget: { slotId: KeySlotId; subAction?: EncoderSubActionId } | null;
-  draggedFromSlot?: KeySlotId | null;
-  encoderAngle: number;
-  onSelectKey: (slotId: KeySlotId) => void;
-  onSelectEncoderSub: (
-    slotId: typeof GRID_MACRO_ENCODER_SLOT,
-    sub: EncoderSubActionId
-  ) => void;
-  onStartKeyDrag?: (
-    e: React.PointerEvent,
-    slotId: KeySlotId,
-    sub?: EncoderSubActionId
-  ) => void;
-  onHoverSlot?: (slotId: KeySlotId | null) => void;
-  highlightedSlot?: KeySlotId | null;
-  entrancePhase?: EntrancePhase;
-  showSlotNumbers?: boolean;
-}
-
-function MacropadDevice({
-  layer,
-  selectedKey,
-  selectedEncoderSub,
-  dragOverTarget,
-  draggedFromSlot = null,
-  encoderAngle,
-  onSelectKey,
-  onSelectEncoderSub,
-  onStartKeyDrag = () => {},
-  onHoverSlot,
-  highlightedSlot = null,
-  entrancePhase,
-  showSlotNumbers = false,
-}: MacropadDeviceProps) {
-  const isEncoderOpen = selectedKey === GRID_MACRO_ENCODER_SLOT;
-
-  return (
-    <div className="relative flex items-center justify-center">
-      <AnimatePresence>
-        {isEncoderOpen && (
-          <EncoderPopupCapsule
-            key="grid-macro-encoder-popup"
-            slotId={GRID_MACRO_ENCODER_SLOT}
-            side="right"
-            actions={getEncoderActions(layer[GRID_MACRO_ENCODER_SLOT])}
-            selectedSub={selectedEncoderSub}
-            dragOverSub={
-              dragOverTarget?.slotId === GRID_MACRO_ENCODER_SLOT
-                ? dragOverTarget.subAction || null
-                : null
-            }
-            onSelectSub={(sub) =>
-              onSelectEncoderSub(GRID_MACRO_ENCODER_SLOT, sub)
-            }
-            onStartSubDrag={(e, sub) =>
-              onStartKeyDrag(e, GRID_MACRO_ENCODER_SLOT, sub)
-            }
-          />
-        )}
-      </AnimatePresence>
-
-      <div className="w-[172px] bg-[#050505] rounded-[24px] p-[12px] flex flex-col items-center justify-center shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
-        <div className="w-full bg-[#151515] rounded-[16px] p-[6px] flex flex-col gap-[6px]">
-          <div className="grid grid-cols-3 gap-[3px] items-center h-[42px] w-full">
-            <motion.div
-              {...getEntranceMotionProps(entrancePhase, {
-                delay: 0.96,
-                duration: 0.4,
-                offsetY: 5,
-                initialScale: 0.98,
-              })}
-              className="w-[42px] h-[42px] flex items-center justify-center select-none"
-            >
-              <span className="w-[5px] h-[5px] rounded-full bg-[#e8e8e8] shadow-[0_0_6px_rgba(255,255,255,0.85)]" />
-            </motion.div>
-            <div className="w-[42px] h-[42px]" />
-            <motion.div
-              {...getEntranceMotionProps(entrancePhase, {
-                delay: 0.96,
-                duration: 0.4,
-                offsetY: 5,
-                initialScale: 0.98,
-              })}
-              className="w-[42px] h-[42px] flex items-center justify-center"
-            >
-              <FlatDialControl
-                selected={isEncoderOpen}
-                angle={encoderAngle}
-                title={`Dial: ${layer[GRID_MACRO_ENCODER_SLOT].binding}`}
-                onClick={() => onSelectKey(GRID_MACRO_ENCODER_SLOT)}
-              />
-            </motion.div>
-          </div>
-
-          <div className="grid grid-cols-3 grid-rows-3 gap-[3px] place-items-center">
-            {GRID_MACRO_KEY_SLOTS.map((slotId, index) => (
-              <KeycapButton
-                key={slotId}
-                entrancePhase={entrancePhase}
-                entranceIndex={index}
-                slotId={slotId}
-                label={layer[slotId].label}
-                binding={layer[slotId].binding}
-                iconId={layer[slotId].iconId}
-                color={showSlotNumbers ? undefined : layer[slotId].color}
-                slotNumber={showSlotNumbers ? index + 1 : undefined}
-                selected={selectedKey === slotId}
-                dragOver={dragOverTarget?.slotId === slotId}
-                isDraggingSource={draggedFromSlot === slotId}
-                onClick={() => onSelectKey(slotId)}
-                onPointerDown={(e) => onStartKeyDrag(e, slotId)}
-                onHoverSlot={onHoverSlot}
-                previewHighlighted={highlightedSlot === slotId}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FlatDialControl({
-  selected,
-  angle,
-  title,
-  onClick,
-}: {
-  selected: boolean;
-  angle: number;
-  title: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={`w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-        selected
-          ? 'border-[#0051ff] shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
-          : 'border-transparent hover:border-[#0051ff] hover:z-10'
-      }`}
-    >
-      <svg
-        width="39"
-        height="39"
-        viewBox="0 0 40 40"
-        className="transition-transform duration-150 pointer-events-none"
-        style={{ transform: `rotate(${angle - 45}deg)` }}
-      >
-        <defs>
-          <linearGradient id="dialUpperLeft" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#1b1b1b" />
-            <stop offset="48%" stopColor="#353535" />
-            <stop offset="50%" stopColor="#4c4c4c" />
-            <stop offset="52%" stopColor="#262626" />
-            <stop offset="100%" stopColor="#333333" />
-          </linearGradient>
-          <linearGradient id="dialSelectedBlue" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#0051ff" />
-            <stop offset="49%" stopColor="#0051ff" />
-            <stop offset="51%" stopColor="#003ec7" />
-            <stop offset="100%" stopColor="#004be8" />
-          </linearGradient>
-        </defs>
-        <circle
-          cx="20"
-          cy="20"
-          r="19"
-          fill={selected ? 'url(#dialSelectedBlue)' : 'url(#dialUpperLeft)'}
-          stroke={selected ? '#0051ff' : '#262626'}
-          strokeWidth="0.8"
-        />
-        <line
-          x1="6.5"
-          y1="33.5"
-          x2="33.5"
-          y2="6.5"
-          stroke={selected ? 'rgba(255,255,255,0.45)' : '#4a4a4a'}
-          strokeWidth="1.1"
-          strokeOpacity="0.7"
-        />
-      </svg>
-    </button>
-  );
-}
-
-function EncoderPopupCapsule({
-  slotId,
-  side,
-  actions,
-  selectedSub,
-  dragOverSub,
-  onSelectSub,
-  onStartSubDrag,
-}: {
-  slotId: typeof GRID_MACRO_ENCODER_SLOT;
-  side: 'left' | 'right';
-  actions: Record<EncoderSubActionId, EncoderSubBinding>;
-  selectedSub: EncoderSubActionId | null;
-  dragOverSub: EncoderSubActionId | null;
-  onSelectSub: (sub: EncoderSubActionId) => void;
-  onStartSubDrag: (e: React.PointerEvent, sub: EncoderSubActionId) => void;
-}) {
-  const [hoveredSub, setHoveredSub] = useState<EncoderSubActionId | null>(null);
-
-  const items: { id: EncoderSubActionId; bottomText?: string }[] = [
-    { id: 'cw', bottomText: 'CW' },
-    { id: 'press' },
-    { id: 'ccw', bottomText: 'CCW' },
-  ];
+  const layer = profile.layers[selectedLayerIndex] || profile.layers[0];
+  const encoderAssignment = layer[GRID_MACRO_ENCODER_SLOT];
+  const encoderActions = getEncoderActions(encoderAssignment);
 
   return (
     <motion.div
-      initial={{
-        opacity: 0,
-        scale: 0.84,
-        x: side === 'left' ? 18 : -18,
-        filter: 'blur(2px)',
+      key="cheat-sheet-backdrop"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      className="fixed inset-0 z-[9999] pointer-events-auto flex items-center justify-center p-3"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
       }}
-      animate={{
-        opacity: 1,
-        scale: 1,
-        x: 0,
-        filter: 'blur(0px)',
-      }}
-      exit={{
-        opacity: 0,
-        scale: 0.86,
-        x: side === 'left' ? 14 : -14,
-        filter: 'blur(2px)',
-      }}
-      transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-      style={{
-        transformOrigin: side === 'left' ? 'right center' : 'left center',
-      }}
-      className={`absolute top-[11px] ${
-        side === 'left' ? 'right-[calc(100%+7px)]' : 'left-[calc(100%+7px)]'
-      } h-[58px] px-[6px] rounded-full bg-[#e2e2e2] shadow-[0_3px_12px_rgba(0,0,0,0.08)] border border-black/[0.03] flex items-center gap-[6px] z-30`}
     >
-      {items.map((item) => {
-        const subData = actions[item.id];
-        const isSelected = selectedSub === item.id;
-        const isDragOver = dragOverSub === item.id;
-        const isHovered = hoveredSub === item.id || isDragOver;
-        const accentStroke = isSelected ? '#ffffff' : '#0051ff';
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Macropad Cheat-Sheet HUD"
+        initial={{ opacity: 0, scale: 0.94, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 6 }}
+        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-[340px] bg-[#121316]/92 backdrop-blur-2xl text-white border border-white/15 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.08)] p-3.5 flex flex-col gap-2.5 overflow-hidden select-none"
+      >
+        {/* Top Header: Brand + Profile + Layer Pills + Close */}
+        <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-white/10 text-white/70 font-mono truncate max-w-[90px]">
+              {profile.name}
+            </span>
+          </div>
 
-        return (
-          <div key={item.id} className="relative flex items-center justify-center">
-            {/* Floating white assigned-key pill above hovered sub-button */}
-            <AnimatePresence>
-              {isHovered && (
-                <motion.div
-                  initial={{ opacity: 0, y: 5, scale: 0.94 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 4, scale: 0.94 }}
-                  transition={{ duration: 0.15, ease: [0.32, 0.72, 0, 1] }}
-                  className="absolute -top-[36px] left-1/2 -translate-x-1/2 h-[27px] px-[13px] rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.07)] flex items-center justify-center text-[11px] font-medium text-[#555555] whitespace-nowrap pointer-events-none z-40"
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Compact Layer Pills */}
+            <div className="flex items-center gap-0.5 bg-black/40 p-0.5 rounded-md border border-white/10">
+              {profile.layers.map((_, idx) => (
+                <button
+                  key={`hud-layer-${idx}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedLayerIndex(idx);
+                    onSelectLayer(idx);
+                  }}
+                  className={`px-1.5 py-0.5 text-[9.5px] font-semibold rounded transition-all cursor-pointer ${
+                    selectedLayerIndex === idx
+                      ? 'bg-[#0051ff] text-white shadow-[0_0_8px_rgba(0,81,255,0.6)]'
+                      : 'text-white/50 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={`Switch to Layer ${idx + 1}`}
                 >
-                  {subData.binding}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  L{idx + 1}
+                </button>
+              ))}
+            </div>
 
             <button
-              data-drop-slot={slotId}
-              data-drop-encoder-sub={item.id}
-              onPointerDown={(e) => onStartSubDrag(e, item.id)}
-              onClick={() => onSelectSub(item.id)}
-              onMouseEnter={() => setHoveredSub(item.id)}
-              onMouseLeave={() => setHoveredSub(null)}
-              className={`w-[46px] h-[46px] rounded-full relative flex flex-col items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-                isSelected
-                  ? 'bg-[#0051ff] border-[#0051ff] text-white shadow-[0_0_14px_rgba(0,81,255,0.85)]'
-                  : isDragOver
-                  ? 'bg-[#313131] text-white border-[#0051ff] shadow-[0_0_10px_rgba(0,81,255,0.5)]'
-                  : 'bg-[#313131] text-white border-transparent hover:border-[#0051ff]'
-              }`}
+              type="button"
+              onClick={onClose}
+              className="w-5 h-5 rounded-md border border-white/10 bg-white/5 hover:bg-white/15 text-white/70 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              title="Close (Esc)"
             >
-              {/* SVG Directional Arrows (CW arc, Press down arrow, CCW arc) in Blue theme */}
-              <svg
-                width="46"
-                height="46"
-                viewBox="0 0 46 46"
-                fill="none"
-                className="absolute inset-0 pointer-events-none"
-              >
-                {item.id === 'cw' && (
-                  <>
-                    <path
-                      d="M 6.2 22.5 A 16.8 16.8 0 0 1 20.5 6.8"
-                      stroke={accentStroke}
-                      strokeWidth="1.35"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M 17.2 4.8 L 21.1 6.7 L 18.4 10.3"
-                      stroke={accentStroke}
-                      strokeWidth="1.35"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </>
-                )}
-
-                {item.id === 'press' && (
-                  <>
-                    <path
-                      d="M 23 30.5 L 23 39.2"
-                      stroke={accentStroke}
-                      strokeWidth="1.35"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M 19.8 36.2 L 23 39.5 L 26.2 36.2"
-                      stroke={accentStroke}
-                      strokeWidth="1.35"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </>
-                )}
-
-                {item.id === 'ccw' && (
-                  <>
-                    <path
-                      d="M 39.8 22.5 A 16.8 16.8 0 0 0 25.5 6.8"
-                      stroke={accentStroke}
-                      strokeWidth="1.35"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M 28.8 4.8 L 24.9 6.7 L 27.6 10.3"
-                      stroke={accentStroke}
-                      strokeWidth="1.35"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </>
-                )}
-              </svg>
-
-              {/* Center Short Assigned Label (e.g. vo..., pl...) */}
-              <span
-                className={`text-[10.5px] font-medium leading-none tracking-[0.01em] z-10 ${
-                  item.id === 'press' ? '-mt-[4px]' : 'mt-[4px]'
-                }`}
-              >
-                {subData.label}
-              </span>
-
-              {/* Bottom CW / CCW Label */}
-              {item.bottomText && (
-                <span className="text-[8.5px] font-semibold leading-none tracking-[0.03em] mt-[3px] z-10">
-                  {item.bottomText}
-                </span>
-              )}
+              <X className="w-3 h-3" />
             </button>
           </div>
-        );
-      })}
+        </div>
+
+        {/* 3x3 Key Matrix Grid */}
+        <div className="grid grid-cols-3 gap-1.5">
+          {GRID_MACRO_KEY_SLOTS.map((slotId, index) => {
+            const assignment = layer[slotId];
+            const isPressed = activePhysicalSlot === slotId;
+            const hasCustomIcon = Boolean(assignment?.iconId);
+            const isSmartAction =
+              assignment?.actionType === 'Smart Action' ||
+              assignment?.execution?.kind === 'smart';
+            const isMultiAction =
+              assignment?.actionType === 'Multi-step action' ||
+              assignment?.execution?.kind === 'multi';
+            const isCheatSheetAction =
+              assignment?.binding &&
+              /cs-show|cs-hold|cs-hide|cs-tog|cheat-?sheet/i.test(assignment.binding);
+            const isLayerCycle =
+              assignment?.actionType === 'Layer Cycle' ||
+              /layer\s*cycle/i.test(assignment?.binding || '');
+            const isProfileCycle =
+              /profile\s*cycle/i.test(assignment?.binding || '') ||
+              /^profile\s*\d+/i.test(assignment?.binding || '');
+
+            return (
+              <div
+                key={slotId}
+                className={`relative p-2 rounded-xl border transition-all duration-75 flex flex-col justify-between h-[62px] ${
+                  isPressed
+                    ? 'bg-[#0051ff]/40 border-[#00e5ff] scale-[0.95] ring-1 ring-[#00e5ff] shadow-[0_0_14px_rgba(0,229,255,0.5)]'
+                    : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 shadow-[0_2px_6px_rgba(0,0,0,0.25)]'
+                }`}
+              >
+                {/* Top: Key index + Mini badge */}
+                <div className="flex items-center justify-between leading-none">
+                  <span className="text-[9px] font-mono font-bold text-white/40">
+                    {index + 1}
+                  </span>
+                  {isSmartAction ? (
+                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300">
+                      Smart
+                    </span>
+                  ) : isMultiAction ? (
+                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-amber-500/20 text-amber-300">
+                      Multi
+                    </span>
+                  ) : isCheatSheetAction ? (
+                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300">
+                      HUD
+                    </span>
+                  ) : isLayerCycle ? (
+                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
+                      Lyr
+                    </span>
+                  ) : isProfileCycle ? (
+                    <span className="text-[7.5px] font-semibold px-1 py-0.2 rounded bg-purple-500/20 text-purple-300">
+                      Prof
+                    </span>
+                  ) : null}
+                </div>
+
+                {/* Center: Key Label + Optional Icon */}
+                <div className="flex items-center gap-1.5 my-auto min-w-0">
+                  {hasCustomIcon ? (
+                    <div className="w-3.5 h-3.5 flex items-center justify-center shrink-0 text-white/90">
+                      <CustomPickerIcon id={assignment.iconId!} size={13} />
+                    </div>
+                  ) : null}
+                  <span className="text-[11px] font-semibold text-white/90 truncate leading-tight">
+                    {assignment?.label || assignment?.binding || '—'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Rotary Dial Strip (CCW · Push · CW) */}
+        <div className="h-[28px] bg-black/45 border border-white/10 rounded-lg grid grid-cols-3 divide-x divide-white/10 text-[9.5px] overflow-hidden">
+          {/* CCW */}
+          <div className="px-1.5 flex items-center gap-1 min-w-0 bg-white/[0.02]">
+            <RotateCcw className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+            <span className="text-white/80 font-medium truncate">
+              {encoderActions.ccw.label || encoderActions.ccw.binding || '—'}
+            </span>
+          </div>
+
+          {/* Push Switch */}
+          <div
+            className={`px-1.5 flex items-center gap-1 min-w-0 transition-colors ${
+              activePhysicalSlot === GRID_MACRO_ENCODER_SLOT
+                ? 'bg-[#0051ff]/30 text-[#00e5ff]'
+                : 'bg-white/[0.02] text-white/80'
+            }`}
+          >
+            <div className="w-2.5 h-2.5 rounded-full border border-indigo-400 flex items-center justify-center shrink-0">
+              <div className="w-1 h-1 rounded-full bg-indigo-400" />
+            </div>
+            <span className="font-medium truncate">
+              {encoderActions.press.label || encoderActions.press.binding || '—'}
+            </span>
+          </div>
+
+          {/* CW */}
+          <div className="px-1.5 flex items-center gap-1 min-w-0 bg-white/[0.02]">
+            <RotateCw className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+            <span className="text-white/80 font-medium truncate">
+              {encoderActions.cw.label || encoderActions.cw.binding || '—'}
+            </span>
+          </div>
+        </div>
+
+        {/* Sub-footer shortcut info */}
+        <div className="flex items-center justify-between text-[9px] text-white/40 pt-1 border-t border-white/5">
+          <span>Ctrl+Alt+H anywhere</span>
+          <span>Esc to close</span>
+        </div>
+      </motion.div>
     </motion.div>
-  );
-}
-
-interface KeycapButtonProps {
-  entrancePhase?: EntrancePhase;
-  entranceIndex?: number;
-  slotId: KeySlotId;
-  label: string;
-  binding: string;
-  iconId?: string;
-  color?: string;
-  slotNumber?: number;
-  selected: boolean;
-  dragOver?: boolean;
-  isDraggingSource?: boolean;
-  isLowercase?: boolean;
-  onClick: () => void;
-  onPointerDown?: (e: React.PointerEvent) => void;
-  onHoverSlot?: (slotId: KeySlotId | null) => void;
-  previewHighlighted?: boolean;
-}
-
-function KeycapButton({
-  entrancePhase,
-  entranceIndex,
-  slotId,
-  label,
-  binding,
-  iconId,
-  color,
-  slotNumber,
-  selected,
-  dragOver,
-  isDraggingSource,
-  isLowercase,
-  onClick,
-  onPointerDown,
-  onHoverSlot,
-  previewHighlighted = false,
-}: KeycapButtonProps) {
-  const isEmpty =
-    !iconId && (!label || label === '—' || binding === 'blank');
-  const isMultiWordCustom = !iconId && !isEmpty && label.length > 4;
-  const entranceProps =
-    entranceIndex === undefined
-      ? {}
-      : getEntranceMotionProps(
-          entrancePhase,
-          getKeycapEntranceOptions(entranceIndex)
-        );
-
-  return (
-    <motion.button
-      {...entranceProps}
-      data-drop-slot={slotId}
-      onPointerDown={onPointerDown}
-      onClick={onClick}
-      onMouseEnter={() => onHoverSlot?.(slotId)}
-      onMouseLeave={() => onHoverSlot?.(null)}
-      title={binding}
-      style={color && !isEmpty && !selected && !dragOver && !isDraggingSource
-        ? { backgroundColor: color, borderColor: color }
-        : undefined}
-      className={`${slotNumber !== undefined ? 'group ' : ''}w-[42px] h-[42px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all duration-150 cursor-grab active:cursor-grabbing focus:outline-none select-none ${
-        isMultiWordCustom
-          ? 'text-[8.5px] font-medium leading-[1.08] px-[2px] text-center'
-          : isLowercase
-          ? 'text-[11px] font-normal'
-          : 'text-[11.5px] font-medium'
-      } ${
-        previewHighlighted
-          ? 'bg-[#313131] text-[#f3f3f3] border-[#0051ff] shadow-[0_0_12px_rgba(0,81,255,0.65)] z-10'
-          : isDraggingSource
-          ? 'bg-[#1e1e1e] text-[#6d6d6d] border-transparent'
-          : selected
-          ? 'bg-[#0051ff] border-[#0051ff] text-white shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
-          : dragOver
-          ? 'bg-[#313131] text-[#f3f3f3] border-[#0051ff] z-10'
-          : 'bg-[#313131] text-[#f3f3f3] border-t-[#3e3e3e] border-l-[#3e3e3e] border-b-[#252525] border-r-[#252525] hover:border-[#0051ff] hover:z-10 active:scale-[0.97]'
-      }`}
-    >
-      {slotNumber !== undefined ? (
-        <span
-          data-preview-slot-number={slotNumber}
-          className={`text-[12px] font-medium leading-none text-white pointer-events-none transition-[filter] duration-150 ${
-            previewHighlighted
-              ? 'drop-shadow-[0_0_6px_#0051ff]'
-              : 'group-hover:drop-shadow-[0_0_6px_#0051ff]'
-          }`}
-        >
-          {slotNumber}
-        </span>
-      ) : iconId ? (
-        <CustomPickerIcon id={iconId} size={17} />
-      ) : isEmpty ? (
-        <EmptyKeyPlusIcon size={16} stroke="#ffffff" />
-      ) : (
-        <span
-          className={
-            isMultiWordCustom
-              ? 'leading-[1.08] break-words line-clamp-3'
-              : 'leading-none tracking-[0.01em]'
-          }
-        >
-          {label}
-        </span>
-      )}
-    </motion.button>
-  );
-}
-
-interface KnobControlProps {
-  selected: boolean;
-  angle: number;
-  title: string;
-  onClick: () => void;
-}
-
-function KnobControl({
-  selected,
-  angle,
-  title,
-  onClick,
-}: KnobControlProps) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={`w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-        selected
-          ? 'bg-[#0051ff] border-[#0051ff] shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
-          : 'border-transparent hover:border-[#0051ff] hover:z-10'
-      }`}
-    >
-      <svg
-        width="39"
-        height="39"
-        viewBox="0 0 40 40"
-        className="transition-transform duration-150 pointer-events-none"
-        style={{ transform: `rotate(${angle}deg)` }}
-      >
-        <circle
-          cx="20"
-          cy="20"
-          r="19"
-          fill={selected ? '#0051ff' : '#2f2f2f'}
-          stroke={selected ? '#0051ff' : '#3b3b3b'}
-          strokeWidth="0.9"
-        />
-        <line
-          x1="7.2"
-          y1="7.2"
-          x2="15.2"
-          y2="15.2"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="32.8"
-          y1="7.2"
-          x2="24.8"
-          y2="15.2"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="7.2"
-          y1="32.8"
-          x2="15.2"
-          y2="24.8"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="32.8"
-          y1="32.8"
-          x2="24.8"
-          y2="24.8"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-      </svg>
-    </button>
-  );
-}
-
-/* ========================================================================== */
-/* REAL VECTOR ICON RENDERER FOR SELECT ICON DRAWER & SAVED CUSTOM TILES      */
-/* ========================================================================== */
-
-const INLINE_CUSTOM_ICON_IDS = new Set([
-  'copy-plus', 'layers-plus', 'plus-square', 'stop-square', 'rows-two', 'type-square',
-  'diamonds', 'circle-fill', 'square-fill', 'globe', 'sparkles', 'play-square', 'image',
-  'refresh', 'arrow-left', 'arrow-right', 'grid-four', 'lock', 'chat-bubble', 'clock',
-  'pause-circle', 'zap', 'maximize', 'apps-plus', 'hexagon-nut', 'minimize', 'moon',
-  'framer-bolt', 'database', 'play-triangle', 'terminal', 'volume',
-]);
-
-function CustomPickerIcon({ id, size = 14 }: { id: string; size?: number }) {
-  if (id.startsWith('num-')) {
-    const digit = id.replace('num-', '');
-    return (
-      <span
-        style={{ fontSize: `${Math.max(10, Math.round(size * 0.85))}px` }}
-        className="font-semibold leading-none tracking-tight select-none"
-      >
-        {digit}
-      </span>
-    );
-  }
-
-  const isInlineIcon = INLINE_CUSTOM_ICON_IDS.has(id);
-  const catalogIconPath = isInlineIcon ? undefined : getPresetAppIconPath(id);
-  const iconMetadata = catalogIconPath
-    ? findIconMetadata(getMacroIconLibrary(), id)
-    : undefined;
-  const isFilledIcon = iconMetadata?.t === 'f';
-
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={catalogIconPath ? '0 0 24 24' : '0 0 16 16'}
-      fill={isFilledIcon ? 'currentColor' : 'none'}
-      stroke={isFilledIcon ? 'none' : 'currentColor'}
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {id === 'copy-plus' && (
-        <>
-          <rect x="5" y="5" width="8.5" height="8.5" rx="1.6" fill="currentColor" stroke="none" />
-          <path d="M3 10.5V3.8C3 3.1 3.5 2.5 4.2 2.5H10.5" stroke="currentColor" strokeWidth="1.4" />
-          <path d="M9.25 7.2V11.3M7.2 9.25H11.3" stroke="#ffffff" strokeWidth="1.3" />
-        </>
-      )}
-      {id === 'layers-plus' && (
-        <>
-          <rect x="2.5" y="2.5" width="8.5" height="8.5" rx="1.6" fill="currentColor" stroke="none" />
-          <path d="M13 5.5V12.2C13 12.9 12.5 13.5 11.8 13.5H5.5" stroke="currentColor" strokeWidth="1.4" />
-          <path d="M6.75 4.7V8.8M4.7 6.75H8.8" stroke="#ffffff" strokeWidth="1.3" />
-        </>
-      )}
-      {id === 'plus-square' && (
-        <>
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" />
-          <path d="M8 5.2V10.8M5.2 8H10.8" stroke="#ffffff" strokeWidth="1.4" />
-        </>
-      )}
-      {id === 'stop-square' && (
-        <rect x="2.5" y="2.5" width="11" height="11" rx="2.2" fill="currentColor" stroke="none" />
-      )}
-      {id === 'rows-two' && (
-        <>
-          <rect x="2.5" y="3" width="11" height="4.2" rx="1.4" fill="currentColor" stroke="none" />
-          <rect x="2.5" y="8.8" width="11" height="4.2" rx="1.4" fill="currentColor" stroke="none" />
-        </>
-      )}
-      {id === 'type-square' && (
-        <>
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" />
-          <path d="M5.5 5.5H10.5M8 5.5V11" stroke="#ffffff" strokeWidth="1.4" />
-        </>
-      )}
-      {id === 'diamonds' && (
-        <>
-          <polygon points="8,1.8 10.3,4.1 8,6.4 5.7,4.1" fill="currentColor" stroke="none" />
-          <polygon points="8,9.6 10.3,11.9 8,14.2 5.7,11.9" fill="currentColor" stroke="none" />
-          <polygon points="4.1,5.7 6.4,8 4.1,10.3 1.8,8" fill="currentColor" stroke="none" />
-          <polygon points="11.9,5.7 14.2,8 11.9,10.3 9.6,8" fill="currentColor" stroke="none" />
-        </>
-      )}
-      {id === 'circle-fill' && (
-        <circle cx="8" cy="8" r="5.5" fill="currentColor" stroke="none" />
-      )}
-      {id === 'square-fill' && (
-        <rect x="3" y="3" width="10" height="10" rx="1.2" fill="currentColor" stroke="none" />
-      )}
-      {id === 'globe' && (
-        <>
-          <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.3" />
-          <ellipse cx="8" cy="8" rx="2.5" ry="5.5" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M2.8 8H13.2" stroke="currentColor" strokeWidth="1.2" />
-        </>
-      )}
-      {id === 'sparkles' && (
-        <>
-          <path
-            d="M7.5 2L8.8 6.2L13 7.5L8.8 8.8L7.5 13L6.2 8.8L2 7.5L6.2 6.2L7.5 2Z"
-            fill="currentColor"
-            stroke="none"
-          />
-          <circle cx="12.5" cy="3.5" r="1" fill="currentColor" stroke="none" />
-        </>
-      )}
-      {id === 'play-square' && (
-        <>
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" />
-          <polygon points="6.5,5.5 10.8,8 6.5,10.5" fill="#ffffff" stroke="none" />
-        </>
-      )}
-      {id === 'image' && (
-        <>
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" />
-          <circle cx="5.6" cy="5.8" r="1" fill="#ffffff" stroke="none" />
-          <path d="M3.5 11.5L6.8 8.2L9.2 10.5L10.8 9L12.5 11.5" stroke="#ffffff" strokeWidth="1.2" />
-        </>
-      )}
-      {id === 'refresh' && (
-        <>
-          <path d="M12.5 6A5 5 0 1 0 13 9.5" stroke="currentColor" strokeWidth="1.5" />
-          <polyline points="13,3 13,6.2 9.8,6.2" stroke="currentColor" strokeWidth="1.5" />
-        </>
-      )}
-      {id === 'arrow-left' && (
-        <path d="M13 8H3M3 8L7 4M3 8L7 12" stroke="currentColor" strokeWidth="1.6" />
-      )}
-      {id === 'arrow-right' && (
-        <path d="M3 8H13M13 8L9 4M13 8L9 12" stroke="currentColor" strokeWidth="1.6" />
-      )}
-      {id === 'grid-four' && (
-        <>
-          <rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1" fill="currentColor" stroke="none" />
-          <rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1" fill="currentColor" stroke="none" />
-          <rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1" fill="currentColor" stroke="none" />
-          <rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1" fill="currentColor" stroke="none" />
-        </>
-      )}
-      {id === 'lock' && (
-        <>
-          <rect x="3.2" y="7" width="9.6" height="6.8" rx="1.8" fill="currentColor" stroke="none" />
-          <path d="M5.2 7V5.2A2.8 2.8 0 0 1 10.8 5.2V7" stroke="currentColor" strokeWidth="1.5" />
-        </>
-      )}
-      {id === 'chat-bubble' && (
-        <path
-          d="M8 2.5C4.7 2.5 2 4.8 2 7.7C2 9.3 2.8 10.7 4.1 11.6L3.2 13.8L6 12.6C6.6 12.8 7.3 12.9 8 12.9C11.3 12.9 14 10.6 14 7.7C14 4.8 11.3 2.5 8 2.5Z"
-          fill="currentColor"
-          stroke="none"
-        />
-      )}
-      {id === 'clock' && (
-        <>
-          <circle cx="8" cy="8" r="5.8" fill="currentColor" stroke="none" />
-          <path d="M8 4.8V8.2L10.4 9.6" stroke="#ffffff" strokeWidth="1.4" />
-        </>
-      )}
-      {id === 'pause-circle' && (
-        <>
-          <rect x="3.5" y="3" width="3.4" height="10" rx="1.2" fill="currentColor" stroke="none" />
-          <rect x="9.1" y="3" width="3.4" height="10" rx="1.2" fill="currentColor" stroke="none" />
-        </>
-      )}
-      {id === 'zap' && (
-        <polygon
-          points="9,1.8 3.5,9 7.8,9 7,14.2 12.5,7 8.2,7"
-          fill="currentColor"
-          stroke="none"
-        />
-      )}
-      {id === 'maximize' && (
-        <>
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" />
-          <path d="M6 10L10 6M10 6H7M10 6V9" stroke="#ffffff" strokeWidth="1.3" />
-        </>
-      )}
-      {id === 'apps-plus' && (
-        <>
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2.2" fill="currentColor" stroke="none" />
-          <circle cx="5.7" cy="5.7" r="1.1" fill="#ffffff" stroke="none" />
-          <circle cx="10.3" cy="5.7" r="1.1" fill="#ffffff" stroke="none" />
-          <circle cx="5.7" cy="10.3" r="1.1" fill="#ffffff" stroke="none" />
-          <path d="M10.3 8.8V11.8M8.8 10.3H11.8" stroke="#ffffff" strokeWidth="1.2" />
-        </>
-      )}
-      {id === 'hexagon-nut' && (
-        <>
-          <polygon
-            points="8,2 13.2,5 13.2,11 8,14 2.8,11 2.8,5"
-            fill="currentColor"
-            stroke="none"
-          />
-          <circle cx="8" cy="8" r="2.2" fill="#ffffff" stroke="none" />
-        </>
-      )}
-      {id === 'minimize' && (
-        <>
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" />
-          <path d="M5.5 7.5V5.5H7.5M10.5 8.5V10.5H8.5" stroke="#ffffff" strokeWidth="1.3" />
-        </>
-      )}
-      {id === 'moon' && (
-        <path
-          d="M12.5 9.8A5.2 5.2 0 0 1 6.2 3.5A5.2 5.2 0 1 0 12.5 9.8Z"
-          fill="currentColor"
-          stroke="none"
-        />
-      )}
-      {id === 'framer-bolt' && (
-        <path
-          d="M4 2.5H12V6.5H8L4 2.5ZM4 6.5H8L12 10.5H4V6.5ZM4 10.5H8V14L4 10.5Z"
-          fill="currentColor"
-          stroke="none"
-        />
-      )}
-      {id === 'database' && (
-        <>
-          <ellipse cx="8" cy="4.2" rx="4.8" ry="1.8" fill="currentColor" stroke="none" />
-          <path
-            d="M3.2 6.8C3.2 7.8 5.3 8.6 8 8.6C10.7 8.6 12.8 7.8 12.8 6.8V9.2C12.8 10.2 10.7 11 8 11C5.3 11 3.2 10.2 3.2 9.2V6.8Z"
-            fill="currentColor"
-            stroke="none"
-          />
-          <path
-            d="M3.2 10.8C3.2 11.8 5.3 12.6 8 12.6C10.7 12.6 12.8 11.8 12.8 10.8V12.6C12.8 13.6 10.7 14.4 8 14.4C5.3 14.4 3.2 13.6 3.2 12.6V10.8Z"
-            fill="currentColor"
-            stroke="none"
-          />
-        </>
-      )}
-      {id === 'play-triangle' && (
-        <polygon points="4.5,3 12.8,8 4.5,13" fill="currentColor" stroke="none" />
-      )}
-      {id === 'terminal' && (
-        <>
-          <rect x="2" y="2.5" width="12" height="11" rx="2" fill="currentColor" stroke="none" />
-          <path d="M4.8 6L7.2 8L4.8 10M8.2 10H11" stroke="#ffffff" strokeWidth="1.3" />
-        </>
-      )}
-      {id === 'volume' && (
-        <>
-          <polygon points="3,6.2 6,6.2 9.2,3.5 9.2,12.5 6,9.8 3,9.8" fill="currentColor" stroke="none" />
-          <path d="M11.2 5.8C12 6.5 12 9.5 11.2 10.2" stroke="currentColor" strokeWidth="1.4" />
-        </>
-      )}
-      {catalogIconPath && <path d={catalogIconPath} />}
-    </svg>
   );
 }
 

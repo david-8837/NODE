@@ -3,6 +3,15 @@
  * arbitrary profile JSON stays in the configurator's browser storage.
  */
 
+import {
+  isHardwareEventReport,
+  decodeHardwareReport,
+  isSequentialReport,
+  reconcileMatrixState,
+  HardwareEventType,
+  type DecodedHardwareEvent,
+} from './hardwareEventProtocol';
+
 export const VIA_USB_VENDOR_ID = 0xfeed;
 export const VIA_USB_PRODUCT_ID = 0x6001;
 export const VIA_RAW_USAGE_PAGE = 0xff60;
@@ -15,9 +24,15 @@ const VIA_COMMAND = {
   getKeyboardValue: 0x02,
   getDynamicKeycode: 0x04,
   setDynamicKeycode: 0x05,
+  getMacroCount: 0x0c,
+  getMacroBufferSize: 0x0d,
+  getMacroBuffer: 0x0e,
+  setMacroBuffer: 0x0f,
   getDynamicLayerCount: 0x11,
   getDynamicEncoder: 0x14,
   setDynamicEncoder: 0x15,
+  customSetValue: 0x07,
+  customGetValue: 0x08,
   unhandled: 0xff,
 } as const;
 
@@ -100,6 +115,8 @@ export interface ViaKeymapSnapshot {
   layers: ViaKeymapSnapshotLayer[];
 }
 
+export interface LayerLight { effect: number; hue: number; saturation: number; brightness: number }
+
 export interface BridgeResult {
   ok: boolean;
   error?: string;
@@ -107,6 +124,12 @@ export interface BridgeResult {
   layerCount?: number;
   localOnly?: boolean;
   snapshot?: ViaKeymapSnapshot;
+  macroBackup?: { count: number; bytes: number[] };
+  layerLighting?: { ready: boolean; layers: LayerLight[] };
+  lightingWriteUncertain?: boolean;
+  rollback?: 'verified' | 'failed' | 'not-needed';
+  recoveryError?: string;
+  interruptedMacroBuffer?: boolean;
   changedMappings?: number;
   /** True only when a local pre-restore keymap snapshot was saved before a restore write. */
   preRestoreBackupSaved?: boolean;
@@ -265,11 +288,49 @@ export class QmkViaBridge {
   private status: QmkViaStatus;
   private statusListeners = new Set<(status: QmkViaStatus) => void>();
   private eventListeners = new Set<(event: unknown) => void>();
+  private hardwareEventListeners = new Set<(event: DecodedHardwareEvent) => void>();
+  private lastHardwareSequence: number | null = null;
+  private lastMatrixStateMask = 0;
+  private autoReconnect = true;
+  private connectionGeneration = 0;
+  private activeRequestGeneration: number | null = null;
+  private requestQueue: Promise<void> = Promise.resolve();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+
+  private scheduleReconnect(): void {
+    if (!this.autoReconnect || this.reconnectTimer || this.reconnectAttempts >= 4) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.autoReconnect || this.status.state === 'connected') return;
+      this.reconnectAttempts++;
+      void this.getStatus().then((status) => {
+        if (status.state !== 'connected') this.scheduleReconnect();
+      });
+    }, Math.min(500 * 2 ** this.reconnectAttempts, 4000));
+  }
+
+  private readonly onHidConnect = (event: Event) => {
+    const device = (event as Event & { device?: HidDeviceLike }).device;
+    if (!device || !this.isTarget(device) || !this.autoReconnect) return;
+    this.reconnectAttempts = 0;
+    // Silent scans only use previously authorized devices; never open a chooser.
+    this.scheduleReconnect();
+  };
 
   private readonly onInputReport = (event: Event) => {
     const report = event as HidInputReportEventLike;
-    if (report.device !== this.device || report.reportId !== 0 || !this.pending) return;
+    if (report.device !== this.device || report.reportId !== 0) return;
     const bytes = toReportData(report.data);
+
+    // Unsolicited custom hardware event report (0xEE)
+    if (isHardwareEventReport(bytes)) {
+      this.handleHardwareEventReport(bytes);
+      return;
+    }
+
+    // Standard VIA request/reply response
+    if (!this.pending) return;
     if (bytes[0] === VIA_COMMAND.unhandled) {
       this.pending.reject(new Error('The device does not support this VIA command'));
     } else if (bytes[0] === this.pending.commandId) {
@@ -277,12 +338,54 @@ export class QmkViaBridge {
     }
   };
 
+  private handleHardwareEventReport(bytes: Uint8Array): void {
+    const decoded = decodeHardwareReport(bytes);
+    if (!decoded) return;
+
+    if (!isSequentialReport(decoded.sequence, this.lastHardwareSequence)) {
+      return; // Discard duplicate or stale report
+    }
+    this.lastHardwareSequence = decoded.sequence;
+
+    // Detect any keys released according to the matrix mask that may have missed a release packet
+    const previousMask = this.lastMatrixStateMask;
+    this.lastMatrixStateMask = decoded.matrixStateMask;
+
+    const { releasedSlots } = reconcileMatrixState(previousMask, decoded.matrixStateMask);
+    for (const releasedSlot of releasedSlots) {
+      if (releasedSlot !== decoded.slotId) {
+        const syntheticRelease: DecodedHardwareEvent = {
+          version: decoded.version,
+          type: releasedSlot === 'dial-tl' ? HardwareEventType.DIAL_UP : HardwareEventType.BUTTON_UP,
+          slotIndex: -1,
+          slotId: releasedSlot,
+          sequence: decoded.sequence,
+          activeLayer: decoded.activeLayer,
+          matrixStateMask: decoded.matrixStateMask,
+          isPressed: false,
+          isDialRotation: false,
+        };
+        for (const listener of this.hardwareEventListeners) {
+          listener(syntheticRelease);
+        }
+      }
+    }
+
+    for (const listener of this.hardwareEventListeners) {
+      listener(decoded);
+    }
+    this.emit({ type: 'hardware-event', event: decoded });
+  }
+
   private readonly onHidDisconnect = (event: Event) => {
     const device = (event as Event & { device?: HidDeviceLike }).device;
     if (!device || device !== this.device) return;
+    this.connectionGeneration++;
     device.removeEventListener('inputreport', this.onInputReport);
     this.device = null;
     this.layerCount = 0;
+    this.lastHardwareSequence = null;
+    this.lastMatrixStateMask = 0;
     this.pending?.reject(new Error('The QMK/VIA device disconnected'));
     this.pending = null;
     this.setStatus({ state: 'disconnected', error: 'The device was disconnected' });
@@ -294,6 +397,7 @@ export class QmkViaBridge {
     this.timeoutMs = options.timeoutMs ?? 1500;
     this.status = { state: hid ? 'disconnected' : 'unavailable' };
     this.hid?.addEventListener('disconnect', this.onHidDisconnect);
+    this.hid?.addEventListener('connect', this.onHidConnect);
   }
 
   public onStatus(callback: (status: QmkViaStatus) => void): () => void {
@@ -306,13 +410,18 @@ export class QmkViaBridge {
     return () => this.eventListeners.delete(callback);
   }
 
+  public onHardwareEvent(callback: (event: DecodedHardwareEvent) => void): () => void {
+    this.hardwareEventListeners.add(callback);
+    return () => this.hardwareEventListeners.delete(callback);
+  }
+
   public async getStatus(): Promise<QmkViaStatus> {
     if (!this.hid) {
       this.setStatus({ state: 'unavailable', error: 'WebHID is not available in this browser' });
       return this.status;
     }
     if (this.status.state === 'connected' && this.device) return this.status;
-    if (this.status.state === 'connecting') return this.status;
+    if (this.status.state === 'connecting' || this.status.state === 'searching') return this.status;
 
     this.setStatus({ state: 'searching' });
     let devices: HidDeviceLike[];
@@ -320,14 +429,14 @@ export class QmkViaBridge {
       devices = await this.hid.getDevices();
     } catch (error) {
       // Do not let a stale silent scan overwrite a user-initiated permission flow.
-      if (this.status.state === 'searching') {
+      if (this.isStatusState('searching')) {
         this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
       }
       return this.status;
     }
 
     // A user may start the permission flow while this silent scan is pending.
-    if (this.status.state !== 'searching') return this.status;
+    if (!this.isStatusState('searching')) return this.status;
     const device = devices.find((candidate) => this.isTarget(candidate));
     if (!device) {
       this.setStatus({ state: 'disconnected' });
@@ -337,7 +446,7 @@ export class QmkViaBridge {
     try {
       await this.openDevice(device);
     } catch (error) {
-      if (this.isStatusState('connecting')) {
+      if (this.isStatusState('connecting') && !this.device) {
         this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
       }
     }
@@ -346,6 +455,7 @@ export class QmkViaBridge {
 
   /** Must be called from a user gesture because WebHID prompts for permission. */
   public async connect(): Promise<QmkViaStatus> {
+    this.autoReconnect = true;
     if (!this.hid) {
       this.setStatus({ state: 'unavailable', error: 'Use a WebHID-capable browser over HTTPS or localhost' });
       return this.status;
@@ -354,8 +464,10 @@ export class QmkViaBridge {
     if (this.status.state === 'connecting') return this.status;
 
     this.setStatus({ state: 'connecting' });
+    const generation = this.connectionGeneration;
+    let devices: HidDeviceLike[];
     try {
-      const devices = await this.hid.requestDevice({
+      devices = await this.hid.requestDevice({
         filters: [{
           vendorId: VIA_USB_VENDOR_ID,
           productId: VIA_USB_PRODUCT_ID,
@@ -363,22 +475,38 @@ export class QmkViaBridge {
           usage: VIA_RAW_USAGE_ID,
         }],
       });
-      const device = devices.find((candidate) => this.isTarget(candidate));
-      if (!device) {
-        this.setStatus({ state: 'disconnected' });
-        return this.status;
+    } catch (error) {
+      if (generation === this.connectionGeneration && this.autoReconnect) {
+        this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
       }
+      return this.status;
+    }
+    if (generation !== this.connectionGeneration || !this.autoReconnect || !this.isStatusState('connecting')) return this.status;
+    const device = devices.find((candidate) => this.isTarget(candidate));
+    if (!device) {
+      this.setStatus({ state: 'disconnected' });
+      return this.status;
+    }
+    try {
       await this.openDevice(device);
     } catch (error) {
-      this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
+      if (this.isStatusState('connecting') && !this.device) {
+        this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
+      }
     }
     return this.status;
   }
 
   public async disconnect(): Promise<void> {
+    this.autoReconnect = false;
+    this.connectionGeneration++;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     const device = this.device;
     this.device = null;
     this.layerCount = 0;
+    this.lastHardwareSequence = null;
+    this.lastMatrixStateMask = 0;
     this.pending?.reject(new Error('The QMK/VIA device was disconnected by the user'));
     this.pending = null;
     if (device) {
@@ -395,16 +523,87 @@ export class QmkViaBridge {
    * These command names are local renderer APIs, not firmware commands.
    * Reads and restores use only the stock VIA keycode/encoder reports below.
    */
-  public async request(request: {
+  public request(request: {
     cmd?: string;
     config?: ViaConfiguration;
     snapshot?: ViaKeymapSnapshot;
+    lighting?: LayerLight;
+    layerLightingWrite?: { layer: number; setting: LayerLight };
+    saveLightingRecovery?: (layers: LayerLight[]) => void;
+    macroRestore?: { count: number; bytes: number[] };
+    allowInterruptedRecovery?: boolean;
+    saveRecovery?: (data: { keymap: ViaKeymapSnapshot; macros: { count: number; bytes: number[] } }) => void;
+    onProgress?: (phase: string, done: number, total: number) => void;
   }): Promise<BridgeResult> {
-    if (!['set_config', 'get_config', 'restore_config'].includes(request?.cmd ?? '')) {
+    const generation = this.connectionGeneration;
+    const operation = this.requestQueue.then(async () => {
+      if (generation !== this.connectionGeneration || this.status.state !== 'connected') {
+        return { ok: false, error: 'No QMK/VIA device is connected' };
+      }
+      this.activeRequestGeneration = generation;
+      try { return await this.requestConnected(request); }
+      finally { this.activeRequestGeneration = null; }
+    });
+    this.requestQueue = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
+  private async requestConnected(request: {
+    cmd?: string;
+    config?: ViaConfiguration;
+    snapshot?: ViaKeymapSnapshot;
+    lighting?: LayerLight;
+    layerLightingWrite?: { layer: number; setting: LayerLight };
+    saveLightingRecovery?: (layers: LayerLight[]) => void;
+    macroRestore?: { count: number; bytes: number[] };
+    allowInterruptedRecovery?: boolean;
+    saveRecovery?: (data: { keymap: ViaKeymapSnapshot; macros: { count: number; bytes: number[] } }) => void;
+    onProgress?: (phase: string, done: number, total: number) => void;
+  }): Promise<BridgeResult> {
+    if (!['set_config', 'get_config', 'restore_config', 'set_onboard_led', 'read_layer_lighting', 'write_layer_lighting', 'read_via_macros', 'restore_via_macros'].includes(request?.cmd ?? '')) {
       return { ok: false, error: 'Unsupported QMK/VIA request' };
     }
     if (!this.device || this.status.state !== 'connected') {
       return { ok: false, error: 'No QMK/VIA device is connected' };
+    }
+
+    if (request.cmd === 'read_layer_lighting' || request.cmd === 'write_layer_lighting') {
+      const { readLayerLighting, writeLayerLighting } = await import('./layerLightingProtocol');
+      const exchange = (command: Uint8Array) => this.exchange(command);
+      return request.cmd === 'read_layer_lighting' ? readLayerLighting(exchange)
+        : writeLayerLighting(exchange, request.layerLightingWrite, request.saveLightingRecovery);
+    }
+
+    if (request.cmd === 'read_via_macros' || request.cmd === 'restore_via_macros') {
+      const { runMacroOperation } = await import('./viaMacroTransaction');
+      return runMacroOperation(request, {
+        exchange: command => this.exchange(command),
+        readLayerCount: () => this.readLayerCount(),
+        readDeviceKeymap: count => this.readDeviceKeymap(count),
+      });
+    }
+
+    if (request.cmd === 'set_onboard_led') {
+      const led = request.lighting;
+      if (!led || ![0, 1, 2, 6].includes(led.effect) ||
+          ![led.hue, led.saturation, led.brightness].every(value => Number.isInteger(value) && value >= 0 && value <= 255)) {
+        return { ok: false, error: 'Invalid onboard LED settings' };
+      }
+      try {
+        // Volatile QMK VIA RGBLIGHT changes only: never save to EEPROM or alter keymaps.
+        const values = led.effect === 0 ? [[2, 0]] : [[4, led.hue, led.saturation], [1, led.brightness], [2, led.effect]];
+        for (const [id, ...value] of values) {
+          const response = await this.exchange(new Uint8Array([VIA_COMMAND.customSetValue, 2, id, ...value]));
+          if (response[1] !== 2 || response[2] !== id) throw new Error('Device did not acknowledge LED setting');
+        }
+        for (const [id, ...value] of values) {
+          const response = await this.exchange(new Uint8Array([VIA_COMMAND.customGetValue, 2, id]));
+          if (response[1] !== 2 || response[2] !== id || value.some((v, i) => Math.abs(response[3 + i] - v) > (id === 1 ? 2 : 0))) {
+            throw new Error('Device could not verify LED setting; firmware may not support this effect');
+          }
+        }
+        return { ok: true };
+      } catch (error) { return { ok: false, error: this.errorMessage(error) }; }
     }
 
     if (request.cmd === 'get_config' || request.cmd === 'restore_config') {
@@ -553,11 +752,12 @@ export class QmkViaBridge {
   private async openDevice(device: HidDeviceLike): Promise<void> {
     if (this.device === device && this.status.state === 'connected') return;
     this.setStatus({ state: 'connecting' });
-    if (!device.opened) await device.open();
+    const generation = ++this.connectionGeneration;
     this.device = device;
-    device.addEventListener('inputreport', this.onInputReport);
-
     try {
+      if (!device.opened) await device.open();
+      if (generation !== this.connectionGeneration || this.device !== device) throw new Error('Connection was interrupted');
+      device.addEventListener('inputreport', this.onInputReport);
       const versionReport = await this.exchange(new Uint8Array([VIA_COMMAND.getProtocolVersion]));
       if (versionReport.length < 3) throw new Error('Invalid VIA protocol-version response');
       const version = (versionReport[1] << 8) | versionReport[2];
@@ -582,6 +782,8 @@ export class QmkViaBridge {
         // The protocol version and layer-count handshake are sufficient to connect.
       }
 
+      if (generation !== this.connectionGeneration || this.device !== device) throw new Error('Connection was interrupted');
+      this.reconnectAttempts = 0;
       this.setStatus({
         state: 'connected',
         device: device.productName || 'Grid Macro 1',
@@ -591,12 +793,14 @@ export class QmkViaBridge {
       });
       this.emit({ type: 'connect', device: device.productName || 'Grid Macro 1' });
     } catch (error) {
-      device.removeEventListener('inputreport', this.onInputReport);
-      this.device = null;
-      this.layerCount = 0;
-      try {
-        if (device.opened) await device.close();
-      } catch {}
+      if (generation === this.connectionGeneration) {
+        device.removeEventListener('inputreport', this.onInputReport);
+        this.device = null;
+        this.layerCount = 0;
+        try {
+          if (device.opened) await device.close();
+        } catch {}
+      }
       throw error;
     }
   }
@@ -768,6 +972,9 @@ export class QmkViaBridge {
 
   private async exchange(command: Uint8Array): Promise<Uint8Array> {
     const device = this.device;
+    if (this.activeRequestGeneration !== null && this.activeRequestGeneration !== this.connectionGeneration) {
+      throw new Error('QMK/VIA session changed during the operation');
+    }
     if (!device || !device.opened) throw new Error('QMK/VIA device is not open');
     if (this.pending) throw new Error('A VIA Raw HID report is already in flight');
     if (command.length > VIA_RAW_REPORT_SIZE) throw new Error('VIA command exceeds Raw HID report size');
@@ -776,8 +983,10 @@ export class QmkViaBridge {
     report.set(command);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let rejectResponse: ((error: Error) => void) | undefined;
+    let pending: PendingReport | null = null;
     const response = new Promise<Uint8Array>((resolve, reject) => {
-      this.pending = { commandId: command[0], resolve, reject };
+      pending = { commandId: command[0], resolve, reject };
+      this.pending = pending;
       rejectResponse = reject;
       timer = setTimeout(() => reject(new Error(`Timed out waiting for VIA command 0x${command[0].toString(16)}`)), this.timeoutMs);
     });
@@ -791,7 +1000,7 @@ export class QmkViaBridge {
       return await response;
     } finally {
       if (timer !== undefined) clearTimeout(timer);
-      this.pending = null;
+      if (this.pending === pending) this.pending = null;
     }
   }
 

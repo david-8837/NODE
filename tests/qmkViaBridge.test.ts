@@ -32,6 +32,15 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
   public readonly keycodes = new Map<string, number>();
   public readonly encoderKeycodes = new Map<string, number>();
   public failNextReport = false;
+  public macroBytes = Uint8Array.from({ length: 61 }, (_, i) => i < 4 || i === 60 ? 0 : i);
+  public macroReadCount = 0;
+  public mutateMacroOnSecondRead = false;
+  public failMacroWriteAt: number | null = null;
+  public failAllMacroWrites = false;
+  public failMacroWritesFrom: number | null = null;
+  public macroWriteCount = 0;
+  public corruptAfterMacroWriteAt: number | null = null;
+  public readonly ledValues = new Map<number, number[]>();
 
   public seedKeycode(layer: number, row: number, col: number, keycode: number) {
     this.keycodes.set(`${layer}:${row}:${col}`, keycode);
@@ -77,6 +86,32 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
         `${request[1]}:${request[2]}:${request[3]}`,
         (request[4] << 8) | request[5]
       );
+    } else if (request[0] === 0x07 && request[1] === 2) {
+      const count = request[2] === 4 ? 2 : 1;
+      this.ledValues.set(request[2], Array.from(request.slice(3, 3 + count)));
+      response.set(request.slice(1, 3), 1);
+    } else if (request[0] === 0x08 && request[1] === 2) {
+      response.set(request.slice(1, 3), 1);
+      response.set(this.ledValues.get(request[2]) ?? [0], 3);
+    } else if (request[0] === 0x0c) {
+      response[1] = 4;
+    } else if (request[0] === 0x0d) {
+      response[1] = this.macroBytes.length >> 8;
+      response[2] = this.macroBytes.length & 255;
+    } else if (request[0] === 0x0e) {
+      const offset = (request[1] << 8) | request[2];
+      const size = request[3];
+      response.set(request.slice(1, 4), 1);
+      response.set(this.macroBytes.slice(offset, offset + size), 4);
+      if (offset === 0) this.macroReadCount++;
+      if (this.mutateMacroOnSecondRead && this.macroReadCount > 1 && offset === 0) response[4] ^= 1;
+    } else if (request[0] === 0x0f) {
+      const offset = (request[1] << 8) | request[2];
+      this.macroWriteCount++;
+      if (this.failAllMacroWrites || (this.failMacroWritesFrom !== null && this.macroWriteCount >= this.failMacroWritesFrom) || this.macroWriteCount === this.failMacroWriteAt) throw new Error('Simulated macro write failure');
+      this.macroBytes.set(request.slice(4, 4 + request[3]), offset);
+      if (this.macroWriteCount === this.corruptAfterMacroWriteAt) this.macroBytes[1] = 99;
+      response.set(request.slice(1, 4), 1);
     } else if (request[0] === 0x11) {
       response[1] = this.layerCount;
     } else if (request[0] === 0x14) {
@@ -141,6 +176,152 @@ describe('QMK/VIA keycode translation', () => {
 });
 
 describe('QMK/VIA WebHID bridge', () => {
+  it('restores macros with a saved keymap and macro recovery snapshot and verifies each chunk', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    const before = Array.from(hid.device.macroBytes), target = before.map((v, i) => i < 4 || i === 60 ? 0 : 255 - v);
+    const saveRecovery = vi.fn(); const progress = vi.fn();
+    const result = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: target }, saveRecovery, onProgress: progress });
+    expect(result).toMatchObject({ ok: true, rollback: 'not-needed' });
+    expect(saveRecovery).toHaveBeenCalledOnce();
+    expect(saveRecovery.mock.calls[0][0].macros.bytes).toEqual(before);
+    expect(saveRecovery.mock.calls[0][0].keymap.layers).toHaveLength(4);
+    expect(Array.from(hid.device.macroBytes)).toEqual(target);
+    expect(progress).toHaveBeenCalledWith('Complete', 61, 61);
+    expect(hid.device.reports.filter(report => report[0] === 15)).toHaveLength(5);
+    await bridge.disconnect();
+  });
+  it('refuses to write if recovery storage fails or the backup layout is incompatible', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    const target = Array.from({ length: 61 }, (_, i) => i < 4 || i === 60 ? 0 : 42);
+    const failed = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: target }, saveRecovery: () => { throw new Error('storage full'); } });
+    expect(failed).toMatchObject({ ok: false, rollback: 'not-needed', error: 'storage full' });
+    const mismatch = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 3, bytes: target }, saveRecovery: vi.fn() });
+    expect(mismatch).toMatchObject({ ok: false, rollback: 'not-needed' });
+    expect(hid.device.reports.some(report => report[0] === 15)).toBe(false);
+    await bridge.disconnect();
+  });
+  it('attempts and verifies rollback after a failed macro write', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    const before = Array.from(hid.device.macroBytes); hid.device.failMacroWriteAt = 2;
+    const result = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: before.map((v, i) => i < 4 || i === 60 ? 0 : 255-v) }, saveRecovery: vi.fn() });
+    expect(result).toMatchObject({ ok: false, rollback: 'verified' });
+    expect(Array.from(hid.device.macroBytes)).toEqual(before);
+    await bridge.disconnect();
+  });
+  it('detects staged corruption before enabling macros and verifies rollback', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    const before = Array.from(hid.device.macroBytes);
+    hid.device.corruptAfterMacroWriteAt = 3;
+    const target = before.map((v, i) => i < 4 || i === 60 ? 0 : 255 - v);
+    const result = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: target }, saveRecovery: vi.fn() });
+    expect(result).toMatchObject({ ok: false, rollback: 'verified', error: 'Staged macro buffer verification failed' });
+    expect(Array.from(hid.device.macroBytes)).toEqual(before);
+    const markerWrites = hid.device.reports.filter(report => report[0] === 15 && report[1] === 0 && report[2] === 60);
+    expect(markerWrites.map(report => report[4])).toEqual([255, 255, 0]);
+    await bridge.disconnect();
+  });
+  it('requires explicit consent to recover an interrupted buffer and preserves the partial snapshot', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    const target = Array.from(hid.device.macroBytes);
+    hid.device.macroBytes[60] = 255; hid.device.macroBytes[5] = 123;
+    const partial = Array.from(hid.device.macroBytes); const saveRecovery = vi.fn();
+    const denied = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: target }, saveRecovery });
+    expect(denied).toMatchObject({ ok: false, interruptedMacroBuffer: true });
+    expect(saveRecovery).not.toHaveBeenCalled();
+    expect(hid.device.reports.some(report => report[0] === 15)).toBe(false);
+    const recovered = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: target }, saveRecovery, allowInterruptedRecovery: true });
+    expect(recovered.ok).toBe(true);
+    expect(saveRecovery.mock.calls[0][0].macros.bytes).toEqual(partial);
+    expect(Array.from(hid.device.macroBytes)).toEqual(target);
+    await bridge.disconnect();
+  });
+  it('never re-enables a partial prior buffer after an interrupted recovery fails', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    const target = Array.from(hid.device.macroBytes);
+    hid.device.macroBytes[60] = 255; hid.device.macroBytes[5] = 123; hid.device.failMacroWriteAt = 2;
+    const result = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: target }, saveRecovery: vi.fn(), allowInterruptedRecovery: true });
+    expect(result).toMatchObject({ ok: false, rollback: 'failed' });
+    expect(hid.device.macroBytes[60]).toBe(255);
+    expect(hid.device.reports.filter(report => report[0] === 15 && report[2] === 60 && report[4] === 0)).toHaveLength(0);
+    await bridge.disconnect();
+  });
+  it('reports unverified recovery if writes and rollback both fail', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    hid.device.failAllMacroWrites = true;
+    const result = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: Array.from({ length: 61 }, (_, i) => i < 4 || i === 60 ? 0 : 42) }, saveRecovery: vi.fn() });
+    // The device also refuses the rollback marker, so recovery cannot be verified.
+    expect(result).toMatchObject({ ok: false, rollback: 'failed' });
+    await bridge.disconnect();
+  });
+
+  it('reports rollback failure if the device refuses writes after a partial update', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    const before = Array.from(hid.device.macroBytes); hid.device.failMacroWritesFrom = 2;
+    const result = await bridge.request({ cmd: 'restore_via_macros', macroRestore: { count: 4, bytes: before.map((v, i) => i < 4 || i === 60 ? 0 : 255-v) }, saveRecovery: vi.fn() });
+    expect(result).toMatchObject({ ok: false, rollback: 'failed' });
+    expect(result.recoveryError).toContain('Simulated macro write failure');
+    expect(Array.from(hid.device.macroBytes)).not.toEqual(before);
+    await bridge.disconnect();
+  });
+  it('reads and double-checks the complete VIA macro buffer with GET commands only', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    hid.device.reports.length = 0;
+    const result = await bridge.request({ cmd: 'read_via_macros' });
+    expect(result).toMatchObject({ ok: true, macroBackup: { count: 4, bytes: Array.from(hid.device.macroBytes) } });
+    expect(hid.device.reports.map(report => report[0])).toEqual([12, 13, 14, 14, 14, 14, 14, 14, 12, 13]);
+    expect(hid.device.reports.filter(report => report[0] === 14).map(report => report[3])).toEqual([28, 28, 5, 28, 28, 5]);
+    await bridge.disconnect();
+  });
+  it('refuses a macro backup if the contents change while reading', async () => {
+    const hid = new FakeHidApi();
+    hid.device.mutateMacroOnSecondRead = true;
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    const result = await bridge.request({ cmd: 'read_via_macros' });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('changed while being read');
+    expect(result.macroBackup).toBeUndefined();
+    await bridge.disconnect();
+  });
+  it('rejects unrecognized macro buffer sizes before reading them', async () => {
+    const hid = new FakeHidApi();
+    hid.device.macroBytes = new Uint8Array(4097);
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    hid.device.reports.length = 0;
+    const result = await bridge.request({ cmd: 'read_via_macros' });
+    expect(result.ok).toBe(false);
+    expect(hid.device.reports.map(report => report[0])).toEqual([12, 13]);
+    await bridge.disconnect();
+  });
+
+  it('refuses layer-lighting requests on unsupported firmware without writing', async () => {
+    const hid = new FakeHidApi(); const bridge = new QmkViaBridge(hid, { timeoutMs: 20 }); await bridge.connect();
+    hid.device.reports.length = 0;
+    const result = await bridge.request({ cmd: 'read_layer_lighting' });
+    expect(result.ok).toBe(false);
+    expect(hid.device.reports.map(report => report[0])).toEqual([0x08]);
+    await bridge.disconnect();
+  });
+  it('applies and verifies volatile onboard LED settings without writing keymaps or EEPROM', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    hid.device.reports.length = 0;
+    const result = await bridge.request({ cmd: 'set_onboard_led', lighting: { effect: 1, hue: 85, saturation: 255, brightness: 128 } });
+    expect(result.ok).toBe(true);
+    expect(hid.device.reports.map(report => [...report.slice(0, 5)])).toEqual([
+      [7, 2, 4, 85, 255], [7, 2, 1, 128, 0], [7, 2, 2, 1, 0],
+      [8, 2, 4, 0, 0], [8, 2, 1, 0, 0], [8, 2, 2, 0, 0],
+    ]);
+    hid.device.reports.length = 0;
+    expect((await bridge.request({ cmd: 'set_onboard_led', lighting: { effect: 15, hue: 0, saturation: 0, brightness: 0 } })).ok).toBe(false);
+    expect(hid.device.reports).toHaveLength(0);
+    await bridge.disconnect();
+  });
+
   it('requests the matching HID interface and verifies VIA version and layer count', async () => {
     const hid = new FakeHidApi();
     const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
@@ -405,6 +586,54 @@ describe('QMK/VIA WebHID bridge', () => {
       .resolves.toMatchObject({ ok: false, error: 'No QMK/VIA device is connected' });
   });
 
+  it('ignores a permission chooser that finishes after an explicit disconnect', async () => {
+    const hid = new FakeHidApi();
+    let finish!: (devices: FakeViaDevice[]) => void;
+    vi.spyOn(hid, 'requestDevice').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    const connecting = bridge.connect();
+    await bridge.disconnect();
+    finish([hid.device]);
+    await connecting;
+    expect(hid.device.opened).toBe(false);
+    expect(hid.device.reports).toHaveLength(0);
+  });
+
+  it('ignores a silent scan that finishes after an explicit disconnect', async () => {
+    const hid = new FakeHidApi();
+    let finish!: (devices: HidDeviceLike[]) => void;
+    vi.spyOn(hid, 'getDevices').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    const scanning = bridge.getStatus();
+    await bridge.disconnect();
+    finish([hid.device]);
+    await scanning;
+    expect(hid.device.opened).toBe(false);
+    expect(hid.device.reports).toHaveLength(0);
+  });
+
+  it('reconnects previously authorized devices on USB connect without resetting mappings', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    let connectionState = 'connected';
+    bridge.onStatus(status => { connectionState = status.state; });
+    hid.device.seedKeycode(0, 1, 0, 4);
+    for (let i = 0; i < 3; i++) {
+      hid.dispatchEvent(Object.assign(new Event('disconnect'), { device: hid.device }));
+      hid.device.opened = false;
+      hid.deviceAvailableForSilentScan = true;
+      hid.dispatchEvent(Object.assign(new Event('connect'), { device: hid.device }));
+      await vi.waitFor(() => expect(connectionState).toBe('connected'), { timeout: 2500 });
+      expect(hid.device.keycodes.get('0:1:0')).toBe(4);
+    }
+    expect(hid.device.reports.some(report => report[0] === 0x05)).toBe(false);
+    await bridge.disconnect();
+    hid.dispatchEvent(Object.assign(new Event('connect'), { device: hid.device }));
+    await new Promise(r => setTimeout(r, 10));
+    expect(hid.device.opened).toBe(false);
+  });
+
   it('does not claim support for an incompatible VIA version', async () => {
     const hid = new FakeHidApi();
     hid.device.protocolVersion = VIA_PROTOCOL_VERSION - 1;
@@ -438,5 +667,37 @@ describe('QMK/VIA WebHID bridge', () => {
     await expect(bridge.putFile('app_state', state)).resolves.toMatchObject({ ok: true, localOnly: true });
     expect(setItem).toHaveBeenCalledWith('cm2.state.v2', state);
     await expect(bridge.getFile('app_state')).resolves.toMatchObject({ ok: false });
+  });
+
+  it('receives unsolicited hardware events and dispatches them without waiting for pending commands', async () => {
+    const { encodeHardwareReport, HardwareEventType } = await import('../src/hardwareEventProtocol');
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+
+    const receivedEvents: any[] = [];
+    bridge.onHardwareEvent((event) => receivedEvents.push(event));
+
+    // Simulate an unsolicited hardware report from the device (Button 0 down)
+    const reportBytes = encodeHardwareReport({
+      type: HardwareEventType.BUTTON_DOWN,
+      slotIndex: 0,
+      sequence: 1,
+      matrixStateMask: 1,
+    });
+
+    const reportEvent = Object.assign(new Event('inputreport'), {
+      device: hid.device,
+      reportId: 0,
+      data: new DataView(reportBytes.buffer),
+    });
+    hid.device.dispatchEvent(reportEvent);
+
+    expect(receivedEvents).toHaveLength(1);
+    expect(receivedEvents[0]).toMatchObject({
+      slotId: 'r1c1',
+      isPressed: true,
+      sequence: 1,
+    });
   });
 });

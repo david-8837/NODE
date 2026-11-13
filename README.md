@@ -94,10 +94,11 @@ Before flashing a physical board, read the [hardware preparation checklist](HARD
 
 - [Windows app and firmware guide](WINDOWS_APP_AND_FIRMWARE_GUIDE.md)
 - [Hardware preparation and first-flash checklist](HARDWARE_PREPARATION_CHECKLIST.md)
-- [Quality assessment](QUALITY_ASSESSMENT.md)
+- [Quality assessment (historical)](QUALITY_ASSESSMENT.md)
+- [Quality improvement assessment (2026-11-12)](QUALITY_IMPROVEMENT_2026.md)
 - [Firmware setup notes](firmware/README.md)
 - [QMK/VIA build and sync notes](qmk_firmware/grid_macro_1/README.md)
 
 ## License
 
-There is currently no `LICENSE` file in this repository. Until a license is added, do not assume the source is licensed for reuse or redistribution; contact the repository owner for permission.
+This project is licensed under the [GNU General Public License version 3.0 only](LICENSE) (GPL-3.0-only). Third-party components may have their own license terms.

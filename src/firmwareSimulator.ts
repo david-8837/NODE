@@ -28,7 +28,7 @@ export class FirmwareSimulator {
   public currentLayer = 0;
   public keyStates = new Array(TOTAL_KEYS).fill(false);
   public lastDebounceTime = new Array(TOTAL_KEYS).fill(0);
-  public debounceDelayMs = 5;
+  public debounceDelayMs = 10;
 
   public encState = 0;
   public encCounter = 0;
@@ -185,6 +185,21 @@ export class FirmwareSimulator {
       ack[0] = 0x04;
       ack[1] = 0x01;
       return ack;
+    } else if (cmd === 0x05) {
+      // CMD_SET_ENCODER
+      if (buffer.length >= 5) {
+        const layer = buffer[1];
+        const dir = buffer[2];
+        const keycode = buffer[3] | (buffer[4] << 8);
+        if (layer < NUM_LAYERS && dir < 2) {
+          this.encoderMap[layer][dir] = keycode;
+          const ack = new Uint8Array(64);
+          ack[0] = 0x05;
+          ack[1] = layer;
+          ack[2] = dir;
+          return ack;
+        }
+      }
     }
     return null;
   }

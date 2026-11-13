@@ -22,6 +22,9 @@
       ]
     },
     "allowImportingTsExtensions": true,
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
     "noEmit": true
   },
   "exclude": ["dist"]

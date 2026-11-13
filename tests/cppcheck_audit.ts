@@ -32,10 +32,18 @@ if ((version.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
   process.exitCode = version.status ?? 1;
 } else {
   console.log(`Running ${version.stdout.trim()} on Arduino and QMK firmware sources`);
+  // Newer Cppcheck versions otherwise stop at their normal branch limit and
+  // return a failing informational diagnostic with --error-exitcode. Older
+  // CI versions do not support this option.
+  const help = spawnSync(cppcheck, ['--help'], { cwd: rootPath, encoding: 'utf8' });
+  const exhaustive = help.status === 0 && help.stdout.includes('--check-level=')
+    ? ['--check-level=exhaustive']
+    : [];
   const result = spawnSync(
     cppcheck,
     [
       '--enable=warning,style,performance,portability',
+      ...exhaustive,
       '--error-exitcode=1',
       '--inline-suppr',
       '--suppress=missingInclude',

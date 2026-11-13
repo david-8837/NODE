@@ -1,11 +1,24 @@
 // electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
-const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { fileURLToPath, pathToFileURL } = require('url');
-const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
+const { pathToFileURL } = require('url');
+const { copyValidatedUf2ToBootloader } = require('./uf2Flasher.cjs');
+const { evaluateRendererHeapSoak } = require('./memoryBudget.cjs');
 const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 const { listInstalledApplications } = require('./installedApplications.cjs');
+const {
+  getIconPickerBrowserSmokeScript,
+  getIconPickerMemorySoakScript,
+} = require('./browserSmoke.cjs');
+const {
+  canGrantAppPermissionCheck,
+  canGrantAppPermissionRequest,
+  getAllowedExternalNavigationUrl,
+  isAllowedHardwareOrigin: isAllowedHardwareOriginForContext,
+  isTrustedAppFrame: isTrustedAppFrameForEntry,
+  isTrustedAppUrl: isTrustedAppUrlForEntry,
+} = require('./securityPolicy.cjs');
 
 const desktopActionExecutor = createDesktopActionExecutor({
   openExternal: (url) => shell.openExternal(url),
@@ -21,8 +34,64 @@ const desktopActionExecutor = createDesktopActionExecutor({
   },
 });
 let mainWindow = null;
+let cheatSheetWindow = null;
+let cheatSheetData = null;
+let tray = null;
+let isQuitting = false;
 let visualSmokeCaptureStarted = false;
 let completingQuit = false;
+
+function createTray() {
+  if (tray || isVisualSmokeTest() || isPersistenceSmokeTest()) return;
+  const iconPath = path.join(__dirname, '../public/favicon.ico');
+  if (!fs.existsSync(iconPath)) return;
+
+  try {
+    tray = new Tray(iconPath);
+    tray.setToolTip('NØDE — Grid Macro 1 Studio');
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Open NØDE Studio',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        },
+      },
+      {
+        label: 'Hide to Tray',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.hide();
+          }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit NØDE Studio',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ]);
+
+    tray.setContextMenu(contextMenu);
+    tray.on('click', () => {
+      if (!mainWindow) return;
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+  } catch (err) {
+    console.error('Could not initialize system tray icon:', err);
+  }
+}
 
 // Unpackaged Electron is development. Never let a user-level NODE_ENV value make
 // an installed app load a local development server instead of its bundled UI.
@@ -63,35 +132,31 @@ function getAppEntryUrl() {
     : getDevServerUrl();
 }
 
+function securityPolicyContext() {
+  return {
+    packaged: app.isPackaged,
+    platform: process.platform,
+    devServerUrl: getDevServerUrl(),
+  };
+}
+
 function isTrustedAppUrl(rawUrl) {
-  try {
-    const url = new URL(rawUrl);
-    const entry = new URL(getAppEntryUrl());
-    if (app.isPackaged) {
-      if (url.protocol !== 'file:') return false;
-      const requestedPath = path.resolve(fileURLToPath(url));
-      const expectedPath = path.resolve(fileURLToPath(entry));
-      // Windows file paths are case-insensitive; Chromium and Node may preserve
-      // different drive/path casing for the same packaged app entry.
-      return process.platform === 'win32'
-        ? requestedPath.toLowerCase() === expectedPath.toLowerCase()
-        : requestedPath === expectedPath;
-    }
-    return url.origin === entry.origin && url.pathname === entry.pathname;
-  } catch {
-    return false;
-  }
+  return isTrustedAppUrlForEntry(rawUrl, getAppEntryUrl(), securityPolicyContext());
+}
+
+function isTrustedAppFrame(frame) {
+  return isTrustedAppFrameForEntry(frame, getAppEntryUrl(), securityPolicyContext());
+}
+
+function isAllowedHardwareOrigin(origin) {
+  return isAllowedHardwareOriginForContext(origin, securityPolicyContext());
 }
 
 function isTrustedRenderer(event) {
-  const frame = event.senderFrame;
-  // WebFrameMain identifies the top frame with a null parent; `isMainFrame`
-  // is available in renderer process APIs, not on IPC's senderFrame object.
   return Boolean(
     mainWindow &&
     event.sender === mainWindow.webContents &&
-    frame?.parent === null &&
-    isTrustedAppUrl(frame.url)
+    isTrustedAppFrame(event.senderFrame)
   );
 }
 
@@ -184,14 +249,6 @@ function isAllowedExternalUrl(rawUrl) {
   }
 }
 
-function isAllowedHardwareOrigin(origin) {
-  if (typeof origin !== 'string') return false;
-  if (app.isPackaged) {
-    return origin === 'null' || origin === 'file://' || origin.startsWith('file:');
-  }
-  return origin === new URL(getDevServerUrl()).origin;
-}
-
 function getInitialWindowBounds() {
   const workArea = screen.getPrimaryDisplay().workAreaSize;
   const width = Math.min(1280, Math.max(640, workArea.width - 32));
@@ -206,6 +263,33 @@ function getInitialWindowBounds() {
 
 function isVisualSmokeTest() {
   return app.isPackaged && app.commandLine.hasSwitch('visual-smoke-test');
+}
+
+// These V8/Chromium diagnostics are enabled only for the packaged visual smoke.
+// Normal launches keep the production runtime flags unchanged.
+if (isVisualSmokeTest()) {
+  app.commandLine.appendSwitch('enable-precise-memory-info');
+  app.commandLine.appendSwitch('js-flags', '--expose-gc');
+}
+
+function getRendererProcessMemorySnapshot() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('Cannot sample memory after the packaged app window is closed');
+  }
+
+  const rendererPid = mainWindow.webContents.getOSProcessId();
+  const metric = app.getAppMetrics().find(({ pid }) => pid === rendererPid);
+  if (!metric) {
+    throw new Error(`Electron did not report memory metrics for renderer process ${rendererPid}`);
+  }
+
+  return {
+    pid: metric.pid,
+    type: metric.type,
+    workingSetKb: metric.memory.workingSetSize,
+    privateBytesKb: Number.isFinite(metric.memory.privateBytes) ? metric.memory.privateBytes : null,
+    peakWorkingSetKb: metric.memory.peakWorkingSetSize,
+  };
 }
 
 function writeVisualSmokeDiagnostics(details) {
@@ -226,6 +310,7 @@ function writeVisualSmokeDiagnostics(details) {
 async function captureVisualSmokeScreenshot() {
   const screenshotPath = process.env.NODE_GRID_VISUAL_SMOKE_SCREENSHOT;
   let renderedUi = null;
+  let browserSmokeResult = null;
   try {
     if (!screenshotPath) {
       throw new Error('NODE_GRID_VISUAL_SMOKE_SCREENSHOT must name the PNG output path');
@@ -248,6 +333,7 @@ async function captureVisualSmokeScreenshot() {
       return {
         title: document.title,
         appMounted: Boolean(root?.firstElementChild),
+        connectionGateVisible: Boolean(root?.querySelector('[role=\"dialog\"][aria-labelledby=\"device-required-title\"]') && root?.querySelector('.app-shell[inert]')),
         keyCount: keySlots.length,
         hasEncoder: Boolean(root?.querySelector('button[title^="Dial:"]')),
         hasNavigation: ['Keymap', 'Preset', 'Settings'].every((label) => navText.includes(label)),
@@ -258,6 +344,7 @@ async function captureVisualSmokeScreenshot() {
 
     if (
       !renderedUi.appMounted ||
+      !renderedUi.connectionGateVisible ||
       renderedUi.keyCount !== 9 ||
       !renderedUi.hasEncoder ||
       !renderedUi.hasNavigation ||
@@ -276,13 +363,69 @@ async function captureVisualSmokeScreenshot() {
     }
     fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
     fs.writeFileSync(screenshotPath, png);
-    console.log(`Packaged UI visual smoke test passed: ${screenshotPath} (${png.length} bytes)`);
+
+    const iconPickerSmokeResult = await mainWindow.webContents.executeJavaScript(
+      getIconPickerBrowserSmokeScript()
+    );
+    browserSmokeResult = iconPickerSmokeResult;
+    if (
+      !iconPickerSmokeResult.fullIconCatalogAvailable ||
+      iconPickerSmokeResult.browseCount !== 8507 ||
+      !iconPickerSmokeResult.deferredIconLibraryLoadedAfterClick ||
+      !iconPickerSmokeResult.iconSearchSelected ||
+      !iconPickerSmokeResult.emojiSearchSelected
+    ) {
+      throw new Error(`Packaged browser smoke checks returned unexpected results: ${JSON.stringify(iconPickerSmokeResult)}`);
+    }
+
+    const rendererMemoryBefore = getRendererProcessMemorySnapshot();
+    const rawMemorySoakResult = await mainWindow.webContents.executeJavaScript(
+      getIconPickerMemorySoakScript()
+    );
+    const heapSoakAssessment = evaluateRendererHeapSoak(rawMemorySoakResult);
+    const rendererMemoryAfter = getRendererProcessMemorySnapshot();
+    const rendererMemoryDeltaKb = {
+      workingSet: rendererMemoryAfter.workingSetKb - rendererMemoryBefore.workingSetKb,
+      privateBytes:
+        rendererMemoryAfter.privateBytesKb === null || rendererMemoryBefore.privateBytesKb === null
+          ? null
+          : rendererMemoryAfter.privateBytesKb - rendererMemoryBefore.privateBytesKb,
+    };
+    browserSmokeResult = {
+      ...iconPickerSmokeResult,
+      memorySoak: {
+        ...rawMemorySoakResult,
+        ...heapSoakAssessment,
+        rendererProcess: {
+          before: rendererMemoryBefore,
+          after: rendererMemoryAfter,
+          deltaKb: rendererMemoryDeltaKb,
+        },
+      },
+    };
+    if (
+      !heapSoakAssessment.passed ||
+      rawMemorySoakResult.gcAvailable !== true ||
+      rawMemorySoakResult.preciseMemoryInfoEnabled !== true ||
+      rawMemorySoakResult.iterations !== 30 ||
+      rawMemorySoakResult.checkpoints?.length !== 6
+    ) {
+      throw new Error(`Packaged Chromium memory soak failed: ${JSON.stringify(browserSmokeResult.memorySoak)}`);
+    }
+
+    writeVisualSmokeDiagnostics({
+      stage: 'browser-smoke-passed',
+      renderedUi,
+      browserSmokeResult,
+    });
+    console.log(`Packaged UI and icon-picker browser smoke tests passed: ${screenshotPath} (${png.length} bytes); ${JSON.stringify(browserSmokeResult)}`);
     app.exit(0);
   } catch (error) {
     const diagnostics = {
       stage: 'capture-failed',
       error: error instanceof Error ? error.message : String(error),
       renderedUi,
+      browserSmokeResult,
       windowBounds: mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null,
       pageUrl: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getURL() : null,
     };
@@ -379,12 +522,16 @@ async function runPersistenceSmokeTest() {
           const error = setting?.error || 'Native Settings did not save the terminal-action preference';
           throw new Error(error + (setting?.diagnostics ? ' ' + JSON.stringify(setting.diagnostics) : ''));
         }
+        const startupSetting = await window.electronAPI?.setAppSetting('launchAtStartup', true);
+        if (!startupSetting?.ok || startupSetting.settings?.launchAtStartup !== true) {
+          throw new Error(startupSetting?.error || 'Windows did not enable launch at startup');
+        }
         window.localStorage.setItem('cm2.state.v2', ${JSON.stringify(serializedState)});
         const savedState = JSON.parse(window.localStorage.getItem('cm2.state.v2') || 'null');
         if (savedState?.profiles?.[0]?.name !== ${JSON.stringify(profileName)}) {
           throw new Error('The profile state was not written to the installed app storage');
         }
-        return { settingSaved: true, profileSaved: true };
+        return { settingSaved: true, launchAtStartupEnabled: true, profileSaved: true };
       })()`);
       await new Promise((resolve) => setTimeout(resolve, 750));
       writePersistenceSmokeDiagnostics({ stage: 'write-complete', ...result });
@@ -403,10 +550,17 @@ async function runPersistenceSmokeTest() {
             const shortcut = state?.profiles?.[0]?.layers?.[0]?.r1c1?.execution;
             const custom = state?.customItems?.Action?.[0]?.execution;
             if (native?.ok && native.settings?.allowTerminalSmartActions === true &&
+                native.settings?.launchAtStartup === true &&
                 shortcut?.kind === 'shortcut' && shortcut?.value === 'Ctrl + Shift + S' &&
                 custom?.kind === 'sequence' && custom?.steps?.[0]?.key === 'Ctrl + S') {
+              const disabledStartup = await window.electronAPI?.setAppSetting('launchAtStartup', false);
+              if (!disabledStartup?.ok || disabledStartup.settings?.launchAtStartup !== false) {
+                throw new Error(disabledStartup?.error || 'Could not clean up the smoke-test startup entry');
+              }
               return {
                 settingRestored: true,
+                launchAtStartupRestored: true,
+                launchAtStartupCleanedUp: true,
                 profileLoaded: true,
                 structuredExecutionRestored: true,
                 profileName: expectedName,
@@ -465,6 +619,10 @@ function createWindow() {
     },
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      // The renderer owns WebHID, debounce, and gesture timers even when the
+      // window is minimized or hidden to the tray. Throttling can delay or
+      // collapse those events and prevent desktop actions from firing.
+      backgroundThrottling: false,
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
@@ -490,15 +648,26 @@ function createWindow() {
     return false;
   });
 
-  ses.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    if (
-      webContents !== mainWindow?.webContents ||
-      !isTrustedAppUrl(webContents.getURL()) ||
-      !isAllowedHardwareOrigin(requestingOrigin)
-    ) {
-      return false;
-    }
-    return permission === 'serial' || permission === 'hid';
+  ses.setPermissionCheckHandler((webContents, permission, requestingOrigin, details = {}) =>
+    canGrantAppPermissionCheck({
+      webContentsIsMainWindow: webContents === mainWindow?.webContents,
+      permission,
+      requestingUrl: details.requestingUrl,
+      requestingOrigin,
+      securityOrigin: details.securityOrigin,
+      isMainFrame: details.isMainFrame,
+    }, getAppEntryUrl(), securityPolicyContext())
+  );
+
+  // Deny every permission by default. The app only needs WebHID/Web Serial for
+  // device access and notifications after the user opts in from Settings.
+  ses.setPermissionRequestHandler((webContents, permission, callback, details = {}) => {
+    callback(canGrantAppPermissionRequest({
+      webContentsIsMainWindow: webContents === mainWindow?.webContents,
+      permission,
+      requestingUrl: details.requestingUrl,
+      isMainFrame: details.isMainFrame,
+    }, getAppEntryUrl(), securityPolicyContext()));
   });
 
   // Select only the supported RP2040 USB serial device; never fall back to an
@@ -517,24 +686,31 @@ function createWindow() {
 
   ses.on('select-hid-device', (event, details, callback) => {
     event.preventDefault();
+    if (!isTrustedAppFrame(details?.frame)) {
+      callback('');
+      return;
+    }
     const viaDevice = (details.deviceList || []).find(
       (device) => device.vendorId === 0xfeed && device.productId === 0x6001
     );
     callback(viaDevice?.deviceId || '');
   });
 
-  const handleUntrustedNavigation = (event, targetUrl) => {
-    if (isTrustedAppUrl(targetUrl)) return;
-    event.preventDefault();
-    try {
-      const parsedUrl = new URL(targetUrl);
-      if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
-        shell.openExternal(parsedUrl.href);
-      }
-    } catch {}
+  const openExternalNavigation = (rawUrl) => {
+    const externalUrl = getAllowedExternalNavigationUrl(rawUrl);
+    if (externalUrl) void shell.openExternal(externalUrl).catch(() => undefined);
   };
-  mainWindow.webContents.on('will-navigate', handleUntrustedNavigation);
-  mainWindow.webContents.on('will-redirect', handleUntrustedNavigation);
+  const handleUntrustedFrameNavigation = (details) => {
+    if (details.isMainFrame && isTrustedAppUrl(details.url)) return;
+    details.preventDefault();
+    if (details.isMainFrame) openExternalNavigation(details.url);
+  };
+  mainWindow.webContents.on('will-frame-navigate', handleUntrustedFrameNavigation);
+  mainWindow.webContents.on('will-redirect', (details) => {
+    if (details.isMainFrame && isTrustedAppUrl(details.url)) return;
+    details.preventDefault();
+    if (details.isMainFrame) openExternalNavigation(details.url);
+  });
 
   if (isPersistenceSmokeTest()) {
     mainWindow.webContents.once('did-finish-load', startPersistenceSmokeTest);
@@ -597,13 +773,16 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-        shell.openExternal(url);
-      }
-    } catch {}
+    openExternalNavigation(url);
     return { action: 'deny' };
+  });
+
+  mainWindow.on('close', (event) => {
+    if (!isQuitting && !isVisualSmokeTest() && !isPersistenceSmokeTest()) {
+      event.preventDefault();
+      mainWindow.hide();
+      return false;
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -627,7 +806,66 @@ ipcMain.handle('window-maximize', (event) => {
 });
 
 ipcMain.handle('window-close', (event) => {
-  if (isTrustedRenderer(event) && mainWindow) mainWindow.close();
+  if (!isTrustedRenderer(event) || !mainWindow) return;
+  if (!isQuitting && !isVisualSmokeTest() && !isPersistenceSmokeTest()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.close();
+  }
+});
+
+function ensureCheatSheetWindow() {
+  if (cheatSheetWindow && !cheatSheetWindow.isDestroyed()) return cheatSheetWindow;
+  const window = new BrowserWindow({
+    width: 360, height: 300, frame: false, transparent: true, resizable: false,
+    show: false, skipTaskbar: true, alwaysOnTop: true,
+    webPreferences: { preload: path.join(__dirname, 'cheatSheetPreload.cjs'),
+      nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+  });
+  cheatSheetWindow = window;
+  window.setAlwaysOnTop(true, 'floating');
+  // The HUD is visual only; the toggle key or global shortcut closes it.
+  window.setIgnoreMouseEvents(true, { forward: true });
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', (event) => event.preventDefault());
+  window.webContents.on('did-finish-load', () => {
+    if (cheatSheetData && !window.isDestroyed()) window.webContents.send('cheat-sheet-update', cheatSheetData);
+  });
+  window.on('closed', () => { if (cheatSheetWindow === window) cheatSheetWindow = null; });
+  window.loadFile(path.join(__dirname, 'cheatSheet.html'));
+  return window;
+}
+
+ipcMain.handle('set-cheat-sheet-active', (event, active, data) => {
+  if (!isTrustedRenderer(event) || typeof active !== 'boolean') return { ok: false };
+  if (!active) {
+    cheatSheetData = null;
+    if (cheatSheetWindow && !cheatSheetWindow.isDestroyed()) cheatSheetWindow.hide();
+    return { ok: true, active: false };
+  }
+  const tags = new Set(['path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse']);
+  const attrs = new Set(['d', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'width', 'height', 'points', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin']);
+  const validIcon = icon => icon === null || (icon && ['0 0 16 16', '0 0 24 24'].includes(icon.viewBox) &&
+    Array.isArray(icon.shapes) && icon.shapes.length > 0 && icon.shapes.length <= 32 && icon.shapes.every(shape =>
+      shape && tags.has(shape.tag) && shape.attrs && typeof shape.attrs === 'object' &&
+      Object.entries(shape.attrs).every(([key, value]) => attrs.has(key) && typeof value === 'string' && value.length <= 8192 &&
+        (/^(fill|stroke)$/.test(key) ? /^(none|currentColor|#[0-9a-f]{3,8})$/i.test(value) : /^[a-z0-9.,+\-\s]*$/i.test(value)))));
+  if (!data || !Array.isArray(data.layers) || data.layers.length < 1 || data.layers.length > 8 ||
+      !Number.isInteger(data.activeLayer) || data.activeLayer < 0 || data.activeLayer >= data.layers.length ||
+      !Number.isInteger(data.pressed) || data.pressed < -1 || data.pressed > 9 ||
+      !data.layers.every(layer => layer && Array.isArray(layer.keys) && layer.keys.length === 9 && layer.keys.every(key => key && typeof key.label === 'string' && key.label.length <= 256 && validIcon(key.icon)) && Array.isArray(layer.dial) && layer.dial.length === 3 && layer.dial.every(label => typeof label === 'string' && label.length <= 256))) return { ok: false };
+  cheatSheetData = data;
+  const window = ensureCheatSheetWindow();
+  if (!window.webContents.isLoading()) window.webContents.send('cheat-sheet-update', data);
+  if (!window.isVisible()) window.showInactive();
+  return { ok: true, active: true };
+});
+
+ipcMain.on('cheat-sheet-close', (event) => {
+  if (!cheatSheetWindow || event.sender !== cheatSheetWindow.webContents || event.senderFrame !== cheatSheetWindow.webContents.mainFrame) return;
+  cheatSheetWindow.hide();
+  cheatSheetData = null;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('trigger-close-cheat-sheet');
 });
 
 ipcMain.handle('window-is-maximized', (event) => {
@@ -718,6 +956,17 @@ ipcMain.handle('flash-uf2', async (event) => {
   }
 
   try {
+    const warning = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: 'Back up your device before flashing',
+      message: 'A firmware update may reset your device keymap and VIA macros.',
+      detail: 'Back up the keymap and VIA macros before continuing. The app’s device-keymap backup does not include VIA macros. If you cannot back up your macros, cancel and do not flash.',
+      buttons: ['Cancel', 'I have backups; continue'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (warning.response !== 1) return { ok: false, cancelled: true };
     const firmwareSelection = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose Grid Macro 1 RP2040 firmware',
       properties: ['openFile'],
@@ -728,13 +977,6 @@ ipcMain.handle('flash-uf2', async (event) => {
     }
 
     const firmwarePath = firmwareSelection.filePaths[0];
-    if (path.extname(firmwarePath).toLowerCase() !== '.uf2') {
-      return { ok: false, error: 'Choose a .uf2 firmware file' };
-    }
-    const firmware = await fs.promises.readFile(firmwarePath);
-    const validation = validateRp2040Uf2(firmware);
-    if (!validation.ok) return validation;
-
     const bootloaderSelection = await dialog.showOpenDialog(mainWindow, {
       title: 'Choose INFO_UF2.TXT on the mounted RPI-RP2 bootloader drive',
       properties: ['openFile'],
@@ -744,32 +986,10 @@ ipcMain.handle('flash-uf2', async (event) => {
       return { ok: false, cancelled: true };
     }
 
-    const markerPath = bootloaderSelection.filePaths[0];
-    if (path.basename(markerPath).toLowerCase() !== 'info_uf2.txt') {
-      return { ok: false, error: 'Select INFO_UF2.TXT from the mounted RPI-RP2 drive' };
-    }
-    const marker = await fs.promises.readFile(markerPath, 'utf8');
-    if (!/\bRPI-RP2\b/i.test(marker)) {
-      return { ok: false, error: 'That bootloader marker does not identify the RPI-RP2 drive' };
-    }
-
-    const destination = path.join(path.dirname(markerPath), 'firmware.uf2');
-    try {
-      await fs.promises.writeFile(destination, firmware, { flag: 'wx' });
-    } catch (error) {
-      if (error && error.code === 'EEXIST') {
-        return {
-          ok: false,
-          error: 'A firmware.uf2 file is already on that drive. Eject it, re-enter BOOTSEL mode, and try again.',
-        };
-      }
-      throw error;
-    }
-
-    return {
-      ok: true,
-      message: 'Firmware copied to the RPI-RP2 bootloader drive. The board should flash and reboot automatically; reconnect it after it returns to normal mode.',
-    };
+    return await copyValidatedUf2ToBootloader({
+      firmwarePath,
+      markerPath: bootloaderSelection.filePaths[0],
+    });
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -801,8 +1021,14 @@ ipcMain.handle('execute-smart-action', async (event, payload) => {
     return { success: false, error: 'Invalid action payload' };
   }
 
+  const isHardwareExecution = payload.executionSource === 'hardware';
+  const authorizedHardwareSource = Boolean(
+    isHardwareExecution && isTrustedRenderer(event)
+  );
+
   try {
     return await desktopActionExecutor.execute(payload, {
+      authorizedHardwareSource,
       // Settings are read in the main process; the renderer cannot grant itself
       // terminal-command permission by setting a request field.
       allowTerminal: readStoredAppSettings().allowTerminalSmartActions === true,
@@ -840,7 +1066,10 @@ app.whenReady().then(() => {
         {
           label: 'Quit NØDE Studio',
           accelerator: 'CmdOrCtrl+Q',
-          click: () => app.quit(),
+          click: () => {
+            isQuitting = true;
+            app.quit();
+          },
         },
       ],
     },
@@ -852,6 +1081,19 @@ app.whenReady().then(() => {
           click: () =>
             mainWindow &&
             mainWindow.webContents.send('trigger-hardware-sync'),
+        },
+        {
+          label: 'Reset Macropad Keys',
+          click: () =>
+            mainWindow &&
+            mainWindow.webContents.send('trigger-reset-macropad-keys'),
+        },
+        {
+          label: 'Toggle Macropad Cheat-Sheet',
+          accelerator: 'CmdOrCtrl+H',
+          click: () =>
+            mainWindow &&
+            mainWindow.webContents.send('trigger-toggle-cheat-sheet'),
         },
         {
           label: 'Open Hardware Inspector',
@@ -882,20 +1124,41 @@ app.whenReady().then(() => {
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 
+  createTray();
+
+  try {
+    globalShortcut.register('CommandOrControl+Alt+H', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('trigger-toggle-cheat-sheet');
+      }
+    });
+  } catch {}
+
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    } else if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 });
 
 app.on('before-quit', (event) => {
+  try { globalShortcut.unregisterAll(); } catch {}
+  isQuitting = true;
   if (completingQuit) return;
   event.preventDefault();
   completingQuit = true;
+  if (tray) {
+    try { tray.destroy(); } catch {}
+    tray = null;
+  }
   void desktopActionExecutor.close().finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (isQuitting || process.platform === 'darwin' || isVisualSmokeTest() || isPersistenceSmokeTest()) {
     app.quit();
   }
 });

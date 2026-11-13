@@ -10,6 +10,7 @@ on:
       - 'qmk_firmware/grid_macro_1/**'
       - '.github/workflows/qmk-build.yml'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -143,3 +144,22 @@ jobs:
           path: ${{ runner.temp }}/grid-macro-1-via-artifact/
           if-no-files-found: error
           retention-days: 7
+
+      # This is a compile-only safety gate. It runs after the standard firmware
+      # has been staged and uploaded, so the experimental UF2 cannot replace the
+      # release artifact. Never flash or publish the experimental build yet.
+      - name: Compile experimental lighting firmware (do not publish)
+        shell: bash
+        run: |
+          set -euo pipefail
+          qmk compile -c -kb grid_macro_1 -km via -e NODE_EXPERIMENTAL_LAYER_LIGHTING=yes
+          elf=.build/grid_macro_1_via.elf
+          test -s "$elf"
+          end_hex="$(arm-none-eabi-nm "$elf" | awk '$3 == "__flash_binary_end" {print $1}')"
+          test -n "$end_hex"
+          if (( 16#$end_hex > 0x101fc000 )); then
+            echo "Experimental firmware overlaps the reserved lighting sectors" >&2
+            exit 1
+          fi
+          echo "Experimental compile succeeded; flash end 0x$end_hex (not a release artifact)."
+        working-directory: ${{ runner.temp }}/qmk_firmware

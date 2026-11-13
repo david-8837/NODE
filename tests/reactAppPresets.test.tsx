@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import App from '../src/App';
 import { PROFILE_FILE_STORAGE_KEY } from '../src/profileFiles';
+import { presetBrandIconPaths } from './presetBrandIconData';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -29,6 +30,10 @@ async function openPresets() {
 beforeEach(async () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   window.localStorage.clear();
+  Object.defineProperty(window, '__MACRO_ICONS__', {
+    configurable: true,
+    value: { d: presetBrandIconPaths },
+  });
   container = document.createElement('div');
   container.id = 'root';
   container.classList.add('is-ready');
@@ -46,7 +51,9 @@ afterEach(async () => {
 describe('production React preset experience', () => {
   it('renders all shipped preset cards and installs platform-aware bindings and custom actions', async () => {
     await openPresets();
-    expect(container.querySelectorAll('[data-preset-icon]')).toHaveLength(27);
+    const presetBadges = [...container.querySelectorAll<HTMLElement>('[data-preset-icon]')];
+    expect(presetBadges).toHaveLength(27);
+    expect(presetBadges.every((badge) => badge.querySelector('svg path[d]'))).toBe(true);
     expect(container.querySelector('[data-preset-screen]')?.className).toContain('preset-screen-scroll');
     expect(container.querySelector('[data-preset-grid]')?.className).toContain('xl:grid-cols-4');
     expect(container.querySelector('[data-preset-grid]')?.className).toContain('2xl:grid-cols-5');
@@ -59,7 +66,7 @@ describe('production React preset experience', () => {
     expect(previewButton).toBeDefined();
     Object.defineProperty(window, '__MACRO_ICONS__', {
       configurable: true,
-      value: { d: { search: 'M2 2L22 22' } },
+      value: { d: { ...presetBrandIconPaths, search: 'M2 2L22 22' } },
     });
     await click(previewButton!);
     await act(async () => {
