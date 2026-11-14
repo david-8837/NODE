@@ -18,6 +18,8 @@ This checklist is for the **QMK/VIA HID** target. It separates repository/host c
 - [ ] Download that run's artifact and independently verify its included `SHA256SUMS.txt` against `grid_macro_1_via.uf2` before flashing. The artifact can be downloaded from the Actions run; it was not retrievable from this sandbox.
 - [ ] Do not flash the checked-in UF2s until their provenance is resolved. Current `grid_macro_1_via.uf2` hashes to `0f1a86d8039e943718da057bef4079f31d1d19448105d15a3abccbfc831bd395`, while the checked-in manifest/build-info digest `9972aed247f693ba369194eb5b981ff58b45611f8038c19550f3bfe576da2039` matches `grid_macro_1_via_rawhid.uf2`. The older metadata refers to commit `19f60b8518a8b9786d489e3a96f0a7c0f9615a0d` and run `43155494378`; that commit's `package.json` reports version `1.0.6`, not `1.0.14`.
 - [x] Automated binary test in `tests/qmkKeyboardDefinition.test.ts` checks UF2 block structure, RP2040 family ID, and the `Grid Macro 1` product string. This is a format/target check, not source provenance or physical validation.
+- [x] Experimental per-layer LED UF2 compiled and uploaded separately in [run 43542332752](https://github.com/david-8837/NODE/actions/runs/43542332752), artifact `grid-macro-1-per-layer-lighting-test` (ID `14092646032`). The artifact includes its own checksum and build information; it is test-only and not a release build.
+- [ ] Verify the test artifact checksum before flashing. Back up both VIA keymaps and macros first; verify the board is the supported 2 MiB RP2040-Zero. Test layer selection, each saved LED effect/color, reboot persistence, and recovery behavior on physical hardware. No physical validation has yet been performed.
 
 ## First boot and physical I/O checks
 
