@@ -294,6 +294,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload installer-only artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-grid-macro-1-windows-installer
+          path: dist_electron/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
   build-qmk-for-release:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
