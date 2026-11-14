@@ -140,15 +140,12 @@ describe('React source app file operations', () => {
     await renderApp();
     await openSettings();
     let switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    expect(switches).toHaveLength(4);
-    expect(switches[1].disabled).toBe(true);
+    expect(switches).toHaveLength(3);
+    expect(switches[0].disabled).toBe(true);
 
-    await clickButton(switches[0]);
-    expect(container.textContent).toContain('does not send analytics');
-    await clickButton(switches[2]);
+    await clickButton(switches[1]);
     const saved = JSON.parse(window.localStorage.getItem('node-studio.settings.v1') || 'null');
     expect(saved).toMatchObject({
-      allowAnalytics: true,
       allowTerminalSmartActions: true,
       launchAtStartup: false,
       allowDeviceNotifications: false,
@@ -159,14 +156,12 @@ describe('React source app file operations', () => {
     await renderApp();
     await openSettings();
     switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    expect(switches[0].getAttribute('aria-checked')).toBe('true');
-    expect(switches[2].getAttribute('aria-checked')).toBe('true');
-    expect(switches[1].disabled).toBe(true);
+    expect(switches[1].getAttribute('aria-checked')).toBe('true');
+    expect(switches[0].disabled).toBe(true);
   });
 
   it('uses desktop preferences for startup, reads the packaged version, and routes support and firmware actions', async () => {
     let nativeSettings = {
-      allowAnalytics: false,
       launchAtStartup: true,
       allowTerminalSmartActions: false,
       allowDeviceNotifications: false,
@@ -196,13 +191,13 @@ describe('React source app file operations', () => {
     await act(async () => new Promise((resolve) => window.setTimeout(resolve, 30)));
     await openSettings();
     let switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    expect(switches[1].disabled).toBe(false);
-    expect(switches[1].getAttribute('aria-checked')).toBe('true');
+    expect(switches[0].disabled).toBe(false);
+    expect(switches[0].getAttribute('aria-checked')).toBe('true');
     expect(container.textContent).toContain('4.5.6');
 
-    await clickButton(switches[1]);
+    await clickButton(switches[0]);
     expect(setAppSetting).toHaveBeenCalledWith('launchAtStartup', false);
-    expect(switches[1].getAttribute('aria-checked')).toBe('false');
+    expect(switches[0].getAttribute('aria-checked')).toBe('false');
 
     await clickButton([...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.trim() === 'Help & Documentation')!);
@@ -258,7 +253,7 @@ describe('React source app file operations', () => {
 
     await renderApp();
     await openSettings();
-    const notificationsSwitch = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')][3];
+    const notificationsSwitch = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')][2];
     await clickButton(notificationsSwitch);
     await act(async () => new Promise((resolve) => window.setTimeout(resolve, 20)));
     expect(MockNotification.requestPermission).toHaveBeenCalledOnce();

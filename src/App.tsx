@@ -9,11 +9,13 @@ import {
 import {
   GRID_MACRO_ENCODER_SLOT,
   GRID_MACRO_KEY_SLOTS,
+  HARDWARE_LAYER_NAMES,
   type GridMacroSlotId,
 } from './deviceLayout';
 import { clampMacropadOffsetToArea } from './macropadMovement';
 import { deviceKeymapFileTools } from './deviceKeymapFiles';
 import {
+  createHardwareTriggerController,
   requestSimulationMode,
   triggerSimulationAction,
   type DesktopExecutionDefinition,
@@ -22,7 +24,12 @@ import {
   type SimulationAction,
   type SmartActionSubTab,
 } from './actionExecution';
-import { MAX_PROFILE_COUNT, PROFILE_FILE_STORAGE_KEY, profileFileTools } from './profileFiles';
+import {
+  MAX_LAYER_COUNT,
+  MAX_PROFILE_COUNT,
+  PROFILE_FILE_STORAGE_KEY,
+  profileFileTools,
+} from './profileFiles';
 import {
   APP_VERSION_FALLBACK,
   createAppSettingsTools,
@@ -34,7 +41,11 @@ import {
   type SettingsCapabilities,
   type SupportLinkKey,
 } from './appSettings';
-import type { QmkViaStatus } from './qmkViaBridge';
+import type {
+  DeviceLayerStateEvent,
+  HardwareTriggerEvent,
+  QmkViaStatus,
+} from './qmkViaBridge';
 import { buildViaConfiguration } from './qmkProfileSync';
 import type { EmojiCatalogEntry } from './emojiCatalog';
 import { PRESET_CATALOG } from './presetCatalog';
@@ -743,7 +754,10 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 
 function normalizeProfileForEditor(profile: ProfileData): ProfileData {
   const defaultEncoder = INITIAL_LAYER_1[GRID_MACRO_ENCODER_SLOT];
-  const layers = profile.layers.map((layer) => {
+  const rawLayers = Array.isArray(profile.layers) && profile.layers.length > 0
+    ? profile.layers.slice(0, MAX_LAYER_COUNT)
+    : [INITIAL_LAYER_1];
+  const layers = rawLayers.map((layer) => {
     const normalized = { ...INITIAL_LAYER_1, ...layer } as LayerKeymap;
     for (const slot of GRID_MACRO_KEY_SLOTS) {
       const incoming = layer[slot] as unknown;
@@ -803,7 +817,7 @@ function loadSavedProfileState(): PersistedAppProfileState | null {
 
     const saved = JSON.parse(text) as Record<string, unknown>;
     if (!saved || typeof saved !== 'object' || !Array.isArray(saved.profiles)) return null;
-    const savedProfiles = saved.profiles;
+    const savedProfiles = saved.profiles.slice(0, MAX_PROFILE_COUNT);
 
     // New profiles may be saved before the user types a name. Validate the
     // stored state with the same schema as imports, using a temporary display
@@ -811,9 +825,12 @@ function loadSavedProfileState(): PersistedAppProfileState | null {
     const profilesForValidation = savedProfiles.map((profile) => {
       if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return profile;
       const candidate = profile as Record<string, unknown>;
+      const boundedLayers = Array.isArray(candidate.layers)
+        ? candidate.layers.slice(0, MAX_LAYER_COUNT)
+        : candidate.layers;
       return typeof candidate.name === 'string' && candidate.name.trim()
-        ? candidate
-        : { ...candidate, name: 'Untitled Profile' };
+        ? { ...candidate, layers: boundedLayers }
+        : { ...candidate, name: 'Untitled Profile', layers: boundedLayers };
     });
     const parsed = profileFileTools.parse(JSON.stringify({
       ...saved,
@@ -1221,7 +1238,7 @@ export default function App() {
       ? saved
       : { ...saved, launchAtStartup: false };
   });
-  const { allowAnalytics, launchAtStartup, allowTerminalSmartActions, allowDeviceNotifications } = appSettings;
+  const { launchAtStartup, allowTerminalSmartActions, allowDeviceNotifications } = appSettings;
   const [settingsCapabilities, setSettingsCapabilities] = useState<SettingsCapabilities>({
     launchAtStartup: false,
     firmwareFlash: false,
@@ -1232,6 +1249,7 @@ export default function App() {
   );
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
+  const [deviceActiveLayer, setDeviceActiveLayer] = useState<number>(0);
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
   const lastSyncedConfigKeyRef = useRef('');
 
@@ -1244,10 +1262,18 @@ export default function App() {
 
     let active = true;
     const unsubscribe = bridge.onStatus((status) => {
-      if (active) setDeviceStatus(status);
+      if (!active) return;
+      setDeviceStatus(status);
+      if (typeof status.deviceActiveLayer === 'number') {
+        setDeviceActiveLayer(Math.min(MAX_LAYER_COUNT - 1, Math.max(0, status.deviceActiveLayer)));
+      }
     });
     void bridge.getStatus().then((status) => {
-      if (active) setDeviceStatus(status);
+      if (!active) return;
+      setDeviceStatus(status);
+      if (typeof status.deviceActiveLayer === 'number') {
+        setDeviceActiveLayer(Math.min(MAX_LAYER_COUNT - 1, Math.max(0, status.deviceActiveLayer)));
+      }
     });
 
     return () => {
@@ -1342,40 +1368,91 @@ export default function App() {
   const [layerToolbarOpen, setLayerToolbarOpen] = useState(false);
   const [layerLightingOpen, setLayerLightingOpen] = useState(false);
   const [layerDeleteConfirm, setLayerDeleteConfirm] = useState(false);
+  const [customItemDeleteConfirm, setCustomItemDeleteConfirm] = useState(false);
   const [layerNames, setLayerNames] = useState<Record<string, string>>({});
-  const [lightingTab, setLightingTab] = useState<'Backlight' | 'Underglow'>(
-    'Backlight'
-  );
-  const [lightingConfig, setLightingConfig] = useState<
-    Record<
-      'Backlight' | 'Underglow',
-      {
-        preset: 'Off' | 'Solid' | 'Snake' | 'Rainbow' | 'Breath' | 'Gradient';
-        light: number;
-        speed: number;
-        magic: number;
-        hue: number;
-        colorHex: string;
+  type LayerLedConfig = {
+    preset: 'Off' | 'Solid' | 'Rainbow' | 'Breath';
+    light: number;
+    speed: number;
+    hue: number;
+    colorHex: string;
+  };
+
+  const DEFAULT_LAYER_LED_CONFIGS: [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig] = [
+    { preset: 'Solid', light: 100, speed: 50, hue: 221, colorHex: '#0051FF' },
+    { preset: 'Solid', light: 100, speed: 50, hue: 160, colorHex: '#10B981' },
+    { preset: 'Solid', light: 100, speed: 50, hue: 38, colorHex: '#F59E0B' },
+    { preset: 'Solid', light: 100, speed: 50, hue: 347, colorHex: '#E11D48' },
+  ];
+
+  const [layerLedConfigs, setLayerLedConfigs] = useState<
+    [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig]
+  >(() => {
+    try {
+      const raw = window.localStorage.getItem('node-studio.layer-led.v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === 4) {
+          return parsed.map((item, idx) => ({
+            ...DEFAULT_LAYER_LED_CONFIGS[idx],
+            ...(item && typeof item === 'object' ? item : {}),
+          })) as [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig];
+        }
       }
-    >
-  >({
-    Backlight: {
-      preset: 'Solid',
-      light: 100,
-      speed: 50,
-      magic: 100,
-      hue: 0,
-      colorHex: '#FFFFFF',
-    },
-    Underglow: {
-      preset: 'Solid',
-      light: 100,
-      speed: 50,
-      magic: 100,
-      hue: 220,
-      colorHex: '#FFFFFF',
-    },
+    } catch {
+      // Fall back to default per-layer colours
+    }
+    return DEFAULT_LAYER_LED_CONFIGS;
   });
+
+  const [ledEditingLayerIdx, setLedEditingLayerIdx] = useState<number>(0);
+
+  useEffect(() => {
+    setLedEditingLayerIdx(Math.min(3, Math.max(0, activeLayerIndex)));
+  }, [activeLayerIndex]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('node-studio.layer-led.v1', JSON.stringify(layerLedConfigs));
+    } catch {
+      // Ignore storage write errors
+    }
+  }, [layerLedConfigs]);
+
+  const hexToScaledRgb = (hex: string, brightnessPct: number): { r: number; g: number; b: number } => {
+    const clean = hex.replace(/^#/, '').trim();
+    const valid = /^[0-9a-fA-F]{6}$/.test(clean) ? clean : '0051FF';
+    const scale = Math.max(0, Math.min(100, brightnessPct)) / 100;
+    return {
+      r: Math.round(Number.parseInt(valid.slice(0, 2), 16) * scale),
+      g: Math.round(Number.parseInt(valid.slice(2, 4), 16) * scale),
+      b: Math.round(Number.parseInt(valid.slice(4, 6), 16) * scale),
+    };
+  };
+
+  const syncRgbConfigsToDevice = (
+    configs: [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig],
+    persist: boolean
+  ) => {
+    const bridge = window.macropad;
+    if (!bridge || deviceStatus.state !== 'connected') return;
+    const anyEnabled = configs.some((c) => c.preset !== 'Off');
+    void bridge
+      .request({
+        cmd: 'set_rgb_config',
+        rgbConfig: {
+          enabled: anyEnabled,
+          persist,
+          layerColors: [
+            configs[0].preset === 'Off' ? { r: 0, g: 0, b: 0 } : hexToScaledRgb(configs[0].colorHex, configs[0].light),
+            configs[1].preset === 'Off' ? { r: 0, g: 0, b: 0 } : hexToScaledRgb(configs[1].colorHex, configs[1].light),
+            configs[2].preset === 'Off' ? { r: 0, g: 0, b: 0 } : hexToScaledRgb(configs[2].colorHex, configs[2].light),
+            configs[3].preset === 'Off' ? { r: 0, g: 0, b: 0 } : hexToScaledRgb(configs[3].colorHex, configs[3].light),
+          ],
+        },
+      })
+      .catch(() => undefined);
+  };
 
   const currentProfile = profiles[activeProfileIndex] || profiles[0];
   const currentLayer =
@@ -1444,9 +1521,9 @@ export default function App() {
               saved.customItems as unknown as CustomItemsByTab
             ));
             const selected = nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0];
-            lastSyncedConfigKeyRef.current = JSON.stringify(
-              buildViaConfiguration(selected, presetOs).config
-            );
+            lastSyncedConfigKeyRef.current = `slot:${saved.activeProfileIndex}:${JSON.stringify(
+              buildViaConfiguration(selected, presetOs, { enableHostTriggers: true }).config
+            )}`;
             showToast('Loaded keymap profile from Grid Macro 1');
           } catch {
             // Ignore malformed device metadata; the validated local profile remains authoritative.
@@ -1464,13 +1541,101 @@ export default function App() {
     };
   }, [deviceStatus.state, deviceStatus.device, deviceStatus.fw]);
 
+  // Listen for physical device layer changes and hardware host-action triggers
+  useEffect(() => {
+    const bridge = window.macropad;
+    if (!bridge) return;
+
+    const triggerController = createHardwareTriggerController(
+      (targetLayer) => {
+        if (targetLayer >= currentProfile.layers.length) return false;
+        setDeviceActiveLayer(targetLayer);
+      },
+      showToast,
+      window
+    );
+
+    const unsubscribe = bridge.onEvent((rawEvent) => {
+      if (!isRecordValue(rawEvent)) return;
+      if (rawEvent.type === 'layer_state') {
+        const layerEvent = rawEvent as unknown as DeviceLayerStateEvent;
+        if (typeof layerEvent.deviceActiveLayer === 'number') {
+          setDeviceActiveLayer(Math.min(MAX_LAYER_COUNT - 1, Math.max(0, layerEvent.deviceActiveLayer)));
+        }
+        if (
+          typeof layerEvent.activeProfileSlot === 'number' &&
+          layerEvent.activeProfileSlot >= 0 &&
+          layerEvent.activeProfileSlot < profiles.length &&
+          layerEvent.activeProfileSlot !== activeProfileIndex
+        ) {
+          const targetSlot = layerEvent.activeProfileSlot;
+          setActiveProfileIndex(targetSlot);
+          showToast(
+            `Switched to ${profiles[targetSlot]?.name || `Profile ${targetSlot + 1}`} from device`
+          );
+        }
+        return;
+      }
+      if (rawEvent.type === 'hardware_trigger') {
+        const trig = rawEvent as unknown as HardwareTriggerEvent;
+        const activeProf = profiles[activeProfileIndex] ?? profiles[0];
+        if (!activeProf) return;
+        const targetLayer =
+          activeProf.layers[trig.layer] ??
+          activeProf.layers[deviceActiveLayer] ??
+          activeProf.layers[0];
+        if (!targetLayer) return;
+        let assignment: SimulationAction | undefined;
+        if (trig.slotId === 'cw' || trig.slotId === 'press' || trig.slotId === 'ccw') {
+          const dial = targetLayer[GRID_MACRO_ENCODER_SLOT];
+          assignment = dial?.encoderActions?.[trig.slotId];
+        } else {
+          const keyEntry = targetLayer[trig.slotId as KeySlotId];
+          if (keyEntry) {
+            assignment = { ...keyEntry, id: keyEntry.actionId };
+          }
+        }
+        triggerController.handleSlotEvent(trig.slotId, trig.pressed, assignment);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      triggerController.cancelAll();
+    };
+  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer]);
+
+  // Listen for native Electron menu hardware actions when running inside desktop shell
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    const offSync = api.onHardwareSync?.(() => {
+      lastSyncedConfigKeyRef.current = '';
+      setDeviceSyncReady((ready) => ready);
+      showToast(
+        deviceStatus.state === 'connected'
+          ? 'Syncing active profile to RP2040-Zero...'
+          : 'Connect Grid Macro 1 via QMK/VIA to sync'
+      );
+    });
+    const offModal = api.onOpenHardwareModal?.(() => {
+      setActiveNav('Settings');
+    });
+    return () => {
+      if (typeof offSync === 'function') offSync();
+      if (typeof offModal === 'function') offModal();
+    };
+  }, [deviceStatus.state]);
+
   useEffect(() => {
     const bridge = window.macropad;
     if (!bridge || deviceStatus.state !== 'connected' || !deviceSyncReady) return;
 
-    const { config, warnings: configWarnings } = buildViaConfiguration(currentProfile, presetOs);
+    const { config, warnings: configWarnings } = buildViaConfiguration(currentProfile, presetOs, {
+      enableHostTriggers: true,
+    });
     if (config.layers.length === 0) return;
-    const configKey = JSON.stringify(config);
+    const configKey = `slot:${activeProfileIndex}:${JSON.stringify(config)}`;
     if (configKey === lastSyncedConfigKeyRef.current) return;
 
     let cancelled = false;
@@ -1507,7 +1672,11 @@ export default function App() {
           }
           if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
 
-          const synced = await bridge.request({ cmd: 'set_config', config });
+          const synced = await bridge.request({
+            cmd: 'set_config',
+            config,
+            profileSlot: activeProfileIndex,
+          });
           if (cancelled) return;
           if (!synced.ok) {
             showToast(
@@ -1601,9 +1770,7 @@ export default function App() {
     }
     setAppSettings(result.settings);
     if (result.capabilities) setSettingsCapabilities(result.capabilities);
-    if (key === 'allowAnalytics' && value) {
-      showToast('Preference saved; this build does not send analytics');
-    } else if (key === 'allowTerminalSmartActions') {
+    if (key === 'allowTerminalSmartActions') {
       showToast(value
         ? 'Terminal commands enabled. Only run commands you trust.'
         : 'Terminal command execution disabled');
@@ -1700,7 +1867,10 @@ export default function App() {
   };
 
   const handleAddLayer = () => {
-    if (currentProfile.layers.length >= 8) return;
+    if (currentProfile.layers.length >= MAX_LAYER_COUNT) {
+      showToast(`A profile can have up to ${MAX_LAYER_COUNT} layers. Remove one first.`);
+      return;
+    }
     const blankLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
     const nextProfiles = profiles.map((p, idx) =>
       idx === activeProfileIndex
@@ -2721,6 +2891,7 @@ export default function App() {
     setExpandedGestureSection(null);
     setSmartAppDropdownOpen(false);
     setSelectedSmartApplication(null);
+    setCustomItemDeleteConfirm(false);
 
     if (existingItem) {
       setEditingCustomItemId(existingItem.id);
@@ -3002,6 +3173,7 @@ export default function App() {
       }));
       showToast('Deleted item');
     }
+    setCustomItemDeleteConfirm(false);
     setIconPickerOpen(false);
     setActiveGestureDropdown(null);
     setCreatorModalTab(null);
@@ -3012,8 +3184,8 @@ export default function App() {
       showToast(`${preset.title} is already installed in this profile.`);
       return;
     }
-    if (currentProfile.layers.length >= 8) {
-      showToast('A profile can have up to 8 layers. Remove one first.');
+    if (currentProfile.layers.length >= MAX_LAYER_COUNT) {
+      showToast(`A profile can have up to ${MAX_LAYER_COUNT} layers. Remove one first.`);
       return;
     }
 
@@ -3694,38 +3866,100 @@ export default function App() {
                           <motion.div
                             key={prof.id}
                             layout
-                            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: 520,
+                              damping: 32,
+                              mass: 0.7,
+                            }}
                           >
-                            <AnimatePresence mode="wait" initial={false}>
+                            <AnimatePresence mode="popLayout" initial={false}>
                               {isConfirmingDelete ? (
                                 <motion.div
                                   key="confirm-delete"
-                                  initial={{ opacity: 0, scale: 0.96 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.96 }}
-                                  transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                                  layout
+                                  initial={{ opacity: 0, scale: 0.9, y: 4 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                                  transition={{
+                                    type: 'spring',
+                                    stiffness: 540,
+                                    damping: 30,
+                                    mass: 0.65,
+                                  }}
                                   className="flex items-center gap-[6px]"
                                 >
-                                  <button
+                                  <motion.button
+                                    layout
+                                    initial={{ opacity: 0, x: -10, scale: 0.88 }}
+                                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                                    exit={{ opacity: 0, x: -8, scale: 0.88 }}
+                                    whileHover={{ scale: 1.04 }}
+                                    whileTap={{ scale: 0.94 }}
+                                    transition={{
+                                      type: 'spring',
+                                      stiffness: 560,
+                                      damping: 28,
+                                    }}
                                     onClick={() => setDeletingProfileId(null)}
-                                    className="h-[28px] px-[12px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[11px] font-medium text-[#444444] shrink-0 transition-all cursor-pointer"
+                                    className="h-[28px] px-[12px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[11px] font-medium text-[#444444] shrink-0 shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-colors cursor-pointer"
                                   >
                                     Cancel
-                                  </button>
-                                  <button
+                                  </motion.button>
+                                  <motion.button
+                                    layout
+                                    initial={{ opacity: 0, x: 14, scale: 0.86 }}
+                                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                                    exit={{ opacity: 0, x: 12, scale: 0.86 }}
+                                    whileHover={{
+                                      scale: 1.025,
+                                      boxShadow: '0 6px 18px rgba(220, 0, 0, 0.36)',
+                                    }}
+                                    whileTap={{ scale: 0.95 }}
+                                    transition={{
+                                      type: 'spring',
+                                      stiffness: 520,
+                                      damping: 26,
+                                    }}
                                     onClick={() => handleConfirmDeleteProfile(idx)}
-                                    className="flex-1 h-[28px] rounded-full bg-[#dc0000] hover:bg-[#c40000] text-white text-[11px] font-semibold flex items-center justify-center transition-colors cursor-pointer"
+                                    className="flex-1 h-[28px] rounded-full bg-gradient-to-r from-[#e01b24] via-[#ff2934] to-[#c40000] text-white text-[11px] font-semibold flex items-center justify-center gap-[6px] shadow-[0_3px_12px_rgba(220,0,0,0.28)] cursor-pointer overflow-hidden relative group"
                                   >
-                                    Click to delete
-                                  </button>
+                                    <motion.svg
+                                      width="12"
+                                      height="12"
+                                      viewBox="0 0 16 16"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.6"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      initial={{ rotate: -16, scale: 0.85 }}
+                                      animate={{ rotate: [0, -14, 10, -6, 0], scale: 1 }}
+                                      transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
+                                      className="shrink-0"
+                                    >
+                                      <path d="M2.5 4.2H13.5" />
+                                      <path d="M5.8 4.2V2.8C5.8 2.35 6.15 2 6.6 2H9.4C9.85 2 10.2 2.35 10.2 2.8V4.2" />
+                                      <path d="M4.2 4.2L4.8 13C4.85 13.55 5.3 14 5.85 14H10.15C10.7 14 11.15 13.55 11.2 13L11.8 4.2" />
+                                      <line x1="6.8" y1="7" x2="6.8" y2="11.2" />
+                                      <line x1="9.2" y1="7" x2="9.2" y2="11.2" />
+                                    </motion.svg>
+                                    <span>Click to delete</span>
+                                  </motion.button>
                                 </motion.div>
                               ) : (
                                 <motion.div
                                   key="normal-row"
-                                  initial={{ opacity: 0, scale: 0.96 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.96 }}
-                                  transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                                  layout
+                                  initial={{ opacity: 0, scale: 0.94, y: -3 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.94, y: 3 }}
+                                  transition={{
+                                    type: 'spring',
+                                    stiffness: 520,
+                                    damping: 32,
+                                    mass: 0.65,
+                                  }}
                                   className="flex items-center gap-[5px]"
                                 >
                                   {/* 6-Dot Drag Handle Circle */}
@@ -3798,10 +4032,12 @@ export default function App() {
                                   </div>
 
                                   {/* Duplicate Profile */}
-                                  <button
+                                  <motion.button
+                                    whileHover={{ scale: 1.07 }}
+                                    whileTap={{ scale: 0.92 }}
                                     onClick={() => handleDuplicateProfile(idx)}
                                     title="Duplicate profile"
-                                    className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
+                                    className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
                                   >
                                     <svg
                                       width="12"
@@ -3822,13 +4058,15 @@ export default function App() {
                                       />
                                       <path d="M3 6.5V12.5C3 13.3 3.7 14 4.5 14H10" />
                                     </svg>
-                                  </button>
+                                  </motion.button>
 
                                   {/* Export Profile */}
-                                  <button
+                                  <motion.button
+                                    whileHover={{ scale: 1.07 }}
+                                    whileTap={{ scale: 0.92 }}
                                     onClick={() => handleExportProfile(idx)}
                                     title="Export profile"
-                                    className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
+                                    className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
                                   >
                                     <svg
                                       width="12"
@@ -3843,17 +4081,24 @@ export default function App() {
                                       <path d="M8 2.5V10.5M8 10.5L5.2 7.7M8 10.5L10.8 7.7" />
                                       <path d="M3 11.5V12.5C3 13.1 3.4 13.5 4 13.5H12C12.6 13.5 13 13.1 13 12.5V11.5" />
                                     </svg>
-                                  </button>
+                                  </motion.button>
 
                                   {/* Delete Profile (× button only shown when more than 1 profile exists) */}
                                   {profiles.length > 1 && (
-                                    <button
+                                    <motion.button
+                                      whileHover={{ scale: 1.1, rotate: 90 }}
+                                      whileTap={{ scale: 0.88 }}
+                                      transition={{
+                                        type: 'spring',
+                                        stiffness: 520,
+                                        damping: 24,
+                                      }}
                                       onClick={() => setDeletingProfileId(prof.id)}
                                       title="Delete profile"
                                       className="w-[27px] h-[27px] rounded-full bg-white hover:bg-[#dc0000] text-[#444444] hover:text-white flex items-center justify-center shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
                                     >
                                       <X className="w-[12px] h-[12px] stroke-[1.8]" />
-                                    </button>
+                                    </motion.button>
                                   )}
                                 </motion.div>
                               )}
@@ -3966,6 +4211,7 @@ export default function App() {
                             });
                           } else {
                             setActiveLayerIndex(idx);
+                            setLedEditingLayerIdx(idx);
                             setLayerToolbarOpen(true);
                             setLayerDeleteConfirm(false);
                           }
@@ -3985,7 +4231,7 @@ export default function App() {
                   })}
                 </AnimatePresence>
 
-                {currentProfile.layers.length < 8 && (
+                {currentProfile.layers.length < MAX_LAYER_COUNT && (
                   <motion.button
                     layout
                     whileTap={{ scale: 0.92 }}
@@ -4008,47 +4254,110 @@ export default function App() {
                 )}
               </motion.div>
 
-              {/* LAYER ACTION TOOLBAR & LIGHTING POPOVER (Screenshots 1, 2, 3, 4) */}
+              {/* LAYER ACTION TOOLBAR & LED COLOUR POPOVER */}
               <AnimatePresence>
                 {layerToolbarOpen && (
                   <motion.div
                     key="layer-action-toolbar"
-                    initial={{ opacity: 0, y: -5, scale: 0.96 }}
+                    layout
+                    initial={{ opacity: 0, y: -6, scale: 0.94 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -5, scale: 0.96 }}
-                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    exit={{ opacity: 0, y: -6, scale: 0.94 }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 500,
+                      damping: 30,
+                      mass: 0.75,
+                    }}
                     className="mt-[9px] flex items-center gap-[6px] relative z-30"
                   >
-                    <AnimatePresence mode="wait" initial={false}>
+                    <AnimatePresence mode="popLayout" initial={false}>
                       {layerDeleteConfirm ? (
                         <motion.div
                           key="layer-delete-confirm"
-                          initial={{ opacity: 0, scale: 0.96 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.96 }}
-                          transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                          layout
+                          initial={{ opacity: 0, scale: 0.9, y: 4 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                          transition={{
+                            type: 'spring',
+                            stiffness: 540,
+                            damping: 30,
+                            mass: 0.65,
+                          }}
                           className="flex items-center gap-[6px]"
                         >
-                          <button
+                          <motion.button
+                            layout
+                            initial={{ opacity: 0, x: -12, scale: 0.88 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: -10, scale: 0.88 }}
+                            whileHover={{ scale: 1.04 }}
+                            whileTap={{ scale: 0.94 }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: 560,
+                              damping: 28,
+                            }}
                             onClick={() => setLayerDeleteConfirm(false)}
-                            className="h-[28px] px-[13px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[11px] font-medium text-[#555555] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
+                            className="h-[28px] px-[13px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[11px] font-medium text-[#555555] shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-colors cursor-pointer"
                           >
                             Cancel
-                          </button>
-                          <button
+                          </motion.button>
+                          <motion.button
+                            layout
+                            initial={{ opacity: 0, x: 16, scale: 0.86 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 14, scale: 0.86 }}
+                            whileHover={{
+                              scale: 1.03,
+                              boxShadow: '0 6px 20px rgba(220, 0, 0, 0.38)',
+                            }}
+                            whileTap={{ scale: 0.95 }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: 520,
+                              damping: 26,
+                            }}
                             onClick={() => handleRemoveLayer(activeLayerIndex)}
-                            className="h-[28px] w-[184px] rounded-full bg-[#dc0000] hover:bg-[#c40000] text-white text-[11px] font-semibold flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-colors cursor-pointer"
+                            className="h-[28px] w-[184px] rounded-full bg-gradient-to-r from-[#e01b24] via-[#ff2934] to-[#c40000] text-white text-[11px] font-semibold flex items-center justify-center gap-[6px] shadow-[0_3px_12px_rgba(220,0,0,0.28)] cursor-pointer"
                           >
-                            Click to delete
-                          </button>
+                            <motion.svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              initial={{ rotate: -16, scale: 0.85 }}
+                              animate={{ rotate: [0, -14, 10, -6, 0], scale: 1 }}
+                              transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
+                              className="shrink-0"
+                            >
+                              <path d="M2.5 4.2H13.5" />
+                              <path d="M5.8 4.2V2.8C5.8 2.35 6.15 2 6.6 2H9.4C9.85 2 10.2 2.35 10.2 2.8V4.2" />
+                              <path d="M4.2 4.2L4.8 13C4.85 13.55 5.3 14 5.85 14H10.15C10.7 14 11.15 13.55 11.2 13L11.8 4.2" />
+                              <line x1="6.8" y1="7" x2="6.8" y2="11.2" />
+                              <line x1="9.2" y1="7" x2="9.2" y2="11.2" />
+                            </motion.svg>
+                            <span>Click to delete</span>
+                          </motion.button>
                         </motion.div>
                       ) : (
                         <motion.div
                           key="layer-normal-controls"
-                          initial={{ opacity: 0, scale: 0.96 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.96 }}
-                          transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                          layout
+                          initial={{ opacity: 0, scale: 0.94, y: -3 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.94, y: 3 }}
+                          transition={{
+                            type: 'spring',
+                            stiffness: 520,
+                            damping: 32,
+                            mass: 0.65,
+                          }}
                           className="flex items-center gap-[6px]"
                         >
                           {/* Layer Name Input Pill */}
@@ -4062,66 +4371,59 @@ export default function App() {
                                   [currentLayerNameKey]: e.target.value,
                                 }))
                               }
-                              placeholder="Layer name..."
+                              placeholder={HARDWARE_LAYER_NAMES[activeLayerIndex] ?? 'Layer name...'}
                               className="w-full bg-transparent text-[11px] text-[#555555] placeholder:text-[#9c9c9c] focus:outline-none"
                             />
                           </div>
 
-                          {/* Backlight / Underglow Lighting Pill Button */}
-                          <button
-                            onClick={() => setLayerLightingOpen((o) => !o)}
-                            title="Layer lighting settings"
-                            className={`w-[58px] h-[28px] rounded-full border-[1.5px] flex items-center justify-center transition-all cursor-pointer ${
-                              layerLightingOpen
-                                ? 'bg-[#000000] text-white border-[#000000]'
-                                : 'bg-white hover:bg-neutral-50 text-[#555555] border-transparent hover:border-[#0051ff] shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
-                            }`}
-                          >
-                            <svg
-                              width="16"
-                              height="14"
-                              viewBox="0 0 18 15"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.45"
-                              strokeLinecap="round"
-                            >
-                              <line x1="6.2" y1="11.5" x2="11.8" y2="11.5" />
-                              <line x1="9" y1="5.2" x2="9" y2="7.2" />
-                              <line x1="5.5" y1="6.6" x2="6.9" y2="8.0" />
-                              <line x1="12.5" y1="6.6" x2="11.1" y2="8.0" />
-                              <line x1="3.8" y1="9.6" x2="5.6" y2="9.6" />
-                              <line x1="14.2" y1="9.6" x2="12.4" y2="9.6" />
-                            </svg>
-                          </button>
-
-                          {/* Layer Settings Gear Button */}
-                          <button
-                            onClick={() => {
-                              setLayerLightingOpen(false);
-                              showToast(`Layer ${activeLayerIndex + 1} settings`);
-                            }}
-                            title="Layer settings"
-                            className="w-[28px] h-[28px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555555] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
-                          >
-                            <svg
-                              width="14"
-                              height="14"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <circle cx="12" cy="12" r="3" />
-                              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                            </svg>
-                          </button>
+                          {/* LED Colour Settings Pill Button */}
+                          {(() => {
+                            const currentLayerLed =
+                              layerLedConfigs[Math.min(3, Math.max(0, activeLayerIndex))] ||
+                              DEFAULT_LAYER_LED_CONFIGS[0];
+                            return (
+                              <motion.button
+                                whileHover={{ scale: 1.04 }}
+                                whileTap={{ scale: 0.94 }}
+                                onClick={() => {
+                                  setLedEditingLayerIdx(Math.min(3, Math.max(0, activeLayerIndex)));
+                                  setLayerLightingOpen((o) => !o);
+                                }}
+                                aria-label="LED colour settings"
+                                className={`h-[28px] px-[11px] rounded-full border-[1.5px] flex items-center justify-center gap-[6px] text-[10.5px] font-medium transition-colors cursor-pointer ${
+                                  layerLightingOpen
+                                    ? 'bg-[#000000] text-white border-[#000000]'
+                                    : 'bg-white hover:bg-neutral-50 text-[#444444] border-transparent hover:border-[#0051ff] shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+                                }`}
+                              >
+                                <span
+                                  className="w-[9px] h-[9px] rounded-full shrink-0 border border-black/15 transition-colors"
+                                  style={{
+                                    backgroundColor:
+                                      currentLayerLed.preset === 'Off'
+                                        ? '#9ca3af'
+                                        : currentLayerLed.colorHex,
+                                    boxShadow:
+                                      currentLayerLed.preset === 'Off'
+                                        ? 'none'
+                                        : `0 0 6px ${currentLayerLed.colorHex}`,
+                                  }}
+                                />
+                                <span>L{activeLayerIndex + 1} LED</span>
+                              </motion.button>
+                            );
+                          })()}
 
                           {/* Delete Layer × Button (only shown when more than 1 layer exists; turns solid red on hover) */}
                           {currentProfile.layers.length > 1 && (
-                            <button
+                            <motion.button
+                              whileHover={{ scale: 1.1, rotate: 90 }}
+                              whileTap={{ scale: 0.88 }}
+                              transition={{
+                                type: 'spring',
+                                stiffness: 520,
+                                damping: 24,
+                              }}
                               onClick={() => {
                                 setLayerLightingOpen(false);
                                 setLayerDeleteConfirm(true);
@@ -4130,13 +4432,13 @@ export default function App() {
                               className="w-[28px] h-[28px] rounded-full bg-white hover:bg-[#dc0000] text-[#555555] hover:text-white flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
                             >
                               <X className="w-[13px] h-[13px] stroke-[1.8]" />
-                            </button>
+                            </motion.button>
                           )}
                         </motion.div>
                       )}
                     </AnimatePresence>
 
-                    {/* LIGHTING POPOVER CARD (Screenshot 2: Backlight / Underglow) */}
+                    {/* PER-LAYER LED COLOUR POPOVER CARD */}
                     <AnimatePresence>
                       {layerLightingOpen && !layerDeleteConfirm && (
                         <motion.div
@@ -4149,61 +4451,99 @@ export default function App() {
                             ease: [0.32, 0.72, 0, 1],
                           }}
                           style={{ transformOrigin: 'top center' }}
-                          className="absolute top-[37px] left-1/2 -translate-x-[38%] w-[228px] bg-[#e2e2e2] rounded-[18px] p-[9px] shadow-[0_8px_24px_rgba(0,0,0,0.12)] border border-black/[0.04] z-50"
+                          className="absolute top-[37px] left-1/2 -translate-x-1/2 w-[236px] bg-[#e2e2e2] rounded-[18px] p-[9px] shadow-[0_8px_24px_rgba(0,0,0,0.12)] border border-black/[0.04] z-50"
                         >
-                          {/* Top Mode Toggle: Backlight | Underglow */}
-                          <div className="grid grid-cols-2 gap-[6px] mb-[8px]">
-                            {(['Backlight', 'Underglow'] as const).map(
-                              (mode) => {
-                                const isActiveMode = lightingTab === mode;
+                          {/* 4-Layer Per-Layer LED Selector Card */}
+                          <div className="bg-[#eeeeee] rounded-[14px] p-[10px] mb-[8px]">
+                            <div className="flex items-center justify-between mb-[7px]">
+                              <span className="text-[11px] font-medium text-[#444444]">
+                                Per-Layer LED
+                              </span>
+                              <span className="text-[10px] font-semibold text-[#0051ff]">
+                                Layer {ledEditingLayerIdx + 1} · {HARDWARE_LAYER_NAMES[ledEditingLayerIdx] ?? `L${ledEditingLayerIdx + 1}`}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-[5px]">
+                              {HARDWARE_LAYER_NAMES.map((layerLabel, lIdx) => {
+                                const lCfg = layerLedConfigs[lIdx] || DEFAULT_LAYER_LED_CONFIGS[lIdx];
+                                const isSelectedLayer = lIdx === ledEditingLayerIdx;
+                                const dotColor = lCfg.preset === 'Off' ? '#9ca3af' : lCfg.colorHex;
                                 return (
                                   <button
-                                    key={mode}
-                                    onClick={() => setLightingTab(mode)}
-                                    className={`h-[26px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] text-[10.5px] font-medium transition-all cursor-pointer ${
-                                      isActiveMode
-                                        ? 'bg-[#000000] text-white'
-                                        : 'bg-white text-[#555555]'
+                                    key={layerLabel}
+                                    type="button"
+                                    onClick={() => {
+                                      setLedEditingLayerIdx(lIdx);
+                                      if (lIdx < currentProfile.layers.length) {
+                                        setActiveLayerIndex(lIdx);
+                                      }
+                                    }}
+                                    className={`h-[26px] rounded-full px-[6px] flex items-center justify-center gap-[4px] text-[10px] font-medium border-[1.5px] transition-all cursor-pointer ${
+                                      isSelectedLayer
+                                        ? 'bg-[#000000] text-white border-[#000000] shadow-xs'
+                                        : 'bg-white text-[#555555] border-transparent hover:border-[#0051ff]'
                                     }`}
                                   >
-                                    {mode}
+                                    <span
+                                      className="w-[8px] h-[8px] rounded-full shrink-0 border border-black/15"
+                                      style={{
+                                        backgroundColor: dotColor,
+                                        boxShadow:
+                                          lCfg.preset === 'Off'
+                                            ? 'none'
+                                            : `0 0 5px ${dotColor}`,
+                                      }}
+                                    />
+                                    <span>L{lIdx + 1}</span>
                                   </button>
                                 );
-                              }
-                            )}
+                              })}
+                            </div>
                           </div>
 
-                          {/* Presets Card */}
+                          {/* Presets Card (for the selected layer) */}
                           <div className="bg-[#eeeeee] rounded-[14px] p-[10px] mb-[8px]">
-                            <div className="text-[11px] font-normal text-[#555555] mb-[7px] text-left">
-                              Presets
+                            <div className="flex items-center justify-between mb-[7px]">
+                              <span className="text-[11px] font-normal text-[#555555]">
+                                Mode
+                              </span>
+                              <span className="text-[9.5px] text-[#777777]">
+                                {HARDWARE_LAYER_NAMES[ledEditingLayerIdx]}
+                              </span>
                             </div>
-                            <div className="grid grid-cols-3 gap-[5px]">
+                            <div className="grid grid-cols-2 gap-[5px]">
                               {(
                                 [
                                   'Off',
                                   'Solid',
-                                  'Snake',
                                   'Rainbow',
                                   'Breath',
-                                  'Gradient',
                                 ] as const
                               ).map((presetName) => {
+                                const currentLedCfg =
+                                  layerLedConfigs[ledEditingLayerIdx] ||
+                                  DEFAULT_LAYER_LED_CONFIGS[ledEditingLayerIdx];
                                 const isActivePreset =
-                                  lightingConfig[lightingTab].preset ===
-                                  presetName;
+                                  currentLedCfg.preset === presetName;
                                 return (
                                   <button
                                     key={presetName}
-                                    onClick={() =>
-                                      setLightingConfig((prev) => ({
-                                        ...prev,
-                                        [lightingTab]: {
-                                          ...prev[lightingTab],
+                                    onClick={() => {
+                                      setLayerLedConfigs((prev) => {
+                                        const next = [...prev] as [
+                                          LayerLedConfig,
+                                          LayerLedConfig,
+                                          LayerLedConfig,
+                                          LayerLedConfig,
+                                        ];
+                                        next[ledEditingLayerIdx] = {
+                                          ...next[ledEditingLayerIdx],
                                           preset: presetName,
-                                        },
-                                      }))
-                                    }
+                                        };
+                                        syncRgbConfigsToDevice(next, true);
+                                        return next;
+                                      });
+                                    }}
                                     className={`h-[24px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] text-[10px] font-medium transition-all cursor-pointer ${
                                       isActivePreset
                                         ? 'bg-[#000000] text-white'
@@ -4217,14 +4557,25 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Settings Card */}
+                          {/* Settings Card (for the selected layer) */}
                           <div className="bg-[#eeeeee] rounded-[14px] p-[10px] mb-[8px]">
-                            <div className="text-[11px] font-normal text-[#555555] mb-[8px] text-left">
-                              Settings
+                            <div className="flex items-center justify-between mb-[8px]">
+                              <span className="text-[11px] font-normal text-[#555555]">
+                                Layer {ledEditingLayerIdx + 1} Colour
+                              </span>
+                              <span
+                                className="w-[10px] h-[10px] rounded-full border border-black/15"
+                                style={{
+                                  backgroundColor:
+                                    layerLedConfigs[ledEditingLayerIdx]?.colorHex || '#0051FF',
+                                }}
+                              />
                             </div>
 
                             {(() => {
-                              const cfg = lightingConfig[lightingTab];
+                              const cfg =
+                                layerLedConfigs[ledEditingLayerIdx] ||
+                                DEFAULT_LAYER_LED_CONFIGS[ledEditingLayerIdx];
                               const isOff = cfg.preset === 'Off';
                               const isAnimated =
                                 cfg.preset !== 'Off' && cfg.preset !== 'Solid';
@@ -4249,15 +4600,23 @@ export default function App() {
                                         min={0}
                                         max={100}
                                         value={cfg.light}
-                                        onChange={(e) =>
-                                          setLightingConfig((prev) => ({
-                                            ...prev,
-                                            [lightingTab]: {
-                                              ...prev[lightingTab],
-                                              light: Number(e.target.value),
-                                            },
-                                          }))
-                                        }
+                                        onChange={(e) => {
+                                          const nextLight = Number(e.target.value);
+                                          setLayerLedConfigs((prev) => {
+                                            const next = [...prev] as [
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                            ];
+                                            next[ledEditingLayerIdx] = {
+                                              ...next[ledEditingLayerIdx],
+                                              light: nextLight,
+                                            };
+                                            syncRgbConfigsToDevice(next, false);
+                                            return next;
+                                          });
+                                        }}
                                         className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
                                       />
                                       <div
@@ -4287,58 +4646,27 @@ export default function App() {
                                         min={0}
                                         max={100}
                                         value={cfg.speed}
-                                        onChange={(e) =>
-                                          setLightingConfig((prev) => ({
-                                            ...prev,
-                                            [lightingTab]: {
-                                              ...prev[lightingTab],
-                                              speed: Number(e.target.value),
-                                            },
-                                          }))
-                                        }
+                                        onChange={(e) => {
+                                          const nextSpeed = Number(e.target.value);
+                                          setLayerLedConfigs((prev) => {
+                                            const next = [...prev] as [
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                            ];
+                                            next[ledEditingLayerIdx] = {
+                                              ...next[ledEditingLayerIdx],
+                                              speed: nextSpeed,
+                                            };
+                                            return next;
+                                          });
+                                        }}
                                         className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
                                       />
                                       <div
                                         style={{
                                           left: `calc(${cfg.speed}% - 5.5px)`,
-                                        }}
-                                        className="absolute w-[11px] h-[11px] rounded-full bg-white border border-[#444444] pointer-events-none"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {/* Magic Slider */}
-                                  <div
-                                    className={`flex items-center gap-[8px] ${
-                                      !isAnimated
-                                        ? 'opacity-30 pointer-events-none'
-                                        : ''
-                                    }`}
-                                  >
-                                    <span className="w-[38px] text-left text-[10px] text-[#555555] shrink-0">
-                                      Magic
-                                    </span>
-                                    <div className="relative flex-1 h-[14px] flex items-center">
-                                      <div className="w-full h-[1.5px] bg-[#b5b5b5] rounded-full" />
-                                      <input
-                                        type="range"
-                                        min={0}
-                                        max={100}
-                                        value={cfg.magic}
-                                        onChange={(e) =>
-                                          setLightingConfig((prev) => ({
-                                            ...prev,
-                                            [lightingTab]: {
-                                              ...prev[lightingTab],
-                                              magic: Number(e.target.value),
-                                            },
-                                          }))
-                                        }
-                                        className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
-                                      />
-                                      <div
-                                        style={{
-                                          left: `calc(${cfg.magic}% - 5.5px)`,
                                         }}
                                         className="absolute w-[11px] h-[11px] rounded-full bg-white border border-[#444444] pointer-events-none"
                                       />
@@ -4370,17 +4698,23 @@ export default function App() {
                                         max={360}
                                         value={cfg.hue}
                                         onChange={(e) => {
-                                          const nextHue = Number(
-                                            e.target.value
-                                          );
-                                          setLightingConfig((prev) => ({
-                                            ...prev,
-                                            [lightingTab]: {
-                                              ...prev[lightingTab],
+                                          const nextHue = Number(e.target.value);
+                                          const nextHex = hueToHex(nextHue);
+                                          setLayerLedConfigs((prev) => {
+                                            const next = [...prev] as [
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                              LayerLedConfig,
+                                            ];
+                                            next[ledEditingLayerIdx] = {
+                                              ...next[ledEditingLayerIdx],
                                               hue: nextHue,
-                                              colorHex: hueToHex(nextHue),
-                                            },
-                                          }));
+                                              colorHex: nextHex,
+                                            };
+                                            syncRgbConfigsToDevice(next, false);
+                                            return next;
+                                          });
                                         }}
                                         className="absolute inset-0 w-full opacity-0 cursor-pointer z-10"
                                       />
@@ -4406,15 +4740,33 @@ export default function App() {
                                     <input
                                       type="text"
                                       value={cfg.colorHex}
-                                      onChange={(e) =>
-                                        setLightingConfig((prev) => ({
-                                          ...prev,
-                                          [lightingTab]: {
-                                            ...prev[lightingTab],
-                                            colorHex: e.target.value,
-                                          },
-                                        }))
-                                      }
+                                      onChange={(e) => {
+                                        const nextHex = e.target.value;
+                                        setLayerLedConfigs((prev) => {
+                                          const next = [...prev] as [
+                                            LayerLedConfig,
+                                            LayerLedConfig,
+                                            LayerLedConfig,
+                                            LayerLedConfig,
+                                          ];
+                                          const isValidHex = /^#?[0-9a-fA-F]{6}$/.test(
+                                            nextHex.trim()
+                                          );
+                                          const formattedHex = isValidHex
+                                            ? nextHex.startsWith('#')
+                                              ? nextHex.toUpperCase()
+                                              : `#${nextHex.toUpperCase()}`
+                                            : nextHex;
+                                          next[ledEditingLayerIdx] = {
+                                            ...next[ledEditingLayerIdx],
+                                            colorHex: formattedHex,
+                                          };
+                                          if (isValidHex) {
+                                            syncRgbConfigsToDevice(next, true);
+                                          }
+                                          return next;
+                                        });
+                                      }}
                                       className="w-[85px] bg-transparent text-[10px] text-[#555555] uppercase focus:outline-none"
                                     />
                                     <span
@@ -4431,11 +4783,27 @@ export default function App() {
 
                           {/* Apply to all layers button */}
                           <button
-                            onClick={() =>
+                            onClick={() => {
+                              const sourceCfg =
+                                layerLedConfigs[ledEditingLayerIdx] ||
+                                DEFAULT_LAYER_LED_CONFIGS[ledEditingLayerIdx];
+                              const nextConfigs: [
+                                LayerLedConfig,
+                                LayerLedConfig,
+                                LayerLedConfig,
+                                LayerLedConfig,
+                              ] = [
+                                { ...sourceCfg },
+                                { ...sourceCfg },
+                                { ...sourceCfg },
+                                { ...sourceCfg },
+                              ];
+                              setLayerLedConfigs(nextConfigs);
+                              syncRgbConfigsToDevice(nextConfigs, true);
                               showToast(
-                                `Applied ${lightingTab.toLowerCase()} settings to all layers`
-                              )
-                            }
+                                `Applied Layer ${ledEditingLayerIdx + 1} LED settings to all 4 layers`
+                              );
+                            }}
                             className="w-full h-[25px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[10px] font-normal text-[#555555] flex items-center justify-center transition-all cursor-pointer"
                           >
                             Apply to all layers
@@ -4887,44 +5255,130 @@ export default function App() {
                           const canDelete = !!editingCustomItemId;
 
                           return (
-                            <div className="grid grid-cols-3 gap-[6px]">
-                              <button
-                                type="button"
-                                disabled={!canSave}
-                                onClick={handleSaveCustomItem}
-                                className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
-                                  canSave
-                                    ? 'bg-white text-[#444444] hover:bg-[#2ec27e] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
-                                    : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
-                                }`}
-                              >
-                                Save
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!canSave}
-                                onClick={handleDiscardCustomItem}
-                                className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
-                                  canSave
-                                    ? 'bg-white text-[#444444] hover:bg-[#f59e0b] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
-                                    : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
-                                }`}
-                              >
-                                Discard
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!canDelete}
-                                onClick={handleDeleteCustomItem}
-                                className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
-                                  canDelete
-                                    ? 'bg-white text-[#444444] hover:bg-[#e01b24] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
-                                    : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
-                                }`}
-                              >
-                                Delete
-                              </button>
-                            </div>
+                            <AnimatePresence mode="popLayout" initial={false}>
+                              {customItemDeleteConfirm && canDelete ? (
+                                <motion.div
+                                  key="creator-delete-confirm"
+                                  layout
+                                  initial={{ opacity: 0, scale: 0.9, y: 3 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.9, y: -3 }}
+                                  transition={{
+                                    type: 'spring',
+                                    stiffness: 540,
+                                    damping: 30,
+                                    mass: 0.65,
+                                  }}
+                                  className="flex items-center gap-[6px]"
+                                >
+                                  <motion.button
+                                    type="button"
+                                    layout
+                                    initial={{ opacity: 0, x: -10, scale: 0.88 }}
+                                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                                    exit={{ opacity: 0, x: -8, scale: 0.88 }}
+                                    whileHover={{ scale: 1.04 }}
+                                    whileTap={{ scale: 0.94 }}
+                                    onClick={() => setCustomItemDeleteConfirm(false)}
+                                    className="h-[29px] px-[12px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[10.5px] font-medium text-[#444444] shadow-[0_1px_3px_rgba(0,0,0,0.06)] cursor-pointer shrink-0"
+                                  >
+                                    Cancel
+                                  </motion.button>
+                                  <motion.button
+                                    type="button"
+                                    layout
+                                    initial={{ opacity: 0, x: 14, scale: 0.86 }}
+                                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                                    exit={{ opacity: 0, x: 12, scale: 0.86 }}
+                                    whileHover={{
+                                      scale: 1.03,
+                                      boxShadow: '0 5px 16px rgba(220, 0, 0, 0.34)',
+                                    }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleDeleteCustomItem}
+                                    className="flex-1 h-[29px] rounded-full bg-gradient-to-r from-[#e01b24] via-[#ff2934] to-[#c40000] text-white text-[10.5px] font-semibold flex items-center justify-center gap-[5px] shadow-[0_2px_10px_rgba(220,0,0,0.26)] cursor-pointer"
+                                  >
+                                    <motion.svg
+                                      width="11"
+                                      height="11"
+                                      viewBox="0 0 16 16"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.6"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      initial={{ rotate: -16, scale: 0.85 }}
+                                      animate={{ rotate: [0, -14, 10, -6, 0], scale: 1 }}
+                                      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                                      className="shrink-0"
+                                    >
+                                      <path d="M2.5 4.2H13.5" />
+                                      <path d="M5.8 4.2V2.8C5.8 2.35 6.15 2 6.6 2H9.4C9.85 2 10.2 2.35 10.2 2.8V4.2" />
+                                      <path d="M4.2 4.2L4.8 13C4.85 13.55 5.3 14 5.85 14H10.15C10.7 14 11.15 13.55 11.2 13L11.8 4.2" />
+                                    </motion.svg>
+                                    <span>Click to delete</span>
+                                  </motion.button>
+                                </motion.div>
+                              ) : (
+                                <motion.div
+                                  key="creator-normal-actions"
+                                  layout
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.95 }}
+                                  transition={{
+                                    type: 'spring',
+                                    stiffness: 520,
+                                    damping: 32,
+                                    mass: 0.65,
+                                  }}
+                                  className="grid grid-cols-3 gap-[6px]"
+                                >
+                                  <motion.button
+                                    type="button"
+                                    whileHover={canSave ? { scale: 1.03 } : undefined}
+                                    whileTap={canSave ? { scale: 0.95 } : undefined}
+                                    disabled={!canSave}
+                                    onClick={handleSaveCustomItem}
+                                    className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
+                                      canSave
+                                        ? 'bg-white text-[#444444] hover:bg-[#2ec27e] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
+                                        : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
+                                    }`}
+                                  >
+                                    Save
+                                  </motion.button>
+                                  <motion.button
+                                    type="button"
+                                    whileHover={canSave ? { scale: 1.03 } : undefined}
+                                    whileTap={canSave ? { scale: 0.95 } : undefined}
+                                    disabled={!canSave}
+                                    onClick={handleDiscardCustomItem}
+                                    className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
+                                      canSave
+                                        ? 'bg-white text-[#444444] hover:bg-[#f59e0b] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
+                                        : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
+                                    }`}
+                                  >
+                                    Discard
+                                  </motion.button>
+                                  <motion.button
+                                    type="button"
+                                    whileHover={canDelete ? { scale: 1.04 } : undefined}
+                                    whileTap={canDelete ? { scale: 0.94 } : undefined}
+                                    disabled={!canDelete}
+                                    onClick={() => setCustomItemDeleteConfirm(true)}
+                                    className={`h-[29px] rounded-full text-[10.5px] font-medium transition-colors ${
+                                      canDelete
+                                        ? 'bg-white text-[#444444] hover:bg-[#e01b24] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] cursor-pointer'
+                                        : 'bg-[#dadada] text-[#b0b0b0] cursor-not-allowed'
+                                    }`}
+                                  >
+                                    Delete
+                                  </motion.button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           );
                         })()}
                       </div>
@@ -7237,16 +7691,6 @@ export default function App() {
                     App settings
                   </h2>
                   <div className="divide-y divide-[#dadada] text-[10.5px]">
-                    <div className="py-[8px] flex items-center justify-between">
-                      <span className="text-[#585858]">
-                        Allow anonymous data collection
-                      </span>
-                      <SettingsSwitch
-                        checked={allowAnalytics}
-                        title="This build saves your consent preference but does not send analytics."
-                        onChange={() => void handleAppSettingChange('allowAnalytics', !allowAnalytics)}
-                      />
-                    </div>
                     <div className="py-[8px] flex items-center justify-between">
                       <span className="text-[#585858]">Launch app at startup</span>
                       <SettingsSwitch

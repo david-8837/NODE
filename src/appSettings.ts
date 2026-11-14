@@ -6,7 +6,6 @@ export const FIRMWARE_BUILD_WORKFLOW_URL =
   'https://github.com/david-8837/NODE/actions/workflows/qmk-build.yml';
 
 export interface AppSettings {
-  allowAnalytics: boolean;
   launchAtStartup: boolean;
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
@@ -21,7 +20,6 @@ export type SupportLinkKey =
   | 'firmwareBuilds';
 
 export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
-  allowAnalytics: false,
   launchAtStartup: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
@@ -101,8 +99,8 @@ export interface ElectronApi {
   maximize?: () => Promise<void>;
   close?: () => Promise<void>;
   isMaximized?: () => Promise<boolean>;
-  onHardwareSync?: (callback: () => void) => void;
-  onOpenHardwareModal?: (callback: () => void) => void;
+  onHardwareSync?: (callback: () => void) => (() => void) | void;
+  onOpenHardwareModal?: (callback: () => void) => (() => void) | void;
 }
 
 export interface AppSettingsTools {
@@ -125,9 +123,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function normalizeAppSettings(value: unknown): AppSettings {
   const raw = isRecord(value) ? value : {};
   return {
-    allowAnalytics: typeof raw.allowAnalytics === 'boolean'
-      ? raw.allowAnalytics
-      : DEFAULT_APP_SETTINGS.allowAnalytics,
     launchAtStartup: typeof raw.launchAtStartup === 'boolean'
       ? raw.launchAtStartup
       : DEFAULT_APP_SETTINGS.launchAtStartup,

@@ -1,5 +1,5 @@
 // electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
-const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath, pathToFileURL } = require('url');
@@ -21,6 +21,7 @@ const desktopActionExecutor = createDesktopActionExecutor({
   },
 });
 let mainWindow = null;
+let appTray = null;
 let visualSmokeCaptureStarted = false;
 let completingQuit = false;
 
@@ -112,7 +113,6 @@ function getRendererTrustDiagnostics(event) {
 }
 
 const DEFAULT_APP_SETTINGS = Object.freeze({
-  allowAnalytics: false,
   launchAtStartup: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
@@ -128,7 +128,7 @@ function readStoredAppSettings() {
   try {
     const stored = JSON.parse(fs.readFileSync(getAppSettingsPath(), 'utf8'));
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
-      for (const key of ['allowAnalytics', 'allowTerminalSmartActions', 'allowDeviceNotifications']) {
+      for (const key of ['allowTerminalSmartActions', 'allowDeviceNotifications']) {
         if (typeof stored[key] === 'boolean') settings[key] = stored[key];
       }
     }
@@ -477,15 +477,12 @@ function createWindow() {
 
   const ses = mainWindow.webContents.session;
 
-  // Limit device access to the expected VIA Raw HID keyboard and RP2040 serial
-  // interface, and only from the trusted app window/origin.
+  // Limit device access to the expected QMK/VIA Raw HID keyboard interface
+  // and only from the trusted app window/origin.
   ses.setDevicePermissionHandler((details) => {
     if (!isAllowedHardwareOrigin(details.origin) || !details.device) return false;
     if (details.deviceType === 'hid') {
       return details.device.vendorId === 0xfeed && details.device.productId === 0x6001;
-    }
-    if (details.deviceType === 'serial') {
-      return details.device.vendorId?.toLowerCase() === '2e8a';
     }
     return false;
   });
@@ -498,21 +495,7 @@ function createWindow() {
     ) {
       return false;
     }
-    return permission === 'serial' || permission === 'hid';
-  });
-
-  // Select only the supported RP2040 USB serial device; never fall back to an
-  // unrelated port that happened to be connected.
-  ses.on('select-serial-port', (event, portList, webContents, callback) => {
-    event.preventDefault();
-    if (webContents !== mainWindow?.webContents || !isTrustedAppUrl(webContents.getURL())) {
-      callback('');
-      return;
-    }
-    const rp2040Port = (portList || []).find(
-      (port) => port.vendorId?.toLowerCase() === '2e8a'
-    );
-    callback(rp2040Port?.portId || '');
+    return permission === 'hid';
   });
 
   ses.on('select-hid-device', (event, details, callback) => {
@@ -807,11 +790,66 @@ ipcMain.handle('execute-smart-action', async (event, payload) => {
       // terminal-command permission by setting a request field.
       allowTerminal: readStoredAppSettings().allowTerminalSmartActions === true,
       commandConsent: payload.commandConsent === true,
+      hardwareTrigger: payload.hardwareTrigger === true,
     });
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 });
+
+function createSystemTray() {
+  if (appTray || isVisualSmokeTest() || isPersistenceSmokeTest()) return;
+  try {
+    const iconPath = path.join(__dirname, '../public/favicon.ico');
+    const trayIcon = nativeImage.createFromPath(iconPath);
+    if (trayIcon.isEmpty()) return;
+    appTray = new Tray(trayIcon);
+    appTray.setToolTip('NØDE — Grid Macro 1 Studio (Background Agent Active)');
+    const trayMenu = Menu.buildFromTemplate([
+      {
+        label: 'Open NØDE Studio',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          } else {
+            createWindow();
+          }
+        },
+      },
+      {
+        label: 'Hide to Background',
+        click: () => {
+          if (mainWindow) mainWindow.hide();
+        },
+      },
+      {
+        label: 'Sync to RP2040-Zero',
+        click: () => {
+          if (mainWindow) mainWindow.webContents.send('trigger-hardware-sync');
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit NØDE Studio',
+        click: () => {
+          app.quit();
+        },
+      },
+    ]);
+    appTray.setContextMenu(trayMenu);
+    appTray.on('click', () => {
+      if (!mainWindow) {
+        createWindow();
+      } else if (mainWindow.isVisible()) {
+        mainWindow.focus();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+  } catch {}
+}
 
 // App Lifecycle
 app.whenReady().then(() => {
@@ -820,6 +858,7 @@ app.whenReady().then(() => {
   }
   writeVisualSmokeDiagnostics({ stage: 'app-ready', packaged: app.isPackaged });
   createWindow();
+  createSystemTray();
 
   const template = [
     {
@@ -829,6 +868,11 @@ app.whenReady().then(() => {
           label: 'Reload Configurator',
           accelerator: 'CmdOrCtrl+R',
           click: () => mainWindow && mainWindow.reload(),
+        },
+        {
+          label: 'Hide to Background Tray',
+          accelerator: 'CmdOrCtrl+H',
+          click: () => mainWindow && mainWindow.hide(),
         },
         {
           label: 'Toggle Fullscreen',
@@ -888,6 +932,10 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', (event) => {
+  if (appTray) {
+    appTray.destroy();
+    appTray = null;
+  }
   if (completingQuit) return;
   event.preventDefault();
   completingQuit = true;

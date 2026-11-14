@@ -12,6 +12,12 @@ export const GRID_MACRO_KEY_SLOTS = [
 
 export const GRID_MACRO_ENCODER_SLOT = 'dial-tl' as const;
 
+export const MAX_HARDWARE_PROFILES = 4 as const;
+export const MAX_HARDWARE_LAYERS = 4 as const;
+export const HARDWARE_LAYER_NAMES = ['BASE', 'MEDIA', 'NUMPAD', 'FN'] as const;
+
 export type GridMacroSlotId =
   | (typeof GRID_MACRO_KEY_SLOTS)[number]
   | typeof GRID_MACRO_ENCODER_SLOT;
+
+export type HardwareLayerName = (typeof HARDWARE_LAYER_NAMES)[number];

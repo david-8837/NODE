@@ -107,7 +107,23 @@ describe('profile file import and export', () => {
     expect(() => parseProfileFile(JSON.stringify({ format: 'node-studio-profile', version: 9, profile })))
       .toThrow('version is not supported');
     expect(() => parseProfileFile(JSON.stringify({ ...profile, layers: [] })))
-      .toThrow('between 1 and 8 layers');
+      .toThrow('between 1 and 4 layers');
+    expect(() => parseProfileFile(JSON.stringify({
+      ...profile,
+      layers: [{}, {}, {}, {}, {}],
+    }))).toThrow('between 1 and 4 layers');
+    expect(() => parseProfileFile(JSON.stringify({
+      v: 1,
+      profiles: [
+        profile,
+        { ...profile, id: 'p2', name: 'P2' },
+        { ...profile, id: 'p3', name: 'P3' },
+        { ...profile, id: 'p4', name: 'P4' },
+        { ...profile, id: 'p5', name: 'P5' },
+      ],
+      activeProfileIndex: 0,
+      customItems,
+    }))).toThrow('between 1 and 4 profiles');
     expect(() => parseProfileFile(JSON.stringify({ ...profile, layers: [null] })))
       .toThrow('must be an object');
     expect(() => parseProfileFile(JSON.stringify({ ...profile, name: ' ' })))

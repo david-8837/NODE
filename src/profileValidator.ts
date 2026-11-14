@@ -31,6 +31,7 @@ export interface ProfileData {
 }
 
 const REQUIRED_SLOTS = ['r1c1', 'r1c2', 'r1c3', 'r2c1', 'r2c2', 'r2c3', 'r3c1', 'r3c2', 'r3c3'];
+export const MAX_LAYERS_PER_PROFILE = 4;
 
 export function validateProfile(input: any): { valid: boolean; profile?: ProfileData; error?: string } {
   if (!input || typeof input !== 'object') {
@@ -43,6 +44,10 @@ export function validateProfile(input: any): { valid: boolean; profile?: Profile
 
   if (!Array.isArray(input.layers) || input.layers.length === 0) {
     return { valid: false, error: 'Profile must contain at least one layer in "layers" array' };
+  }
+
+  if (input.layers.length > MAX_LAYERS_PER_PROFILE) {
+    return { valid: false, error: `Profile cannot exceed ${MAX_LAYERS_PER_PROFILE} layers` };
   }
 
   const activeLayerIndex = input.activeLayerIndex ?? 0;

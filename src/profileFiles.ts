@@ -3,8 +3,9 @@ const PROFILE_FILE_VERSION = 1;
 export const MAX_PROFILE_FILE_BYTES = 2 * 1024 * 1024;
 export const PROFILE_FILE_STORAGE_KEY = 'cm2.state.v2';
 
-const PROFILE_LAYER_LIMIT = 8;
-export const MAX_PROFILE_COUNT = 100;
+export const MAX_LAYER_COUNT = 4;
+const PROFILE_LAYER_LIMIT = MAX_LAYER_COUNT;
+export const MAX_PROFILE_COUNT = 4;
 const PROFILE_LIMIT = MAX_PROFILE_COUNT;
 const CUSTOM_ITEM_LIMIT = 1000;
 const CUSTOM_TABS = ['Action', 'Multi-A', 'Smart-A'] as const;

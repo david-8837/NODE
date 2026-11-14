@@ -1328,9 +1328,9 @@ function createDesktopActionExecutor({
   let closed = false;
   const activeCommands = new Set();
 
-  const requireCurrentSimulation = (startedGeneration) => {
+  const requireCurrentSimulation = (startedGeneration, hardwareTrigger = false) => {
     if (closed) throw new Error('The desktop action executor is closed');
-    if (!simulationEnabled || startedGeneration !== generation) {
+    if (startedGeneration !== generation || (!hardwareTrigger && !simulationEnabled)) {
       throw new Error('Simulation is disabled; no desktop action was executed');
     }
   };
@@ -1402,9 +1402,9 @@ function createDesktopActionExecutor({
     });
   });
 
-  const openUrl = async (url, startedGeneration) => {
+  const openUrl = async (url, startedGeneration, hardwareTrigger = false) => {
     const safeUrl = validateUrl(url);
-    requireCurrentSimulation(startedGeneration);
+    requireCurrentSimulation(startedGeneration, hardwareTrigger);
     try {
       if (typeof openExternal === 'function') {
         await openExternal(safeUrl);
@@ -1418,7 +1418,7 @@ function createDesktopActionExecutor({
         const result = await runExecutable('xdg-open', [safeUrl]);
         if (!result.success) return result;
       }
-      requireCurrentSimulation(startedGeneration);
+      requireCurrentSimulation(startedGeneration, hardwareTrigger);
       return { success: true, message: `Opened ${safeUrl}` };
     } catch (error) {
       return { success: false, error: String(error.message || error) };
@@ -1426,7 +1426,8 @@ function createDesktopActionExecutor({
   };
 
   const execute = async (payload, options = {}) => {
-    if (!simulationEnabled || closed) {
+    const hardwareTrigger = Boolean(options?.hardwareTrigger === true || payload?.hardwareTrigger === true);
+    if ((!simulationEnabled && !hardwareTrigger) || closed) {
       return { success: false, error: 'Simulation is disabled; no desktop action was executed' };
     }
     const startedGeneration = generation;
@@ -1434,12 +1435,12 @@ function createDesktopActionExecutor({
     if (!normalized.ok) return { success: false, error: normalized.error };
 
     if (normalized.smartAction?.type === 'Web') {
-      return openUrl(normalized.smartAction.value, startedGeneration);
+      return openUrl(normalized.smartAction.value, startedGeneration, hardwareTrigger);
     }
 
     if (normalized.smartAction?.type === 'App') {
       try {
-        requireCurrentSimulation(startedGeneration);
+        requireCurrentSimulation(startedGeneration, hardwareTrigger);
         if (normalized.smartAction.applicationShortcutPath) {
           const shortcutPath = resolveApplicationShortcutPath(
             normalized.smartAction.applicationShortcutPath,
@@ -1449,7 +1450,7 @@ function createDesktopActionExecutor({
             return { success: false, error: 'Installed application shortcuts cannot be opened in this desktop environment' };
           }
           const result = await openApplicationShortcut(shortcutPath);
-          requireCurrentSimulation(startedGeneration);
+          requireCurrentSimulation(startedGeneration, hardwareTrigger);
           return result && typeof result.success === 'boolean'
             ? result
             : { success: false, error: 'The installed application shortcut could not be opened' };
@@ -1482,7 +1483,7 @@ function createDesktopActionExecutor({
         return { success: false, error: 'This imported command needs your confirmation before it can run.' };
       }
       try {
-        requireCurrentSimulation(startedGeneration);
+        requireCurrentSimulation(startedGeneration, hardwareTrigger);
         const [command, ...args] = parseCommandLine(normalized.smartAction.value, platform);
         const cwd = typeof payload.workingDirectory === 'string' && payload.workingDirectory.trim()
           ? payload.workingDirectory.trim()
@@ -1492,7 +1493,7 @@ function createDesktopActionExecutor({
           cwd,
           timeoutMs: boundedDelay(payload.timeoutMs, 'Command timeout') || 10_000,
         });
-        requireCurrentSimulation(startedGeneration);
+        requireCurrentSimulation(startedGeneration, hardwareTrigger);
         return result;
       } catch (error) {
         return { success: false, error: String(error.message || error) };
@@ -1503,9 +1504,9 @@ function createDesktopActionExecutor({
       if (platform !== 'win32') {
         return { success: false, error: 'Windows desktop input is only available on Windows' };
       }
-      requireCurrentSimulation(startedGeneration);
-      const result = await input.sendOperations(normalized.operations);
-      requireCurrentSimulation(startedGeneration);
+      requireCurrentSimulation(startedGeneration, hardwareTrigger);
+      await input.sendOperations(normalized.operations);
+      requireCurrentSimulation(startedGeneration, hardwareTrigger);
       return { success: true, message: 'Desktop input sent' };
     } catch (error) {
       return { success: false, error: String(error.message || error) };

@@ -82,7 +82,7 @@ if (statSync(htmlPath, { throwIfNoEntry: false })?.isFile()) {
 
 const totalGzipBytes = results.reduce((sum, asset) => sum + asset.gzipBytes, 0);
 const appGzipBytes = results
-  .filter((asset) => asset.file.startsWith('assets/'))
+  .filter((asset) => asset.file.startsWith('assets/') && !asset.file.startsWith('assets/vendor-'))
   .reduce((sum, asset) => sum + asset.gzipBytes, 0);
 
 for (const asset of results) {

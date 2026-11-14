@@ -1,4 +1,9 @@
 import { readAppSettings, type NativeActionResult, type SimulationToggleResult } from './appSettings';
+import {
+  MultiActionGestureEngine,
+  type MultiActionGestureBindings,
+  type MultiActionTimerHost,
+} from './multiActionGestureEngine';
 
 export type MultiGestureKey = 'onTap' | 'doubleTap' | 'onHold' | 'tapHold';
 export type SmartActionSubTab = 'Text' | 'Cmd' | 'Web' | 'App';
@@ -174,12 +179,37 @@ function executePayloadFor(action: SimulationAction): {
   return { payload: { type: 'Shortcut', value }, type: 'Shortcut', value };
 }
 
-/** Execute one configured key only from the explicit Simulation mode. */
+/** Parse multi-action gestures from structured execution or legacy summary string. */
+export function extractMultiActionConfig(action: SimulationAction | null | undefined): {
+  gestures: MultiActionGestureBindings;
+  tappingTermMs?: number;
+} | null {
+  if (!action) return null;
+  if (action.execution?.kind === 'multi') {
+    return {
+      gestures: { ...action.execution.gestures },
+      tappingTermMs: action.execution.tappingTermMs,
+    };
+  }
+  const binding = action.binding || '';
+  if (!/(onTap|doubleTap|onHold|tapHold):/i.test(binding)) return null;
+  const gestures: MultiActionGestureBindings = {};
+  for (const key of ['onTap', 'doubleTap', 'onHold', 'tapHold'] as const) {
+    const match = binding.match(new RegExp(`${key}:\\s*([^,)]+)`, 'i'));
+    if (match?.[1]?.trim()) {
+      gestures[key] = match[1].trim();
+    }
+  }
+  return Object.keys(gestures).length > 0 ? { gestures } : null;
+}
+
+/** Execute one configured key from explicit Simulation mode or a verified hardware trigger. */
 export function triggerSimulationAction(
   action: SimulationAction | null | undefined,
   onLayerChange: (index: number) => boolean | void,
   showToast: (message: string) => void,
-  host: SimulationActionHost
+  host: SimulationActionHost,
+  options?: { hardwareTrigger?: boolean }
 ): void {
   if (!action) return;
   const binding = action.binding || '';
@@ -213,7 +243,8 @@ export function triggerSimulationAction(
     }
   }
   if (!actionToRun && !action.execution) {
-    const multiMatch = binding.match(/onTap:\s*([^,)]+)/i);
+    const gestureKey = action.gesture || 'onTap';
+    const multiMatch = binding.match(new RegExp(`${gestureKey}:\\s*([^,)]+)`, 'i')) ?? binding.match(/onTap:\s*([^,)]+)/i);
     if (multiMatch) {
       const value = multiMatch[1].trim();
       actionToRun = { payload: { type: 'Shortcut', value }, type: 'Shortcut', value };
@@ -249,6 +280,9 @@ export function triggerSimulationAction(
   if (actionToRun.type.toLowerCase() === 'cmd') {
     actionToRun.payload.allowTerminal = settings.allowTerminalSmartActions === true;
   }
+  if (options?.hardwareTrigger) {
+    actionToRun.payload.hardwareTrigger = true;
+  }
 
   showToast(
     actionToRun.type === 'Sequence'
@@ -258,4 +292,65 @@ export function triggerSimulationAction(
   void dispatchAction(host, actionToRun.payload).then((result) => {
     if (!result.success) showToast(`Action failed: ${result.error || 'unknown error'}`);
   });
+}
+
+export interface HardwareTriggerController {
+  handleSlotEvent: (
+    slotId: string,
+    pressed: boolean,
+    action: SimulationAction | null | undefined
+  ) => void;
+  cancelAll: () => void;
+}
+
+export function createHardwareTriggerController(
+  onLayerChange: (index: number) => boolean | void,
+  showToast: (message: string) => void,
+  host: SimulationActionHost,
+  timerHost?: MultiActionTimerHost
+): HardwareTriggerController {
+  const pendingActions = new Map<string, SimulationAction>();
+  const gestureEngine = new MultiActionGestureEngine((resolved) => {
+    const sourceAction = pendingActions.get(resolved.slotId);
+    triggerSimulationAction(
+      {
+        ...(sourceAction ?? {}),
+        gesture: resolved.gesture,
+        execution: {
+          kind: 'multi',
+          gestures: { [resolved.gesture]: resolved.binding },
+        },
+      },
+      onLayerChange,
+      showToast,
+      host,
+      { hardwareTrigger: true }
+    );
+  }, timerHost);
+
+  return {
+    handleSlotEvent(slotId, pressed, action) {
+      if (!action) {
+        if (!pressed) gestureEngine.handleKeyUp(slotId);
+        return;
+      }
+      const multiConfig = extractMultiActionConfig(action);
+      if (multiConfig) {
+        pendingActions.set(slotId, action);
+        if (pressed) {
+          gestureEngine.handleKeyDown(slotId, multiConfig);
+        } else {
+          gestureEngine.handleKeyUp(slotId);
+        }
+        return;
+      }
+      if (pressed) {
+        triggerSimulationAction(action, onLayerChange, showToast, host, { hardwareTrigger: true });
+      }
+    },
+    cancelAll() {
+      gestureEngine.cancelAll();
+      pendingActions.clear();
+    },
+  };
 }

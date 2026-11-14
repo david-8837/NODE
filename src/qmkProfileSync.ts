@@ -205,6 +205,11 @@ function parseBinding(
   const media = MEDIA_ACTIONS[normalizeKey(clean)];
   if (media) return { action: { t: 'media', c: media } };
 
+  const profileMatch = clean.match(/^profile ([1-4])$/i);
+  if (profileMatch) {
+    return { action: { t: 'profile', n: Number(profileMatch[1]) - 1 } };
+  }
+
   const layer = clean.match(/^layer (\d)$/i);
   if (layer) return { action: { t: 'layer', op: 'set', n: Number(layer[1]) - 1 } };
   const temporaryLayer = clean.match(/^temp layer (\d)$/i);
@@ -212,6 +217,9 @@ function parseBinding(
     return { action: { t: 'layer', op: 'hold', n: Number(temporaryLayer[1]) - 1 } };
   }
   if (actionType === 'Layer Cycle') return { action: { t: 'layer', op: 'next' } };
+
+  const offlineMulti = tryParseOfflineMultiBindingString(clean, os);
+  if (offlineMulti) return { action: offlineMulti };
 
   const onTap = clean.match(/onTap:\s*([^,)]+)/i);
   if (onTap) {
@@ -237,6 +245,42 @@ function parseBinding(
     action: null,
     warning: `"${clean}" has no key press the device can send yet`,
   };
+}
+
+function tryBuildOfflineTapHoldAction(
+  onTapRaw: string,
+  onHoldRaw: string,
+  os: PresetOperatingSystem
+): ViaAction | null {
+  const tapClean = onTapRaw.trim();
+  const holdClean = onHoldRaw.trim();
+  if (!tapClean || !holdClean) return null;
+
+  const tapKey = basicKeyName(tapClean);
+  if (!tapKey) return null;
+
+  const holdMod = modifierName(holdClean, os);
+  if (holdMod) {
+    return { t: 'mod_tap', mod: holdMod, key: tapKey };
+  }
+
+  const holdLayerMatch = holdClean.match(/^(?:temp\s+)?layer\s+([1-4])$/i);
+  if (holdLayerMatch) {
+    return { t: 'layer_tap', layer: Number(holdLayerMatch[1]) - 1, key: tapKey };
+  }
+
+  return null;
+}
+
+function tryParseOfflineMultiBindingString(
+  binding: string,
+  os: PresetOperatingSystem
+): ViaAction | null {
+  if (/(doubleTap|tapHold):\s*([^,)]+)/i.test(binding)) return null;
+  const onTapMatch = binding.match(/onTap:\s*([^,)]+)/i);
+  const onHoldMatch = binding.match(/onHold:\s*([^,)]+)/i);
+  if (!onTapMatch || !onHoldMatch) return null;
+  return tryBuildOfflineTapHoldAction(onTapMatch[1], onHoldMatch[1], os);
 }
 
 function parseStructuredExecution(
@@ -273,7 +317,18 @@ function parseStructuredExecution(
 
   if (execution.kind === 'multi') {
     const gestures = isRecord(execution.gestures) ? execution.gestures : {};
-    const onTap = typeof gestures.onTap === 'string' ? gestures.onTap : '';
+    const onTap = typeof gestures.onTap === 'string' ? gestures.onTap.trim() : '';
+    const onHold = typeof gestures.onHold === 'string' ? gestures.onHold.trim() : '';
+    const doubleTap = typeof gestures.doubleTap === 'string' ? gestures.doubleTap.trim() : '';
+    const tapHold = typeof gestures.tapHold === 'string' ? gestures.tapHold.trim() : '';
+
+    if (onTap && onHold && !doubleTap && !tapHold) {
+      const offlineAction = tryBuildOfflineTapHoldAction(onTap, onHold, os);
+      if (offlineAction) {
+        return { action: offlineAction };
+      }
+    }
+
     const parsed = onTap
       ? parseBinding(onTap, '', 'Shortcut', os)
       : { action: null, warning: 'This multiaction has no onTap keycode for the device' };
@@ -311,13 +366,67 @@ function readEncoderEntry(layer: unknown): EncoderBindingEntry | undefined {
   return value as EncoderBindingEntry;
 }
 
+export interface BuildViaConfigurationOptions {
+  enableHostTriggers?: boolean;
+}
+
+const SLOT_TRIGGER_INDEX: Record<string, number> = {
+  r1c1: 0, r1c2: 1, r1c3: 2,
+  r2c1: 3, r2c2: 4, r2c3: 5,
+  r3c1: 6, r3c2: 7, r3c3: 8,
+  cw: 9, press: 10, ccw: 11,
+};
+
+function isHostExecutableEntry(entry: BindingEntry, os: PresetOperatingSystem): boolean {
+  const exec = entry.execution;
+  if (isRecord(exec) && typeof exec.kind === 'string') {
+    if (exec.kind === 'smart' || exec.kind === 'text' || exec.kind === 'sequence') {
+      return true;
+    }
+    if (exec.kind === 'multi') {
+      const gestures = isRecord(exec.gestures) ? exec.gestures : {};
+      const onTap = typeof gestures.onTap === 'string' ? gestures.onTap.trim() : '';
+      const onHold = typeof gestures.onHold === 'string' ? gestures.onHold.trim() : '';
+      const doubleTap = typeof gestures.doubleTap === 'string' ? gestures.doubleTap.trim() : '';
+      const tapHold = typeof gestures.tapHold === 'string' ? gestures.tapHold.trim() : '';
+      if (onTap && onHold && !doubleTap && !tapHold && tryBuildOfflineTapHoldAction(onTap, onHold, os)) {
+        return false;
+      }
+      return ['doubleTap', 'onHold', 'tapHold'].some(
+        (g) => typeof gestures[g] === 'string' && (gestures[g] as string).trim().length > 0
+      );
+    }
+  }
+  const binding = entry.binding ?? '';
+  if (/\((Web|App|Cmd|Text):\s*([^)]+)\)/i.test(binding)) return true;
+  if (tryParseOfflineMultiBindingString(binding, os)) return false;
+  if (/(doubleTap|onHold|tapHold):\s*([^,)]+)/i.test(binding)) return true;
+  return false;
+}
+
 function applyBinding(
   entry: BindingEntry,
   os: PresetOperatingSystem,
   layerNumber: number,
   location: string,
-  warnings: string[]
+  warnings: string[],
+  slotId?: string,
+  options?: BuildViaConfigurationOptions
 ): ViaAction | undefined {
+  if (
+    options?.enableHostTriggers &&
+    layerNumber >= 1 &&
+    layerNumber <= 4 &&
+    slotId &&
+    SLOT_TRIGGER_INDEX[slotId] !== undefined &&
+    isHostExecutableEntry(entry, os)
+  ) {
+    return {
+      t: 'host_trigger',
+      layer: layerNumber - 1,
+      slotIndex: SLOT_TRIGGER_INDEX[slotId],
+    };
+  }
   const parsed = entry.execution === undefined
     ? parseBinding(entry.binding ?? '', entry.label ?? '', entry.actionType ?? '', os)
     : parseStructuredExecution(entry.execution, os)!;
@@ -329,7 +438,8 @@ function applyBinding(
 /** Build the stock VIA keycode/encoder payload without modifying local profile data. */
 export function buildViaConfiguration(
   profile: unknown,
-  os: PresetOperatingSystem
+  os: PresetOperatingSystem,
+  options?: BuildViaConfigurationOptions
 ): { config: ViaConfiguration; warnings: string[] } {
   const sourceLayers = isRecord(profile) && Array.isArray(profile.layers)
     ? profile.layers.slice(0, 8)
@@ -340,7 +450,15 @@ export function buildViaConfiguration(
     for (const slot of KEY_SLOTS) {
       const entry = readEntry(sourceLayer, slot);
       if (!entry) continue;
-      const action = applyBinding(entry, os, layerIndex + 1, slot.toUpperCase(), warnings);
+      const action = applyBinding(
+        entry,
+        os,
+        layerIndex + 1,
+        slot.toUpperCase(),
+        warnings,
+        slot,
+        options
+      );
       if (action) keys[slot] = action;
     }
 
@@ -353,7 +471,9 @@ export function buildViaConfiguration(
         os,
         layerIndex + 1,
         `dial ${direction.toUpperCase()}`,
-        warnings
+        warnings,
+        direction,
+        options
       );
       if (action) encoder[direction] = action;
     }

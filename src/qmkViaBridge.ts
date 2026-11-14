@@ -25,6 +25,55 @@ const VIA_KEYBOARD_VALUE = {
   firmwareVersion: 0x04,
 } as const;
 
+export const MP_HID_PREFIX = 0xfd;
+export const MP_CMD_GET_STATE = 0x01;
+export const MP_CMD_SELECT_PROFILE = 0x02;
+export const MP_CMD_SAVE_PROFILE = 0x03;
+export const MP_CMD_SET_RGB = 0x04;
+export const MP_EVT_LAYER_STATE = 0x10;
+export const MP_EVT_HOST_TRIGGER = 0x11;
+export const MP_TRIG_BASE = 0x7e00;
+export const MP_TRIG_MAX = 0x7e3f;
+export const MP_PROF_BASE = 0x7e40;
+export const MP_PROF_MAX = 0x7e43;
+
+export const TRIGGER_SLOT_ORDER = [
+  'r1c1', 'r1c2', 'r1c3',
+  'r2c1', 'r2c2', 'r2c3',
+  'r3c1', 'r3c2', 'r3c3',
+  'cw', 'press', 'ccw',
+] as const;
+
+export type TriggerSlotId = (typeof TRIGGER_SLOT_ORDER)[number];
+
+export interface HardwareTriggerEvent {
+  type: 'hardware_trigger';
+  seq: number;
+  profileSlot: number;
+  layer: number;
+  slotIndex: number;
+  slotId: TriggerSlotId;
+  pressed: boolean;
+}
+
+export interface DeviceLayerStateEvent {
+  type: 'layer_state';
+  deviceActiveLayer: number;
+  activeProfileSlot: number;
+}
+
+export interface LayerRgbColor {
+  r: number;
+  g: number;
+  b: number;
+}
+
+export interface DeviceRgbConfig {
+  enabled: boolean;
+  persist?: boolean;
+  layerColors: [LayerRgbColor, LayerRgbColor, LayerRgbColor, LayerRgbColor];
+}
+
 export interface QmkViaStatus {
   state: 'searching' | 'connecting' | 'connected' | 'disconnected' | 'unavailable';
   device?: string;
@@ -32,6 +81,9 @@ export interface QmkViaStatus {
   path?: string;
   error?: string;
   layerCount?: number;
+  deviceActiveLayer?: number;
+  activeProfileSlot?: number;
+  rgbConfig?: DeviceRgbConfig;
 }
 
 export interface ViaAction {
@@ -40,6 +92,10 @@ export interface ViaAction {
   c?: string;
   op?: string;
   n?: number;
+  layer?: number;
+  slotIndex?: number;
+  mod?: string;
+  key?: string;
 }
 
 interface HidCollectionLike {
@@ -110,6 +166,9 @@ export interface BridgeResult {
   changedMappings?: number;
   /** True only when a local pre-restore keymap snapshot was saved before a restore write. */
   preRestoreBackupSaved?: boolean;
+  deviceActiveLayer?: number;
+  activeProfileSlot?: number;
+  rgbConfig?: DeviceRgbConfig;
 }
 
 const KEY_SLOTS = [
@@ -191,6 +250,9 @@ function keycodeForDevice(action: ViaAction | null | undefined, deviceLayerCount
   if (action?.t === 'layer' && Number.isInteger(action.n) && action.n! >= deviceLayerCount) {
     return null;
   }
+  if (action?.t === 'layer_tap' && Number.isInteger(action.layer) && action.layer! >= deviceLayerCount) {
+    return null;
+  }
   return actionToViaKeycode(action);
 }
 
@@ -203,12 +265,61 @@ function unsupportedActionWarning(
   if (action?.t === 'layer' && Number.isInteger(action.n) && action.n! >= deviceLayerCount) {
     return `Layer ${layer} ${location}: target layer ${action.n! + 1} is not available on this device; action was not synced`;
   }
+  if (action?.t === 'layer_tap' && Number.isInteger(action.layer) && action.layer! >= deviceLayerCount) {
+    return `Layer ${layer} ${location}: target layer ${action.layer! + 1} is not available on this device; action was not synced`;
+  }
   return `Layer ${layer} ${location}: unsupported action was not synced`;
 }
 
 /** Convert the renderer's supported key action to a standard 16-bit QMK keycode. */
 export function actionToViaKeycode(action: ViaAction | null | undefined): number | null {
   if (!action || action.t === 'none') return 0; // an explicit empty slot is KC_NO
+
+  if (action.t === 'host_trigger') {
+    if (
+      !Number.isInteger(action.layer) ||
+      action.layer! < 0 ||
+      action.layer! > 3 ||
+      !Number.isInteger(action.slotIndex) ||
+      action.slotIndex! < 0 ||
+      action.slotIndex! >= TRIGGER_SLOT_ORDER.length
+    ) {
+      return null;
+    }
+    return MP_TRIG_BASE | ((action.layer! & 0x03) << 4) | (action.slotIndex! & 0x0f);
+  }
+
+  if (action.t === 'profile') {
+    if (!Number.isInteger(action.n) || action.n! < 0 || action.n! > 3) return null;
+    return MP_PROF_BASE | (action.n! & 0x03);
+  }
+
+  if (action.t === 'mod_tap') {
+    const modEntry = action.mod ? MODIFIERS[action.mod.trim().toUpperCase()] : undefined;
+    const kc = action.key ? basicKeycode(action.key) : null;
+    if (!modEntry || kc === null || kc > 0xff || MODIFIERS[action.key!.trim().toUpperCase()]) {
+      return null;
+    }
+    const leftModifiers = modEntry.mask & 0x0f;
+    const rightModifiers = (modEntry.mask >> 4) & 0x0f;
+    const qmkModifierBits = rightModifiers ? (0x10 | rightModifiers) : leftModifiers;
+    return 0x2000 | ((qmkModifierBits & 0x1f) << 8) | (kc & 0xff);
+  }
+
+  if (action.t === 'layer_tap') {
+    const kc = action.key ? basicKeycode(action.key) : null;
+    if (
+      !Number.isInteger(action.layer) ||
+      action.layer! < 0 ||
+      action.layer! > 15 ||
+      kc === null ||
+      kc > 0xff ||
+      MODIFIERS[action.key!.trim().toUpperCase()]
+    ) {
+      return null;
+    }
+    return 0x4000 | ((action.layer! & 0x0f) << 8) | (kc & 0xff);
+  }
 
   if (action.t === 'media') {
     return action.c ? MEDIA_KEYCODES[action.c.toUpperCase()] ?? null : null;
@@ -262,14 +373,58 @@ export class QmkViaBridge {
   private device: HidDeviceLike | null = null;
   private pending: PendingReport | null = null;
   private layerCount = 0;
+  private lastTriggerSeq: number | null = null;
   private status: QmkViaStatus;
   private statusListeners = new Set<(status: QmkViaStatus) => void>();
   private eventListeners = new Set<(event: unknown) => void>();
 
   private readonly onInputReport = (event: Event) => {
     const report = event as HidInputReportEventLike;
-    if (report.device !== this.device || report.reportId !== 0 || !this.pending) return;
+    if (report.device !== this.device || report.reportId !== 0) return;
     const bytes = toReportData(report.data);
+
+    // Asynchronous device-originated Raw HID events (layer changes & host action triggers)
+    if (bytes[0] === MP_HID_PREFIX && bytes[1] === MP_EVT_LAYER_STATE) {
+      const deviceActiveLayer = Math.min(3, Math.max(0, bytes[2] ?? 0));
+      const activeProfileSlot = Math.min(3, Math.max(0, bytes[3] ?? 0));
+      this.setStatus({
+        ...this.status,
+        deviceActiveLayer,
+        activeProfileSlot,
+      });
+      this.emit({
+        type: 'layer_state',
+        deviceActiveLayer,
+        activeProfileSlot,
+      } satisfies DeviceLayerStateEvent);
+      return;
+    }
+
+    if (bytes[0] === MP_HID_PREFIX && bytes[1] === MP_EVT_HOST_TRIGGER) {
+      const checksum = (bytes[0] ^ bytes[1] ^ bytes[2] ^ bytes[3] ^ bytes[4] ^ bytes[5] ^ bytes[6]) & 0xff;
+      const slotIndex = bytes[5] ?? 0xff;
+      if (bytes[7] === checksum && slotIndex < TRIGGER_SLOT_ORDER.length) {
+        const seq = bytes[2] ?? 0;
+        const pressed = bytes[6] === 1;
+        // Deduplicate identical consecutive sequence + press state packets
+        const dedupKey = (seq << 1) | (pressed ? 1 : 0);
+        if (this.lastTriggerSeq !== dedupKey) {
+          this.lastTriggerSeq = dedupKey;
+          this.emit({
+            type: 'hardware_trigger',
+            seq,
+            profileSlot: (bytes[3] ?? 0) & 0x03,
+            layer: (bytes[4] ?? 0) & 0x03,
+            slotIndex,
+            slotId: TRIGGER_SLOT_ORDER[slotIndex],
+            pressed,
+          } satisfies HardwareTriggerEvent);
+        }
+      }
+      return;
+    }
+
+    if (!this.pending) return;
     if (bytes[0] === VIA_COMMAND.unhandled) {
       this.pending.reject(new Error('The device does not support this VIA command'));
     } else if (bytes[0] === this.pending.commandId) {
@@ -283,6 +438,7 @@ export class QmkViaBridge {
     device.removeEventListener('inputreport', this.onInputReport);
     this.device = null;
     this.layerCount = 0;
+    this.lastTriggerSeq = null;
     this.pending?.reject(new Error('The QMK/VIA device disconnected'));
     this.pending = null;
     this.setStatus({ state: 'disconnected', error: 'The device was disconnected' });
@@ -379,6 +535,7 @@ export class QmkViaBridge {
     const device = this.device;
     this.device = null;
     this.layerCount = 0;
+    this.lastTriggerSeq = null;
     this.pending?.reject(new Error('The QMK/VIA device was disconnected by the user'));
     this.pending = null;
     if (device) {
@@ -393,18 +550,119 @@ export class QmkViaBridge {
 
   /**
    * These command names are local renderer APIs, not firmware commands.
-   * Reads and restores use only the stock VIA keycode/encoder reports below.
+   * Reads and restores use the stock VIA keycode/encoder reports plus optional
+   * Micro Pad 0xFD extension commands for 4-profile slots, layer telemetry, and RGB.
    */
   public async request(request: {
     cmd?: string;
     config?: ViaConfiguration;
     snapshot?: ViaKeymapSnapshot;
+    profileSlot?: number;
+    saveCurrentProfile?: boolean;
+    rgbConfig?: DeviceRgbConfig;
   }): Promise<BridgeResult> {
-    if (!['set_config', 'get_config', 'restore_config'].includes(request?.cmd ?? '')) {
+    if (
+      ![
+        'set_config',
+        'get_config',
+        'restore_config',
+        'select_profile',
+        'save_profile',
+        'get_device_state',
+        'set_rgb_config',
+      ].includes(request?.cmd ?? '')
+    ) {
       return { ok: false, error: 'Unsupported QMK/VIA request' };
     }
     if (!this.device || this.status.state !== 'connected') {
       return { ok: false, error: 'No QMK/VIA device is connected' };
+    }
+
+    if (request.cmd === 'get_device_state') {
+      try {
+        const res = await this.exchange(new Uint8Array([MP_HID_PREFIX, MP_CMD_GET_STATE]));
+        const deviceActiveLayer = Math.min(3, Math.max(0, res[2] ?? 0));
+        const activeProfileSlot = Math.min(3, Math.max(0, res[3] ?? 0));
+        const rgbConfig: DeviceRgbConfig = {
+          enabled: (res[6] ?? 1) !== 0,
+          layerColors: [
+            { r: res[7] ?? 0, g: res[8] ?? 81, b: res[9] ?? 255 },
+            { r: res[10] ?? 16, g: res[11] ?? 185, b: res[12] ?? 129 },
+            { r: res[13] ?? 245, g: res[14] ?? 158, b: res[15] ?? 11 },
+            { r: res[16] ?? 225, g: res[17] ?? 29, b: res[18] ?? 72 },
+          ],
+        };
+        this.setStatus({ ...this.status, deviceActiveLayer, activeProfileSlot, rgbConfig });
+        return { ok: true, deviceActiveLayer, activeProfileSlot, rgbConfig };
+      } catch (error) {
+        return { ok: false, error: this.errorMessage(error) };
+      }
+    }
+
+    if (request.cmd === 'select_profile') {
+      const slot = Number(request.profileSlot ?? 0);
+      if (!Number.isInteger(slot) || slot < 0 || slot >= 4) {
+        return { ok: false, error: 'Profile slot must be between 0 and 3' };
+      }
+      try {
+        const res = await this.exchange(new Uint8Array([
+          MP_HID_PREFIX,
+          MP_CMD_SELECT_PROFILE,
+          slot,
+          request.saveCurrentProfile !== false ? 1 : 0,
+        ]));
+        const activeProfileSlot = Math.min(3, Math.max(0, res[2] ?? slot));
+        const deviceActiveLayer = Math.min(3, Math.max(0, res[3] ?? (this.status.deviceActiveLayer ?? 0)));
+        this.setStatus({ ...this.status, activeProfileSlot, deviceActiveLayer });
+        return { ok: true, activeProfileSlot, deviceActiveLayer };
+      } catch (error) {
+        return { ok: false, error: this.errorMessage(error) };
+      }
+    }
+
+    if (request.cmd === 'save_profile') {
+      const slot = Number(request.profileSlot ?? 0);
+      if (!Number.isInteger(slot) || slot < 0 || slot >= 4) {
+        return { ok: false, error: 'Profile slot must be between 0 and 3' };
+      }
+      try {
+        const res = await this.exchange(new Uint8Array([
+          MP_HID_PREFIX,
+          MP_CMD_SAVE_PROFILE,
+          slot,
+        ]));
+        const activeProfileSlot = Math.min(3, Math.max(0, res[2] ?? slot));
+        const deviceActiveLayer = Math.min(3, Math.max(0, res[3] ?? (this.status.deviceActiveLayer ?? 0)));
+        this.setStatus({ ...this.status, activeProfileSlot, deviceActiveLayer });
+        return { ok: true, activeProfileSlot, deviceActiveLayer };
+      } catch (error) {
+        return { ok: false, error: this.errorMessage(error) };
+      }
+    }
+
+    if (request.cmd === 'set_rgb_config') {
+      const cfg = request.rgbConfig;
+      if (!cfg || !Array.isArray(cfg.layerColors) || cfg.layerColors.length !== 4) {
+        return { ok: false, error: 'Invalid RGB configuration payload' };
+      }
+      try {
+        const packet = new Uint8Array(16);
+        packet[0] = MP_HID_PREFIX;
+        packet[1] = MP_CMD_SET_RGB;
+        packet[2] = cfg.persist ? 1 : 0;
+        packet[3] = cfg.enabled ? 1 : 0;
+        for (let i = 0; i < 4; i++) {
+          const color = cfg.layerColors[i];
+          packet[4 + i * 3 + 0] = Math.max(0, Math.min(255, Math.round(color.r)));
+          packet[4 + i * 3 + 1] = Math.max(0, Math.min(255, Math.round(color.g)));
+          packet[4 + i * 3 + 2] = Math.max(0, Math.min(255, Math.round(color.b)));
+        }
+        await this.exchange(packet);
+        this.setStatus({ ...this.status, rgbConfig: cfg });
+        return { ok: true, rgbConfig: cfg };
+      } catch (error) {
+        return { ok: false, error: this.errorMessage(error) };
+      }
     }
 
     if (request.cmd === 'get_config' || request.cmd === 'restore_config') {
@@ -506,6 +764,24 @@ export class QmkViaBridge {
           }
           const current = await this.readEncoder(layer, direction.clockwise);
           if (current !== keycode) await this.setEncoder(layer, direction.clockwise, keycode);
+        }
+      }
+
+      if (
+        request.profileSlot !== undefined &&
+        Number.isInteger(request.profileSlot) &&
+        request.profileSlot >= 0 &&
+        request.profileSlot < 4
+      ) {
+        try {
+          await this.exchange(new Uint8Array([
+            MP_HID_PREFIX,
+            MP_CMD_SAVE_PROFILE,
+            request.profileSlot,
+          ]));
+          this.setStatus({ ...this.status, activeProfileSlot: request.profileSlot });
+        } catch {
+          // Stock VIA firmware without the 0xFD extension still retains the active keymap in EEPROM.
         }
       }
 

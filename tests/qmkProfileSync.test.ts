@@ -161,4 +161,41 @@ describe('QMK profile-to-VIA configuration', () => {
     expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'layer', op: 'set', n: 0 });
     expect(config.layers[7]?.keys?.r1c1).toEqual({ t: 'layer', op: 'set', n: 7 });
   });
+
+  it('compiles simple onTap + onHold multiactions into offline QMK MT/LT keycodes and supports Profile 1..4', () => {
+    const profile = oneLayer({
+      r1c1: {
+        label: 'Space / Shift',
+        binding: 'Space / Shift (onTap: Space, onHold: Shift)',
+        actionType: 'Multi-step action',
+        execution: {
+          kind: 'multi',
+          gestures: { onTap: 'Space', onHold: 'Shift' },
+        },
+      },
+      r1c2: {
+        label: 'Esc / L2',
+        binding: 'Esc / L2 (onTap: Escape, onHold: Temp Layer 2)',
+        actionType: 'Multi-step action',
+        execution: {
+          kind: 'multi',
+          gestures: { onTap: 'Escape', onHold: 'Temp Layer 2' },
+        },
+      },
+      r1c3: {
+        label: 'Prof 3',
+        binding: 'Profile 3',
+        actionType: 'Basic input',
+      },
+    });
+
+    const { config, warnings } = buildViaConfiguration(profile, 'win', { enableHostTriggers: true });
+    expect(warnings).toEqual([]);
+    expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'mod_tap', mod: 'SHIFT', key: 'SPACEBAR' });
+    expect(actionToViaKeycode(config.layers[0]?.keys?.r1c1)).toBe(0x222c);
+    expect(config.layers[0]?.keys?.r1c2).toEqual({ t: 'layer_tap', layer: 1, key: 'ESCAPE' });
+    expect(actionToViaKeycode(config.layers[0]?.keys?.r1c2)).toBe(0x4129);
+    expect(config.layers[0]?.keys?.r1c3).toEqual({ t: 'profile', n: 2 });
+    expect(actionToViaKeycode(config.layers[0]?.keys?.r1c3)).toBe(0x7e42);
+  });
 });

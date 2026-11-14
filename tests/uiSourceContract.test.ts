@@ -3,12 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { PRESET_CATALOG } from '../src/presetCatalog';
 
-describe('Production React source and legacy inline regression checks', () => {
+describe('Production React source regression checks', () => {
   const htmlContent = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
-  const legacyInlineBundle = fs.readFileSync(
-    path.join(process.cwd(), 'tests/fixtures/legacyEmbeddedApp.js'),
-    'utf-8'
-  );
   const mainSource = fs.readFileSync(path.join(process.cwd(), 'src/main.tsx'), 'utf-8');
   const bridgeSource = fs.readFileSync(path.join(process.cwd(), 'src/qmkViaBridge.ts'), 'utf-8');
   const deviceLayoutSource = fs.readFileSync(path.join(process.cwd(), 'src/deviceLayout.ts'), 'utf-8');
@@ -42,11 +38,6 @@ describe('Production React source and legacy inline regression checks', () => {
     path.join(process.cwd(), 'src/macropadMovement.ts'),
     'utf-8'
   );
-  const embeddedEntranceRuntime = fs.readFileSync(
-    path.join(process.cwd(), 'src/embeddedEntranceRuntime.js'),
-    'utf-8'
-  ).trim();
-  const shippedInlineBundle = legacyInlineBundle;
 
   it('prepares relative packaged assets and Windows Electron titlebar interaction', () => {
     expect(viteConfig).toContain("base: './'");
@@ -105,13 +96,9 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(entranceAnimations).toContain('[0.22, 1, 0.36, 1]');
     expect(entranceAnimations).toContain('0.58 + row * 0.11 + column * 0.035');
     expect(entranceAnimations).toContain('initialScale: 0.975');
-    expect(shippedInlineBundle.endsWith(embeddedEntranceRuntime)).toBe(true);
-    expect(embeddedEntranceRuntime).toContain('node:app-ready');
-    expect(embeddedEntranceRuntime).toContain('prefers-reduced-motion: reduce');
-    expect(embeddedEntranceRuntime).toContain('0.58 + row * 0.11 + column * 0.035');
   });
 
-  it('keeps the entire Macropad movement unit inside the open canvas in source and legacy app', () => {
+  it('keeps the entire Macropad movement unit inside the open canvas in source', () => {
     expect(appSource).toContain('macropadMoveUnitRef');
     expect(appSource).toContain('clampMacropadOffsetToArea');
     expect(appSource).toContain('bottom: rect.bottom - 132');
@@ -123,24 +110,15 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(macropadMovement).toContain('area.right');
     expect(macropadMovement).toContain('area.top');
     expect(macropadMovement).toContain('area.bottom');
-    expect(shippedInlineBundle).toContain('rect.left+8');
-    expect(shippedInlineBundle).toContain('rect.bottom-132');
-    expect(shippedInlineBundle).toContain('offsetWidth');
-    expect(shippedInlineBundle).toContain('offsetHeight');
-    expect(shippedInlineBundle).toContain('l===`dial-tl`?240:95');
-    expect(shippedInlineBundle).toContain('It(Rn(0,0))');
-    expect(shippedInlineBundle).toContain('mass:.5}:{type:`spring`,stiffness:320,damping:40}');
   });
 
   it('edits profile names inside their capsules and keeps the top field display-only', () => {
     expect(appSource).toContain('handleUpdateProfileName(idx, event.target.value)');
     expect(appSource).toContain("title={currentProfile.name || 'Untitled Profile'}");
     expect(appSource).toContain('aria-label={`Rename profile ${prof.name || idx + 1}`}');
-    expect(shippedInlineBundle).toContain('rr=(e,t=a)=>');
-    expect(shippedInlineBundle).toContain('Rename profile ${e.name||t+1}');
   });
 
-  it('refreshes every preset app badge in source and legacy library views', () => {
+  it('refreshes every preset app badge in source library views', () => {
     const presetIconIds = [
       'chatgpt', 'vscode', 'github', 'terminal', 'docker', 'chrome_devtools', 'photoshop',
       'illustrator', 'premiere', 'aftereffects', 'davinci', 'blender', 'figma', 'framer',
@@ -151,27 +129,18 @@ describe('Production React source and legacy inline regression checks', () => {
       appSource.indexOf('const PRESET_APP_ICON_CONFIGS'),
       appSource.indexOf('function getPresetAppIconPath')
     );
-    const shippedPresetIcons = shippedInlineBundle.slice(
-      shippedInlineBundle.indexOf('function Bd({id:e})'),
-      shippedInlineBundle.indexOf('function Vd({size:e=16')
-    );
 
     expect(appSource).toContain('data-preset-icon={id}');
-    expect(shippedInlineBundle).toContain('data-preset-icon');
     expect(sourcePresetIcons).not.toBe('');
-    expect(shippedPresetIcons).not.toBe('');
     for (const id of presetIconIds) {
       expect(sourcePresetIcons).toContain(`${id}:`);
-      expect(shippedPresetIcons).toContain(`${id}:{`);
     }
     expect(appSource).toContain('getPresetAppIconPath(config.iconId)');
-    expect(shippedInlineBundle).toContain('window.__MACRO_ICONS__?.d?.[t.icon]');
   });
 
   it('keeps the Tip widget height fixed while its text rotates', () => {
     expect(appSource).toContain('group h-[54px] shrink-0');
     expect(appSource).not.toContain('group min-h-[54px]');
-    expect(shippedInlineBundle).toContain('group h-[54px] shrink-0');
   });
 
   it('centers the top navigation independently of the side controls and Windows caption buttons', () => {
@@ -325,7 +294,7 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(viteConfig).toContain('/api/execute-action');
   });
 
-  it('routes the React app and legacy inline reference through profile and automatic device-backup helpers', () => {
+  it('routes the React app through profile and automatic device-backup helpers', () => {
     expect(appSource).toContain('profileFileTools.pickFile()');
     expect(appSource).toContain('profileFileTools.merge(');
     expect(appSource).toContain('profileFileTools.download(source, customItemsByTab)');
@@ -333,12 +302,6 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(appSource).not.toContain('deviceKeymapFileTools.downloadLatestBackup()');
     expect(appSource).not.toContain('deviceKeymapFileTools.restoreFromFile(bridge');
     expect(appSource).not.toContain("name: 'Imported Profile'");
-    expect(shippedInlineBundle).toContain('window.nodeStudioProfileFiles');
-    expect(shippedInlineBundle).toContain('await e.pickFile()');
-    expect(shippedInlineBundle).toContain('n.download(t,ae)');
-    expect(shippedInlineBundle).toContain('window.nodeStudioDeviceKeymapFiles?.restoreFromFile');
-    expect(shippedInlineBundle).toContain('window.nodeStudioDeviceKeymapFiles?.downloadLatestBackup');
-    expect(shippedInlineBundle).toContain('savePreSyncSnapshot(e.snapshot');
   });
 
   it('loads the stock VIA bridge and keeps automatic pre-write backups without backup controls in Settings', () => {
@@ -351,7 +314,6 @@ describe('Production React source and legacy inline regression checks', () => {
     expect(appSource).toContain('savePreSyncSnapshot');
     expect(bridgeSource).toContain("cmd === 'restore_config'");
     expect(backupSource).toContain('savePreSyncSnapshot');
-    expect(legacyInlineBundle).not.toContain('children:`Device connected:`');
   });
 
   it('should load the full 8,703 vector icon library via static public script', () => {
