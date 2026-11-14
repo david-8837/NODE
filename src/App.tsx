@@ -4377,42 +4377,38 @@ export default function App() {
                           </div>
 
                           {/* LED Colour Settings Pill Button */}
-                          {(() => {
-                            const currentLayerLed =
-                              layerLedConfigs[Math.min(3, Math.max(0, activeLayerIndex))] ||
-                              DEFAULT_LAYER_LED_CONFIGS[0];
-                            return (
-                              <motion.button
-                                whileHover={{ scale: 1.04 }}
-                                whileTap={{ scale: 0.94 }}
-                                onClick={() => {
-                                  setLedEditingLayerIdx(Math.min(3, Math.max(0, activeLayerIndex)));
-                                  setLayerLightingOpen((o) => !o);
-                                }}
-                                aria-label="LED colour settings"
-                                className={`h-[28px] px-[11px] rounded-full border-[1.5px] flex items-center justify-center gap-[6px] text-[10.5px] font-medium transition-colors cursor-pointer ${
-                                  layerLightingOpen
-                                    ? 'bg-[#000000] text-white border-[#000000]'
-                                    : 'bg-white hover:bg-neutral-50 text-[#444444] border-transparent hover:border-[#0051ff] shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
-                                }`}
-                              >
-                                <span
-                                  className="w-[9px] h-[9px] rounded-full shrink-0 border border-black/15 transition-colors"
-                                  style={{
-                                    backgroundColor:
-                                      currentLayerLed.preset === 'Off'
-                                        ? '#9ca3af'
-                                        : currentLayerLed.colorHex,
-                                    boxShadow:
-                                      currentLayerLed.preset === 'Off'
-                                        ? 'none'
-                                        : `0 0 6px ${currentLayerLed.colorHex}`,
-                                  }}
-                                />
-                                <span>L{activeLayerIndex + 1} LED</span>
-                              </motion.button>
-                            );
-                          })()}
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.94 }}
+                            onClick={() => {
+                              setLedEditingLayerIdx(Math.min(3, Math.max(0, activeLayerIndex)));
+                              setLayerLightingOpen((o) => !o);
+                            }}
+                            title="Layer LED settings"
+                            aria-label="LED colour settings"
+                            className={`w-[58px] h-[28px] rounded-full border-[1.5px] flex items-center justify-center transition-colors cursor-pointer ${
+                              layerLightingOpen
+                                ? 'bg-[#000000] text-white border-[#000000]'
+                                : 'bg-white hover:bg-neutral-50 text-[#555555] border-transparent hover:border-[#0051ff] shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+                            }`}
+                          >
+                            <svg
+                              width="16"
+                              height="14"
+                              viewBox="0 0 18 15"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                            >
+                              <line x1="6.2" y1="11.5" x2="11.8" y2="11.5" />
+                              <line x1="9" y1="5.0" x2="9" y2="7.2" />
+                              <line x1="5.5" y1="6.5" x2="6.9" y2="7.9" />
+                              <line x1="12.5" y1="6.5" x2="11.1" y2="7.9" />
+                              <line x1="3.8" y1="9.6" x2="5.6" y2="9.6" />
+                              <line x1="14.2" y1="9.6" x2="12.4" y2="9.6" />
+                            </svg>
+                          </motion.button>
 
                           {/* Delete Layer × Button (only shown when more than 1 layer exists; turns solid red on hover) */}
                           {currentProfile.layers.length > 1 && (
@@ -4455,13 +4451,8 @@ export default function App() {
                         >
                           {/* 4-Layer Per-Layer LED Selector Card */}
                           <div className="bg-[#eeeeee] rounded-[14px] p-[10px] mb-[8px]">
-                            <div className="flex items-center justify-between mb-[7px]">
-                              <span className="text-[11px] font-medium text-[#444444]">
-                                Per-Layer LED
-                              </span>
-                              <span className="text-[10px] font-semibold text-[#0051ff]">
-                                Layer {ledEditingLayerIdx + 1} · {HARDWARE_LAYER_NAMES[ledEditingLayerIdx] ?? `L${ledEditingLayerIdx + 1}`}
-                              </span>
+                            <div className="text-[11px] font-medium text-[#444444] mb-[7px] text-left">
+                              Per-Layer LED
                             </div>
                             <div className="grid grid-cols-4 gap-[5px]">
                               {HARDWARE_LAYER_NAMES.map((layerLabel, lIdx) => {
@@ -4503,13 +4494,8 @@ export default function App() {
 
                           {/* Presets Card (for the selected layer) */}
                           <div className="bg-[#eeeeee] rounded-[14px] p-[10px] mb-[8px]">
-                            <div className="flex items-center justify-between mb-[7px]">
-                              <span className="text-[11px] font-normal text-[#555555]">
-                                Mode
-                              </span>
-                              <span className="text-[9.5px] text-[#777777]">
-                                {HARDWARE_LAYER_NAMES[ledEditingLayerIdx]}
-                              </span>
+                            <div className="text-[11px] font-normal text-[#555555] mb-[7px] text-left">
+                              Mode
                             </div>
                             <div className="grid grid-cols-2 gap-[5px]">
                               {(
