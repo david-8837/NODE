@@ -94,16 +94,17 @@ jobs:
           done
         working-directory: ${{ runner.temp }}/qmk_firmware
 
-      - name: Stage the VIA firmware with checksum and build provenance
+      - name: Stage both firmware UF2s with checksums and build provenance
         shell: bash
         run: |
           set -euo pipefail
-          artifact_dir="$RUNNER_TEMP/grid-macro-1-via-artifact"
+          artifact_dir="$RUNNER_TEMP/grid-macro-1-firmware"
           mkdir -p "$artifact_dir"
           cp .build/grid_macro_1_via.uf2 "$artifact_dir/grid_macro_1_via.uf2"
+          cp .build/grid_macro_1_default.uf2 "$artifact_dir/grid_macro_1_default.uf2"
           (
             cd "$artifact_dir"
-            sha256sum grid_macro_1_via.uf2 > SHA256SUMS.txt
+            sha256sum grid_macro_1_via.uf2 grid_macro_1_default.uf2 > SHA256SUMS.txt
           )
           qmk_commit="$(git rev-parse HEAD)"
           cli_version="$(qmk --version)"
@@ -112,8 +113,9 @@ jobs:
           apt_versions="$(dpkg-query -W -f='${binary:Package}=${Version}\n' binutils-arm-none-eabi build-essential gcc-arm-none-eabi git libnewlib-arm-none-eabi python3-venv | paste -sd ', ' -)"
           python_versions="$("$RUNNER_TEMP/qmk-venv/bin/python" -m pip freeze | paste -sd ', ' -)"
           {
-            printf 'Firmware: Grid Macro 1, VIA keymap\n'
+            printf 'Firmware: Grid Macro 1, VIA and default keymaps\n'
             printf 'Repository commit: %s\n' "$GITHUB_SHA"
+            printf 'Repository branch: %s\n' "$GITHUB_REF_NAME"
             printf 'Workflow run: %s (attempt %s)\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
             printf 'Runner image: ubuntu-22.04 (%s)\n' "$runner_os"
             printf 'Build prerequisite package versions: %s\n' "$apt_versions"
@@ -122,26 +124,30 @@ jobs:
             printf 'QMK CLI: %s\n' "$cli_version"
             printf 'ARM compiler: %s\n' "$compiler_version"
             printf 'Build keymaps verified: via, default\n'
-            printf 'Artifact SHA-256: %s\n' "$(cut -d ' ' -f 1 "$artifact_dir/SHA256SUMS.txt")"
+            printf 'VIA UF2 SHA-256: %s\n' "$(sha256sum "$artifact_dir/grid_macro_1_via.uf2" | cut -d ' ' -f 1)"
+            printf 'Default UF2 SHA-256: %s\n' "$(sha256sum "$artifact_dir/grid_macro_1_default.uf2" | cut -d ' ' -f 1)"
           } > "$artifact_dir/BUILD-INFO.txt"
           {
             echo '## Grid Macro 1 firmware build'
             echo ''
             echo "- Repository commit: $GITHUB_SHA"
+            echo "- Repository branch: $GITHUB_REF_NAME"
             echo "- Runner image: ubuntu-22.04 ($runner_os)"
             echo "- QMK firmware commit: $qmk_commit"
             echo "- QMK CLI: $cli_version"
             echo "- ARM compiler: $compiler_version"
             echo '- Keymaps compiled and non-empty UF2 files verified: `via`, `default`'
-            echo '- VIA artifact SHA-256 is recorded in `SHA256SUMS.txt`'
+            echo "- VIA UF2 SHA-256: $(sha256sum "$artifact_dir/grid_macro_1_via.uf2" | cut -d ' ' -f 1)"
+            echo "- Default UF2 SHA-256: $(sha256sum "$artifact_dir/grid_macro_1_default.uf2" | cut -d ' ' -f 1)"
+            echo '- Both UF2 files and their checksums are included in the downloadable firmware artifact.'
           } >> "$GITHUB_STEP_SUMMARY"
         working-directory: ${{ runner.temp }}/qmk_firmware
 
-      - name: Upload the VIA UF2 and provenance files
+      - name: Upload both firmware UF2s and provenance files
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: grid-macro-1-via-firmware
-          path: ${{ runner.temp }}/grid-macro-1-via-artifact/
+          name: grid-macro-1-firmware
+          path: ${{ runner.temp }}/grid-macro-1-firmware/
           if-no-files-found: error
           retention-days: 7
 
