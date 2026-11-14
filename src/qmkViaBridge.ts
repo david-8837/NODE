@@ -44,6 +44,8 @@ export interface QmkViaStatus {
   state: 'searching' | 'connecting' | 'connected' | 'disconnected' | 'unavailable';
   device?: string;
   fw?: string;
+  /** USB serial number, when firmware exposes a per-unit hardware ID. */
+  deviceId?: string;
   path?: string;
   error?: string;
   layerCount?: number;
@@ -72,6 +74,7 @@ export interface HidDeviceLike extends EventTarget {
   vendorId: number;
   productId: number;
   productName?: string;
+  serialNumber?: string;
   opened: boolean;
   collections?: HidCollectionLike[];
   open(): Promise<void>;
@@ -237,6 +240,12 @@ export function actionToViaKeycode(action: ViaAction | null | undefined): number
     return action.c ? MEDIA_KEYCODES[action.c.toUpperCase()] ?? null : null;
   }
 
+  if (action.t === 'macro') {
+    return Number.isInteger(action.n) && action.n! >= 0 && action.n! < 16
+      ? 0x7700 | action.n!
+      : null;
+  }
+
   if (action.t === 'layer') {
     if (!Number.isInteger(action.n) || action.n! < 0 || action.n! > 31) return null;
     if (action.op === 'set') return 0x5200 | action.n!; // TO(layer)
@@ -273,6 +282,61 @@ export function actionToViaKeycode(action: ViaAction | null | undefined): number
   if (leftModifiers && rightModifiers) return null;
   const qmkModifierBits = rightModifiers ? (0x10 | rightModifiers) : leftModifiers;
   return (qmkModifierBits << 8) | baseKeycode;
+}
+
+const MODIFIER_BY_KEYCODE = Object.fromEntries(
+  Object.entries(MODIFIERS).map(([name, value]) => [value.keycode, name])
+) as Record<number, string>;
+
+const MEDIA_ACTION_BY_KEYCODE = Object.fromEntries(
+  Object.entries(MEDIA_KEYCODES).map(([name, keycode]) => [keycode, name])
+) as Record<number, string>;
+
+function basicKeyNameFromKeycode(keycode: number): string | null {
+  if (keycode >= 0x04 && keycode <= 0x1d) return String.fromCharCode(65 + keycode - 0x04);
+  if (keycode >= 0x1e && keycode <= 0x26) return String(keycode - 0x1d);
+  if (keycode === 0x27) return '0';
+  if (keycode >= 0x3a && keycode <= 0x45) return `F${keycode - 0x39}`;
+  if (keycode >= 0x68 && keycode <= 0x73) return `F${keycode - 0x5b}`;
+  if (keycode >= 0x59 && keycode <= 0x62) return `KEYPAD_${keycode === 0x62 ? 0 : keycode - 0x58}`;
+  for (const [name, value] of Object.entries(SPECIAL_KEYCODES)) {
+    if (value === keycode) return name;
+  }
+  return MODIFIER_BY_KEYCODE[keycode] ?? null;
+}
+
+/** Decode only actions that the desktop profile can represent without loss. */
+export function viaKeycodeToAction(keycode: number): ViaAction | null {
+  if (!Number.isInteger(keycode) || keycode < 0 || keycode > 0xffff) return null;
+  if (keycode === 0) return { t: 'none' };
+
+  const media = MEDIA_ACTION_BY_KEYCODE[keycode];
+  if (media) return { t: 'media', c: media };
+  if (keycode >= 0x5200 && keycode <= 0x521f) return { t: 'layer', op: 'set', n: keycode & 0x1f };
+  if (keycode >= 0x5220 && keycode <= 0x523f) return { t: 'layer', op: 'hold', n: keycode & 0x1f };
+  if (keycode >= 0x7700 && keycode <= 0x770f) return { t: 'macro', n: keycode & 0x0f };
+
+  if (keycode >= 0x0100 && keycode <= 0x1fff) {
+    const modifierBits = (keycode >> 8) & 0xff;
+    const baseKeycode = keycode & 0xff;
+    const rightSide = (modifierBits & 0x10) !== 0;
+    const modifierMask = rightSide ? modifierBits & 0x0f : modifierBits;
+    if (modifierBits & (rightSide ? 0xe0 : 0xf0)) return null;
+    const keys: string[] = [];
+    for (const [name, modifier] of Object.entries(MODIFIERS)) {
+      const rightModifier = modifier.mask >= 0x10;
+      if (rightModifier !== rightSide) continue;
+      const bit = rightModifier ? modifier.mask >> 4 : modifier.mask;
+      if (modifierMask & bit) keys.push(name);
+    }
+    const baseName = basicKeyNameFromKeycode(baseKeycode);
+    if (!keys.length || !baseName) return null;
+    return { t: 'keys', k: [...keys, baseName] };
+  }
+
+  const key = basicKeyNameFromKeycode(keycode);
+  if (key) return { t: 'keys', k: [key] };
+  return null;
 }
 
 function toReportData(view: DataView): Uint8Array {
@@ -792,6 +856,7 @@ export class QmkViaBridge {
         state: 'connected',
         device: device.productName || 'Grid Macro 1',
         fw: firmware,
+        deviceId: device.serialNumber?.trim() ? `rp2040:${device.serialNumber.trim().toLowerCase()}` : undefined,
         path: `VIA ${this.layerCount} layers`,
         layerCount: this.layerCount,
       });

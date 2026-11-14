@@ -47,6 +47,7 @@ describe('Grid Macro 1 QMK definition preflight', () => {
     expect(keyboard.rgblight).toMatchObject({ pin: 'GP16', led_count: 1, driver: 'ws2812' });
     expect(config).toMatch(/#define WS2812_DI_PIN GP16\b/);
     expect(config).toMatch(/#define DYNAMIC_KEYMAP_LAYER_COUNT 4\b/);
+    expect(config).toMatch(/#define SERIAL_NUMBER_USE_HARDWARE_ID TRUE\b/);
     expect(viaRules).toContain('VIA_ENABLE = yes');
     expect(viaRules).toContain('ENCODER_MAP_ENABLE = yes');
     expect(commonRules).toContain('RAW_ENABLE = yes');

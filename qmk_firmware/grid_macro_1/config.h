@@ -8,6 +8,9 @@
 #define USB_POLLING_INTERVAL_MS 1
 #define DEBOUNCE 10
 
+/* Expose the RP2040 hardware ID as the USB serial number for per-unit sync identity. */
+#define SERIAL_NUMBER_USE_HARDWARE_ID TRUE
+
 /* EC11 encoder direction is reversed by the board's wiring. */
 #define ENCODER_DIRECTION_FLIP
 

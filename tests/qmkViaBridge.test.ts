@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   actionToViaKeycode,
+  viaKeycodeToAction,
   QmkViaBridge,
   VIA_PROTOCOL_VERSION,
   VIA_RAW_REPORT_SIZE,
@@ -23,6 +24,7 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
   public readonly vendorId = VIA_USB_VENDOR_ID;
   public readonly productId = VIA_USB_PRODUCT_ID;
   public readonly productName = 'Grid Macro 1 test device';
+  public serialNumber?: string;
   public readonly collections = [{ usagePage: VIA_RAW_USAGE_PAGE, usage: VIA_RAW_USAGE_ID }];
   public opened = false;
   public readonly reports: Uint8Array[] = [];
@@ -162,8 +164,27 @@ describe('QMK/VIA keycode translation', () => {
     [{ t: 'media', c: 'BRIGHTNESS_DECREMENT' }, 0x00be],
     [{ t: 'layer', op: 'set', n: 2 }, 0x5202],
     [{ t: 'layer', op: 'hold', n: 1 }, 0x5221],
+    [{ t: 'macro', n: 3 }, 0x7703],
   ])('translates supported action %j to VIA keycode %j', (action, expected) => {
     expect(actionToViaKeycode(action)).toBe(expected);
+  });
+
+  it.each([
+    [0x0000, { t: 'none' }],
+    [0x0004, { t: 'keys', k: ['A'] }],
+    [0x0316, { t: 'keys', k: ['CONTROL', 'SHIFT', 'S'] }],
+    [0x111d, { t: 'keys', k: ['RIGHT_CONTROL', 'Z'] }],
+    [0x00ab, { t: 'media', c: 'SCAN_NEXT_TRACK' }],
+    [0x5202, { t: 'layer', op: 'set', n: 2 }],
+    [0x5221, { t: 'layer', op: 'hold', n: 1 }],
+    [0x7703, { t: 'macro', n: 3 }],
+  ])('decodes device keycode 0x%s to a supported action', (code, expected) => {
+    expect(viaKeycodeToAction(code)).toEqual(expected);
+  });
+
+  it('fails closed for keycodes the desktop profile cannot represent', () => {
+    expect(viaKeycodeToAction(0x7777)).toBeNull();
+    expect(viaKeycodeToAction(0xffff)).toBeNull();
   });
 
   it('returns zero for an empty slot and declines unsupported sequences', () => {
@@ -172,6 +193,7 @@ describe('QMK/VIA keycode translation', () => {
     expect(actionToViaKeycode({ t: 'keys', k: ['CONTROL', 'RIGHT_SHIFT', 'A'] })).toBeNull();
     expect(actionToViaKeycode({ t: 'layer', op: 'next', n: 0 })).toBeNull();
     expect(actionToViaKeycode({ t: 'media', c: 'UNKNOWN' })).toBeNull();
+    expect(actionToViaKeycode({ t: 'macro', n: 16 })).toBeNull();
   });
 });
 
@@ -365,6 +387,17 @@ describe('QMK/VIA WebHID bridge', () => {
     expect(hid.device.opened).toBe(false);
   });
 
+  it('exposes a normalized stable USB identity when the firmware provides a serial number', async () => {
+    const hid = new FakeHidApi();
+    hid.device.serialNumber = 'RP2040-ABCDEF012345';
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+
+    const status = await bridge.connect();
+
+    expect(status.deviceId).toBe('rp2040:rp2040-abcdef012345');
+    await bridge.disconnect();
+  });
+
   it('reads a keymap-only snapshot with stock VIA GET commands and no writes', async () => {
     const hid = new FakeHidApi();
     hid.device.seedKeycode(0, 0, 0, 0x1204);
@@ -392,6 +425,20 @@ describe('QMK/VIA WebHID bridge', () => {
     expect(hid.device.reports.filter((report) => report[0] === 0x04)).toHaveLength(4 * 10);
     expect(hid.device.reports.filter((report) => report[0] === 0x14)).toHaveLength(4 * 2);
     expect(hid.device.reports.some((report) => report[0] === 0x05 || report[0] === 0x15)).toBe(false);
+  });
+
+  it('rejects a corrupt device layer-count response without returning a partial keymap', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    hid.device.layerCount = 0;
+
+    const result = await bridge.request({ cmd: 'get_config' });
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('layer count') });
+    expect(result.snapshot).toBeUndefined();
+    expect(hid.device.reports.some(report => report[0] === 0x05 || report[0] === 0x15)).toBe(false);
+    await bridge.disconnect();
   });
 
   it('reports a failed silent reconnect instead of remaining stuck in connecting', async () => {

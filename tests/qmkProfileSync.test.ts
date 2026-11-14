@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actionToViaKeycode } from '../src/qmkViaBridge';
-import { buildViaConfiguration } from '../src/qmkProfileSync';
+import { buildViaConfiguration, viaKeycodeToProfileBinding } from '../src/qmkProfileSync';
 
 const blankKey = { label: '', binding: 'blank', actionType: 'Basic input' };
 
@@ -160,6 +160,30 @@ describe('QMK profile-to-VIA configuration', () => {
     expect(config.layers).toHaveLength(8);
     expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'layer', op: 'set', n: 0 });
     expect(config.layers[7]?.keys?.r1c1).toEqual({ t: 'layer', op: 'set', n: 7 });
+  });
+
+  it('decodes native device mappings into editor bindings without changing their execution meaning', () => {
+    expect(viaKeycodeToProfileBinding(0x0316)).toEqual({
+      label: 'CONTROL + SHIFT + S',
+      binding: 'CONTROL + SHIFT + S',
+      actionType: 'Shortcut',
+    });
+    expect(viaKeycodeToProfileBinding(0x00ab)).toEqual({
+      label: 'next track', binding: 'next track', actionType: 'Shortcut',
+    });
+    expect(viaKeycodeToProfileBinding(0x5221)).toEqual({
+      label: 'Temp Layer 2', binding: 'Temp Layer 2', actionType: 'Shortcut',
+    });
+    expect(viaKeycodeToProfileBinding(0x7703)).toEqual({
+      label: 'QMK Macro 4', binding: 'QMK Macro 4', actionType: 'Shortcut',
+    });
+    expect(viaKeycodeToProfileBinding(0xffff)).toBeNull();
+
+    const { config, warnings } = buildViaConfiguration(oneLayer({
+      r1c1: { label: 'QMK Macro 4', binding: 'QMK Macro 4', actionType: 'Shortcut' },
+    }), 'win');
+    expect(warnings).toEqual([]);
+    expect(actionToViaKeycode(config.layers[0]?.keys?.r1c1)).toBe(0x7703);
   });
 
   it('maps Cheat-Sheet HUD actions to KC_NO so physical keypresses do not emit phantom keystrokes', () => {

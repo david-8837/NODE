@@ -4,13 +4,14 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { DEVICE_KEYMAP_BACKUP_HISTORY_KEY } from '../src/deviceKeymapFiles';
+import { DEVICE_SYNC_CHECKPOINTS_KEY } from '../src/deviceSyncCheckpoint';
 import { PROFILE_FILE_STORAGE_KEY } from '../src/profileFiles';
 import { actionToViaKeycode, VIA_PROTOCOL_VERSION, type ViaConfiguration, type ViaKeymapSnapshot } from '../src/qmkViaBridge';
 
 let container: HTMLDivElement;
 let root: Root;
 
-function deviceSnapshot(): ViaKeymapSnapshot {
+function deviceSnapshot(overrides: Partial<ViaKeymapSnapshot['layers'][number]['keys']> = {}): ViaKeymapSnapshot {
   return {
     protocolVersion: VIA_PROTOCOL_VERSION,
     layerCount: 1,
@@ -26,6 +27,7 @@ function deviceSnapshot(): ViaKeymapSnapshot {
         r3c1: 0x000a,
         r3c2: 0x000b,
         r3c3: 0x000c,
+        ...overrides,
       },
       enc: { ccw: 0x00aa, cw: 0x00a9, press: 0x0028 },
     }],
@@ -40,6 +42,13 @@ async function openProfiles() {
   await click(container.querySelector<HTMLButtonElement>(
     'button[aria-label="Toggle profile list"]'
   )!);
+}
+
+async function clickButtonContaining(text: string) {
+  const button = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+    .find(candidate => candidate.textContent?.includes(text));
+  if (!button) throw new Error(`Button containing "${text}" was not found`);
+  await click(button);
 }
 
 beforeEach(() => {
@@ -63,7 +72,7 @@ afterEach(async () => {
 
 describe('production React app device sync', () => {
   it('backs up before writes, skips profile-metadata-only sync, and syncs again after reconnect', async () => {
-    const statusListeners = new Set<(status: { state: string; device?: string; fw?: string }) => void>();
+    const statusListeners = new Set<(status: { state: string; device?: string; deviceId?: string; fw?: string }) => void>();
     const writtenConfigurations: ViaConfiguration[] = [];
     let backupPresentAtWrite = false;
     let snapshot = deviceSnapshot();
@@ -90,7 +99,7 @@ describe('production React app device sync', () => {
     });
     const bridge = {
       getStatus: vi.fn().mockResolvedValue({ state: 'disconnected' }),
-      onStatus: vi.fn((listener: (status: { state: string; device?: string; fw?: string }) => void) => {
+      onStatus: vi.fn((listener: (status: { state: string; device?: string; deviceId?: string; fw?: string }) => void) => {
         statusListeners.add(listener);
         return () => statusListeners.delete(listener);
       }),
@@ -107,7 +116,7 @@ describe('production React app device sync', () => {
 
     const emitStatus = async (state: string) => {
       await act(async () => {
-        for (const listener of statusListeners) listener({ state, device: 'Test Grid Macro', fw: 'VIA test' });
+        for (const listener of statusListeners) listener({ state, device: 'Test Grid Macro', deviceId: 'rp2040:test-unit', fw: 'VIA test' });
         await new Promise((resolve) => window.setTimeout(resolve, 20));
       });
     };
@@ -120,6 +129,7 @@ describe('production React app device sync', () => {
     };
 
     await emitStatus('connected');
+    await clickButtonContaining('Apply desktop mappings');
     await waitForWriteCount(1);
     expect(request.mock.calls.map(([payload]) => payload.cmd)).toEqual(['get_config', 'get_config', 'set_config', 'get_config']);
     expect(writtenConfigurations[0]?.layers[0]?.enc).toEqual({
@@ -129,6 +139,9 @@ describe('production React app device sync', () => {
     });
     expect(backupPresentAtWrite).toBe(true);
     expect(window.localStorage.getItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY)).not.toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(DEVICE_SYNC_CHECKPOINTS_KEY)!).entries[0]).toMatchObject({
+      deviceId: 'rp2040:test-unit', profileId: 'default', localRevision: 1,
+    });
     expect(bridge.putFile).not.toHaveBeenCalled();
 
     await openProfiles();
@@ -149,22 +162,139 @@ describe('production React app device sync', () => {
     expect(request.mock.calls.map(([payload]) => payload.cmd)).toEqual([
       'get_config', 'get_config', 'set_config', 'get_config', 'get_config',
     ]);
+    expect(JSON.parse(window.localStorage.getItem(DEVICE_SYNC_CHECKPOINTS_KEY)!).entries[0].localRevision).toBe(2);
     expect(bridge.putFile).not.toHaveBeenCalled();
   });
 
-  it('preserves a conflicting device and desktop profile when replacement is declined', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false);
+  it('preserves both sides when the user pauses a device/desktop conflict', async () => {
     const saved = JSON.stringify({ v: 1, activeProfileIndex: 0, profiles: [{ id: 'saved', name: 'Saved', layers: [{ r2c1: { label: 'A', binding: 'A', actionType: 'Basic input' } }] }] });
     localStorage.setItem(PROFILE_FILE_STORAGE_KEY, saved);
     const request = vi.fn(async ({ cmd }: { cmd: string }) => cmd === 'get_config' ? { ok: true, snapshot: deviceSnapshot() } : { ok: true });
     const bridge = { getStatus: async () => ({ state: 'connected', device: 'test' }), onStatus: () => () => {}, onHardwareEvent: () => () => {}, onEvent: () => () => {}, request };
     Object.defineProperty(window, 'macropad', { configurable: true, value: bridge });
     await act(async () => { root.render(createElement(App)); await new Promise(r => setTimeout(r, 800)); });
-    await act(async () => { await new Promise(r => setTimeout(r, 800)); });
-    expect(window.confirm).toHaveBeenCalledOnce();
+    await clickButtonContaining('Keep both and pause');
     expect(request.mock.calls.some(([p]) => p.cmd === 'set_config')).toBe(false);
     expect(JSON.parse(localStorage.getItem(PROFILE_FILE_STORAGE_KEY)!).profiles[0].layers[0].r2c1.binding).toBe('A');
     expect(localStorage.getItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY)).not.toBeNull();
+  });
+
+  it('imports device-native changes while retaining unchanged desktop-only assignments', async () => {
+    localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify({
+      v: 1,
+      activeProfileIndex: 0,
+      profiles: [{
+        id: 'saved', name: 'Saved', layers: [{
+          r1c1: { label: 'Old', binding: 'B', actionType: 'Basic input' },
+          r1c2: { label: 'Text', binding: 'Text: hello', actionType: 'Smart Action', execution: { kind: 'text', value: 'hello' } },
+        }],
+      }],
+    }));
+    const request = vi.fn(async ({ cmd }: { cmd: string }) => cmd === 'get_config'
+      ? { ok: true, snapshot: deviceSnapshot({ r1c2: 0 }) }
+      : { ok: true });
+    Object.defineProperty(window, 'macropad', { configurable: true, value: {
+      getStatus: async () => ({ state: 'connected', device: 'test' }),
+      onStatus: () => () => {}, onHardwareEvent: () => () => {}, onEvent: () => () => {}, request,
+    } });
+    await act(async () => { root.render(createElement(App)); await new Promise(resolve => setTimeout(resolve, 800)); });
+    await clickButtonContaining('Use device mappings');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+
+    const saved = JSON.parse(localStorage.getItem(PROFILE_FILE_STORAGE_KEY)!);
+    expect(saved.profiles[0].layers[0].r1c1.binding).toBe('A');
+    expect(saved.profiles[0].layers[0].r1c2.execution).toEqual({ kind: 'text', value: 'hello' });
+    expect(request.mock.calls.some(([payload]) => payload.cmd === 'set_config')).toBe(false);
+    expect(localStorage.getItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY)).not.toBeNull();
+  });
+
+  it('marks the last-known desktop profile unverified while a device keymap read is pending', async () => {
+    const savedProfile = {
+      v: 1,
+      activeProfileIndex: 0,
+      profiles: [{ id: 'cached', name: 'Cached Work', color: '#123456', layers: [{
+        r1c1: { label: 'Save', binding: 'Ctrl+S', actionType: 'Basic input' },
+      }] }],
+    };
+    localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify(savedProfile));
+    let resolveRead!: (result: { ok: boolean; error?: string; snapshot?: ViaKeymapSnapshot }) => void;
+    const pendingRead = new Promise<{ ok: boolean; error?: string; snapshot?: ViaKeymapSnapshot }>(resolve => {
+      resolveRead = resolve;
+    });
+    const request = vi.fn(async (_payload: { cmd?: string }) => pendingRead);
+    Object.defineProperty(window, 'macropad', { configurable: true, value: {
+      getStatus: async () => ({ state: 'connected', device: 'test', deviceId: 'rp2040:pending-read' }),
+      onStatus: () => () => {}, onHardwareEvent: () => () => {}, onEvent: () => () => {}, request,
+    } });
+
+    await act(async () => root.render(createElement(App)));
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith({ cmd: 'get_config' }));
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('device state is not yet verified');
+    expect(container.textContent).toContain('Cached Work');
+    expect(JSON.parse(localStorage.getItem(PROFILE_FILE_STORAGE_KEY)!).profiles[0].layers[0].r1c1.binding).toBe('Ctrl+S');
+    expect(request.mock.calls.some(([payload]) => payload.cmd === 'set_config')).toBe(false);
+
+    await act(async () => resolveRead({ ok: false, error: 'Simulated read failure' }));
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain('device state is not verified'));
+    expect(JSON.parse(localStorage.getItem(PROFILE_FILE_STORAGE_KEY)!).profiles[0].layers[0].r1c1.binding).toBe('Ctrl+S');
+    expect(request.mock.calls.some(([payload]) => payload.cmd === 'set_config')).toBe(false);
+  });
+
+  it('pauses sync when a matching device cannot be checkpointed over corrupt local metadata', async () => {
+    localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify({
+      v: 1, activeProfileIndex: 0,
+      profiles: [{ id: 'local', name: 'Local', color: '#123456', layers: [{
+        r1c1: { label: 'A', binding: 'A', actionType: 'Basic input' },
+      }] }],
+    }));
+    localStorage.setItem(DEVICE_SYNC_CHECKPOINTS_KEY, '{corrupt checkpoint');
+    const matchingSnapshot = deviceSnapshot(Object.fromEntries(
+      ['r1c1', 'r1c2', 'r1c3', 'r2c1', 'r2c2', 'r2c3', 'r3c1', 'r3c2', 'r3c3']
+        .map(slot => [slot, 0]),
+    ));
+    matchingSnapshot.layers[0].keys.r1c1 = 0x0004;
+    matchingSnapshot.layers[0].enc = { ccw: 0, cw: 0, press: 0 };
+    const request = vi.fn(async ({ cmd }: { cmd: string }) => cmd === 'get_config'
+      ? { ok: true, snapshot: matchingSnapshot }
+      : { ok: true });
+    Object.defineProperty(window, 'macropad', { configurable: true, value: {
+      getStatus: async () => ({ state: 'connected', device: 'test', deviceId: 'rp2040:matching-corrupt-checkpoint' }),
+      onStatus: () => () => {}, onHardwareEvent: () => () => {}, onEvent: () => () => {}, request,
+    } });
+
+    await act(async () => { root.render(createElement(App)); await new Promise(resolve => setTimeout(resolve, 700)); });
+
+    expect(request.mock.calls.map(([payload]) => payload.cmd)).toEqual(['get_config']);
+    expect(container.textContent).toContain('Mappings match, but the per-device sync checkpoint could not be saved');
+    expect(container.textContent).toContain('Further device writes are paused');
+    expect(localStorage.getItem(DEVICE_SYNC_CHECKPOINTS_KEY)).toBe('{corrupt checkpoint');
+  });
+
+  it('pauses later writes if a device-import checkpoint cannot replace corrupt local checkpoint data', async () => {
+    localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify({
+      v: 1, activeProfileIndex: 0,
+      profiles: [{ id: 'local', name: 'Local', color: '#123456', layers: [{
+        r1c1: { label: 'Old', binding: 'B', actionType: 'Basic input' },
+      }] }],
+    }));
+    localStorage.setItem(DEVICE_SYNC_CHECKPOINTS_KEY, '{corrupt checkpoint');
+    const request = vi.fn(async ({ cmd }: { cmd: string }) => cmd === 'get_config'
+      ? { ok: true, snapshot: deviceSnapshot() }
+      : { ok: true });
+    Object.defineProperty(window, 'macropad', { configurable: true, value: {
+      getStatus: async () => ({ state: 'connected', device: 'test', deviceId: 'rp2040:corrupt-checkpoint' }),
+      onStatus: () => () => {}, onHardwareEvent: () => () => {}, onEvent: () => () => {}, request,
+    } });
+
+    await act(async () => { root.render(createElement(App)); await new Promise(resolve => setTimeout(resolve, 800)); });
+    await clickButtonContaining('Use device mappings');
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 700)); });
+
+    expect(request.mock.calls.some(([payload]) => payload.cmd === 'set_config')).toBe(false);
+    expect(container.textContent).toContain('per-device checkpoint could not be saved');
+    expect(container.textContent).toContain('Further device writes are paused');
+    expect(localStorage.getItem(DEVICE_SYNC_CHECKPOINTS_KEY)).toBe('{corrupt checkpoint');
+    expect(JSON.parse(localStorage.getItem(PROFILE_FILE_STORAGE_KEY)!).profiles[0].layers[0].r1c1.binding).toBe('A');
   });
 
   it('does not overwrite corrupt saved data or write the device', async () => {
@@ -188,6 +318,7 @@ describe('production React app device sync', () => {
       getStatus: async () => ({ state: 'connected', device: 'test' }), onStatus: () => () => {}, onHardwareEvent: () => () => {}, onEvent: () => () => {}, request,
     } });
     await act(async () => root.render(createElement(App)));
+    await clickButtonContaining('Apply desktop mappings');
     await act(async () => { await vi.waitFor(() => expect(request.mock.calls.some(([p]) => p.cmd === 'set_config')).toBe(true), { timeout: 3000 }); });
     await act(async () => { await new Promise(r => setTimeout(r, 2300)); });
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('device sync failed');
@@ -261,7 +392,16 @@ describe('production React app device sync', () => {
     });
   });
 
-  it('keeps the edited profile local when a pre-sync device read fails', async () => {
+  it('shows an unverified read state and keeps the last valid desktop profile when the device read fails', async () => {
+    const savedProfile = {
+      v: 1,
+      activeProfileIndex: 0,
+      profiles: [{
+        id: 'local-recovery', name: 'Local Recovery', color: '#123456',
+        layers: [{ r1c1: { label: 'Save', binding: 'Ctrl+S', actionType: 'Basic input' } }],
+      }],
+    };
+    localStorage.setItem(PROFILE_FILE_STORAGE_KEY, JSON.stringify(savedProfile));
     const listeners = new Set<(status: { state: string }) => void>();
     const bridge = {
       getStatus: vi.fn().mockResolvedValue({ state: 'disconnected' }),
@@ -294,7 +434,13 @@ describe('production React app device sync', () => {
     expect(bridge.request).toHaveBeenCalledWith({ cmd: 'get_config' });
     expect(bridge.request).not.toHaveBeenCalledWith(expect.objectContaining({ cmd: 'set_config' }));
     expect(window.localStorage.getItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY)).toBeNull();
-    expect(JSON.parse(window.localStorage.getItem('cm2.state.v2') || 'null')?.profiles).toBeDefined();
+    const preserved = JSON.parse(window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) || 'null');
+    expect(preserved.profiles[0]).toMatchObject({
+      id: 'local-recovery', name: 'Local Recovery',
+      layers: [expect.objectContaining({ r1c1: { label: 'Save', binding: 'Ctrl+S', actionType: 'Basic input' } })],
+    });
+    expect(container.textContent).toContain('Local Recovery');
     expect(container.textContent).toContain('Device sync paused: could not read and preserve the existing device keymap');
+    expect(container.textContent).toContain('device state is not verified');
   });
 });

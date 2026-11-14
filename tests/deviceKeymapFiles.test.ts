@@ -65,6 +65,21 @@ describe('local VIA keymap backup files', () => {
     expect('profiles' in parsed).toBe(false);
   });
 
+  it('preserves per-device identity in exports and keeps identical keymaps from separate units distinct', () => {
+    const backup = createDeviceKeymapBackup(snapshot(0x0004), {
+      deviceId: 'rp2040:unit-a',
+      createdAt: '2026-11-09T00:00:00.000Z',
+    });
+    expect(parseDeviceKeymapBackup(stringifyDeviceKeymapBackup(backup)).deviceId).toBe('rp2040:unit-a');
+
+    const { host, entries } = memoryWindow();
+    const files = createDeviceKeymapFileTools(host);
+    files.savePreSyncSnapshot(snapshot(0x0004), { deviceId: 'rp2040:unit-a' });
+    files.savePreSyncSnapshot(snapshot(0x0004), { deviceId: 'rp2040:unit-b' });
+    expect(JSON.parse(entries.get(DEVICE_KEYMAP_BACKUP_HISTORY_KEY)!).entries.map((entry: any) => entry.deviceId))
+      .toEqual(['rp2040:unit-b', 'rp2040:unit-a']);
+  });
+
   it('rejects invalid protocol, missing mappings, invalid keycodes, and unsupported formats', () => {
     const valid = createDeviceKeymapBackup(snapshot());
     expect(() => parseDeviceKeymapBackup(JSON.stringify({ ...valid, version: 2 })))
@@ -109,10 +124,12 @@ describe('local VIA keymap backup files', () => {
     const app = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' });
     const host = app.window as unknown as Window & typeof globalThis;
     vi.spyOn(app.window.HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
-    Object.defineProperty(app.window, 'confirm', { configurable: true, value: vi.fn(() => true) });
+    const confirm = vi.fn(() => true);
+    Object.defineProperty(app.window, 'confirm', { configurable: true, value: confirm });
     const currentDevice = snapshot(0x0041);
     const importedBackup = createDeviceKeymapBackup(snapshot(0x0004), {
       device: 'Imported board backup',
+      deviceId: 'rp2040:original-unit',
       createdAt: '2026-11-08T00:00:00.000Z',
     });
     const bridge = {
@@ -122,7 +139,7 @@ describe('local VIA keymap backup files', () => {
           : { ok: true, changedMappings: 1 }),
     };
     const files = createDeviceKeymapFileTools(host);
-    const restoring = files.restoreFromFile(bridge, { device: 'Connected test device', firmware: 'VIA test' });
+    const restoring = files.restoreFromFile(bridge, { device: 'Connected test device', deviceId: 'rp2040:connected-unit', firmware: 'VIA test' });
     const input = app.window.document.querySelector<HTMLInputElement>('input[type="file"]')!;
     const file = new (app.window as any).File(
       [stringifyDeviceKeymapBackup(importedBackup)],
@@ -134,6 +151,7 @@ describe('local VIA keymap backup files', () => {
     const result = await restoring;
 
     expect(result).toMatchObject({ ok: true, changedMappings: 1, preRestoreBackupSaved: true });
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('different physical unit'));
     expect(bridge.request.mock.calls.map(([request]) => request.cmd)).toEqual(['get_config', 'restore_config']);
     expect(bridge.request.mock.calls[1][0].snapshot).toEqual(importedBackup.snapshot);
     expect(files.getLatestBackup()).toMatchObject({

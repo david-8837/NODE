@@ -13,11 +13,19 @@ export const DEVICE_BACKUP_HISTORY_LIMIT = 10;
 const HISTORY_FORMAT = 'node-studio-via-keymap-backup-history';
 const KEY_SLOTS = ['r1c1', 'r1c2', 'r1c3', 'r2c1', 'r2c2', 'r2c3', 'r3c1', 'r3c2', 'r3c3'];
 
+export interface DeviceBackupMetadata {
+  device?: string;
+  deviceId?: string;
+  firmware?: string | null;
+  createdAt?: string;
+}
+
 export interface DeviceKeymapBackup {
   format: typeof DEVICE_KEYMAP_BACKUP_FORMAT;
   version: typeof DEVICE_KEYMAP_BACKUP_VERSION;
   createdAt: string;
   device: string;
+  deviceId?: string;
   firmware: string | null;
   snapshot: ViaKeymapSnapshot;
 }
@@ -31,14 +39,14 @@ interface BackupHistory {
 export interface DeviceKeymapFileTools {
   savePreSyncSnapshot: (
     snapshot: ViaKeymapSnapshot,
-    metadata?: { device?: string; firmware?: string | null; createdAt?: string },
+    metadata?: DeviceBackupMetadata,
   ) => BridgeResult;
   getLatestBackup: () => DeviceKeymapBackup | null;
   latestSummary: () => string;
   downloadLatestBackup: () => BridgeResult;
   restoreFromFile: (
     bridge?: RestoreBridge,
-    metadata?: { device?: string; firmware?: string | null },
+    metadata?: Pick<DeviceBackupMetadata, 'device' | 'deviceId' | 'firmware'>,
   ) => Promise<BridgeResult>;
 }
 
@@ -116,15 +124,18 @@ export function validateViaKeymapSnapshot(value: unknown): ViaKeymapSnapshot {
 
 export function createDeviceKeymapBackup(
   snapshot: ViaKeymapSnapshot,
-  metadata: { device?: string; firmware?: string | null; createdAt?: string } = {},
+  metadata: DeviceBackupMetadata = {},
 ): DeviceKeymapBackup {
   const createdAt = metadata.createdAt ?? new Date().toISOString();
+  const deviceId = metadata.deviceId?.trim();
   if (Number.isNaN(Date.parse(createdAt))) throw fail('Backup timestamp is invalid');
+  if (deviceId && (deviceId.length > 128 || /[\u0000-\u001f]/.test(deviceId))) throw fail('Backup device identity is invalid');
   return {
     format: DEVICE_KEYMAP_BACKUP_FORMAT,
     version: DEVICE_KEYMAP_BACKUP_VERSION,
     createdAt,
     device: metadata.device?.trim() || 'Grid Macro 1',
+    ...(deviceId ? { deviceId } : {}),
     firmware: metadata.firmware ?? null,
     snapshot: validateViaKeymapSnapshot(snapshot),
   };
@@ -164,9 +175,13 @@ export function parseDeviceKeymapBackup(text: string): DeviceKeymapBackup {
   if (parsed.firmware !== null && parsed.firmware !== undefined && typeof parsed.firmware !== 'string') {
     throw fail('Backup firmware metadata is invalid');
   }
+  if (parsed.deviceId !== undefined && (typeof parsed.deviceId !== 'string' || !parsed.deviceId.trim())) {
+    throw fail('Backup device identity is invalid');
+  }
   return createDeviceKeymapBackup(validateViaKeymapSnapshot(parsed.snapshot), {
     createdAt: parsed.createdAt,
     device: parsed.device,
+    deviceId: typeof parsed.deviceId === 'string' ? parsed.deviceId : undefined,
     firmware: typeof parsed.firmware === 'string' ? parsed.firmware : null,
   });
 }
@@ -201,6 +216,10 @@ function readHistory(host: Window): BackupHistory {
 
 function sameSnapshot(left: ViaKeymapSnapshot, right: ViaKeymapSnapshot): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameBackup(left: DeviceKeymapBackup, right: DeviceKeymapBackup): boolean {
+  return left.deviceId === right.deviceId && sameSnapshot(left.snapshot, right.snapshot);
 }
 
 function readFileText(host: Window & typeof globalThis, file: File): Promise<string> {
@@ -247,10 +266,10 @@ export function createDeviceKeymapFileTools(host?: Window & typeof globalThis): 
       const browser = requireHost();
       const next = createDeviceKeymapBackup(snapshot, metadata);
       const history = readHistory(browser);
-      if (history.entries[0] && sameSnapshot(history.entries[0].snapshot, next.snapshot)) {
+      if (history.entries[0] && sameBackup(history.entries[0], next)) {
         return { ok: true, localOnly: true };
       }
-      const entries = [next, ...history.entries.filter((entry) => !sameSnapshot(entry.snapshot, next.snapshot))]
+      const entries = [next, ...history.entries.filter((entry) => !sameBackup(entry, next))]
         .slice(0, DEVICE_BACKUP_HISTORY_LIMIT);
       browser.localStorage.setItem(DEVICE_KEYMAP_BACKUP_HISTORY_KEY, JSON.stringify({
         format: HISTORY_FORMAT,
@@ -317,8 +336,11 @@ export function createDeviceKeymapFileTools(host?: Window & typeof globalThis): 
                 throw fail(`Device keymap backups must be no larger than ${MAX_DEVICE_BACKUP_BYTES / 1024} KB`);
               }
               const backup = parseDeviceKeymapBackup(await readFileText(browser, file));
+              const identityWarning = backup.deviceId && metadata?.deviceId && backup.deviceId !== metadata.deviceId
+                ? ` WARNING: this backup belongs to a different physical unit (${backup.deviceId}).`
+                : '';
               const accepted = browser.confirm(
-                `Restore the ${backup.device} VIA keymap backup captured ${backup.createdAt}? This replaces supported key and encoder mappings on the connected device. Profiles and custom actions remain local to this browser.`,
+                `Restore the ${backup.device} VIA keymap backup captured ${backup.createdAt}?${identityWarning} This replaces supported key and encoder mappings on the connected device. Profiles and custom actions remain local to this browser.`,
               );
               if (!accepted) {
                 finish({ ok: false, error: 'Restore cancelled' });

@@ -47,8 +47,10 @@ import {
   type SettingsCapabilities,
   type SupportLinkKey,
 } from './appSettings';
-import type { QmkViaStatus } from './qmkViaBridge';
+import type { QmkViaStatus, ViaKeymapSnapshot } from './qmkViaBridge';
 import { buildViaConfiguration } from './qmkProfileSync';
+import { importDeviceKeymapIntoProfile } from './deviceProfileImport';
+import { checksumSyncState, loadDeviceSyncCheckpoint, saveDeviceSyncCheckpoint } from './deviceSyncCheckpoint';
 import { latestViaRecoveryKey, parseViaMacroFile, saveViaRecovery } from './viaMacroBackup';
 import { rp2040ZeroColorToQmkHsv } from './onboardLed';
 import { fallbackIconForAssignment, overlayIconForAssignment } from './cheatSheetIcons';
@@ -1071,6 +1073,13 @@ export default function App() {
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
   const [syncIssue, setSyncIssue] = useState('');
+  const [deviceSyncConflict, setDeviceSyncConflict] = useState<{
+    snapshot: ViaKeymapSnapshot;
+    profileId: string;
+    deviceChanged: boolean;
+    desktopChanged: boolean;
+    hasCheckpoint: boolean;
+  } | null>(null);
   const [macroRestoreBusy, setMacroRestoreBusy] = useState(false);
   const macroRestoreBusyRef = useRef(false);
   const [macroRestoreReport, setMacroRestoreReport] = useState('');
@@ -1423,6 +1432,8 @@ export default function App() {
 
   const currentProfileRef = useRef(currentProfile);
   currentProfileRef.current = currentProfile;
+  const customItemsByTabRef = useRef(customItemsByTab);
+  customItemsByTabRef.current = customItemsByTab;
 
   const profilesRef = useRef(profiles);
   profilesRef.current = profiles;
@@ -1747,11 +1758,13 @@ export default function App() {
       lastSyncedConfigKeyRef.current = '';
       lastDeviceSnapshotRef.current = '';
       setDeviceSyncReady(false);
+      setDeviceSyncConflict(null);
       return;
     }
 
     let cancelled = false;
     setDeviceSyncReady(false);
+    setDeviceSyncConflict(null);
     lastSyncedConfigKeyRef.current = '';
 
     void (async () => {
@@ -1760,28 +1773,69 @@ export default function App() {
         const current = await bridge.request({ cmd: 'get_config' });
         if (cancelled) return;
         if (!current.ok || !current.snapshot || !deviceKeymapFileTools) {
-          setSyncIssue('Device sync paused: could not read and preserve the existing device keymap.');
+          setSyncIssue('Device sync paused: could not read and preserve the existing device keymap; device state is not verified.');
           return;
         }
         const backup = deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot, {
-          device: deviceStatus.device, firmware: deviceStatus.fw,
+          device: deviceStatus.device, deviceId: deviceStatus.deviceId, firmware: deviceStatus.fw,
         });
         if (!backup.ok) {
           setSyncIssue(`Device sync paused: could not preserve the device keymap: ${backup.error || 'storage error'}`);
           return;
         }
         lastDeviceSnapshotRef.current = JSON.stringify(current.snapshot);
-        const config = buildViaConfiguration(currentProfileRef.current, presetOs).config;
+        const currentDesktopProfile = currentProfileRef.current;
+        const desktopState = JSON.stringify({ profile: currentDesktopProfile, customItems: customItemsByTabRef.current });
+        const previousCheckpoint = deviceStatus.deviceId
+          ? loadDeviceSyncCheckpoint(window.localStorage, deviceStatus.deviceId)
+          : null;
+        const deviceChanged = previousCheckpoint
+          ? JSON.stringify(previousCheckpoint.snapshot) !== JSON.stringify(current.snapshot)
+          : false;
+        const desktopChanged = previousCheckpoint
+          ? previousCheckpoint.profileId !== currentDesktopProfile.id ||
+            previousCheckpoint.desktopChecksum !== checksumSyncState(desktopState)
+          : false;
+        const config = buildViaConfiguration(currentDesktopProfile, presetOs).config;
         if (deviceMatchesConfiguration(config, current.snapshot)) {
           lastSyncedConfigKeyRef.current = JSON.stringify(config);
-        } else {
-          const approved = window.confirm('The device keymap differs from the desktop profile. A device keymap backup was saved locally. Replace the device mappings with the desktop profile? Cancel keeps both unchanged and pauses sync.');
-          if (!approved || cancelled) {
-            setSyncIssue('Device sync paused. Your desktop profile and device keymap were preserved. Reconnect to review the conflict.');
-            return;
+          if (deviceStatus.deviceId) {
+            const checkpoint = saveDeviceSyncCheckpoint(
+              window.localStorage, deviceStatus.deviceId, currentDesktopProfile.id, current.snapshot, desktopState
+            );
+            if (!checkpoint.ok) {
+              setDeviceSyncReady(false);
+              setSyncIssue(`Mappings match, but the per-device sync checkpoint could not be saved: ${checkpoint.error || 'storage error'}. Further device writes are paused.`);
+              return;
+            }
           }
+        } else {
+          if (!cancelled) {
+            setDeviceSyncConflict({
+              snapshot: current.snapshot,
+              profileId: currentDesktopProfile.id,
+              deviceChanged,
+              desktopChanged,
+              hasCheckpoint: Boolean(previousCheckpoint),
+            });
+            const origin = previousCheckpoint
+              ? ` Since last sync, ${deviceChanged && desktopChanged
+                ? 'both sides changed'
+                : deviceChanged
+                  ? 'the device changed'
+                  : desktopChanged
+                    ? 'the desktop profile changed'
+                    : 'the stored states differ without a detected checkpoint change'}.`
+              : ' No prior per-device sync checkpoint is available.';
+            const identity = deviceStatus.deviceId ? '' : ' This firmware does not expose a unique device ID, so reconnect history cannot be separated by unit.';
+            setSyncIssue(`Device and desktop keymaps differ.${origin}${identity} Choose which firmware-native mappings to keep; desktop-only actions stay in the app. A device backup was saved locally.`);
+          }
+          return;
         }
-        if (!cancelled) { setSyncIssue(''); setDeviceSyncReady(true); }
+        if (!cancelled) {
+          if (!deviceStatus.deviceId) setSyncIssue('Keymaps match, but this firmware does not expose a unique device ID; per-device sync history is unavailable.');
+          setDeviceSyncReady(true);
+        }
       } catch (error) {
         if (!cancelled) setSyncIssue(`Device sync paused: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -1790,7 +1844,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [deviceStatus.state, deviceStatus.device, deviceStatus.fw]);
+  }, [deviceStatus.state, deviceStatus.device, deviceStatus.deviceId, deviceStatus.fw]);
 
   useEffect(() => {
     const bridge = window.macropad;
@@ -1830,6 +1884,7 @@ export default function App() {
 
           const backup = deviceKeymapFileTools.savePreSyncSnapshot(current.snapshot, {
             device: deviceStatus.device,
+            deviceId: deviceStatus.deviceId,
             firmware: deviceStatus.fw,
           });
           if (!backup.ok) {
@@ -1862,8 +1917,23 @@ export default function App() {
           }
           lastDeviceSnapshotRef.current = JSON.stringify(verified.snapshot);
           lastSyncedConfigKeyRef.current = configKey;
+          if (deviceStatus.deviceId) {
+            const checkpoint = saveDeviceSyncCheckpoint(
+              window.localStorage,
+              deviceStatus.deviceId,
+              currentProfile.id,
+              verified.snapshot,
+              JSON.stringify({ profile: currentProfile, customItems: customItemsByTab }),
+            );
+            if (!checkpoint.ok) {
+              setDeviceSyncReady(false);
+              setSyncIssue(`Device keymap was verified, but the per-device sync checkpoint could not be saved: ${checkpoint.error || 'storage error'}. Further writes are paused.`);
+              return;
+            }
+          }
 
           const syncWarnings = [
+            ...(!deviceStatus.deviceId ? ['Firmware did not expose a stable per-unit ID; sync history was not checkpointed'] : []),
             ...configWarnings,
             ...(current.warnings ?? []),
             ...(synced.warnings ?? []),
@@ -4012,12 +4082,73 @@ export default function App() {
     ),
   })).filter((sec) => sec.items.length > 0);
 
+  const importDeviceMappings = () => {
+    const conflict = deviceSyncConflict;
+    if (!conflict) return;
+    const profile = profiles.find(item => item.id === conflict.profileId);
+    if (!profile) {
+      setDeviceSyncConflict(null);
+      setSyncIssue('The profile changed while reviewing the device keymap. Sync remains paused; reconnect to review again.');
+      return;
+    }
+    const imported = importDeviceKeymapIntoProfile(profile, conflict.snapshot, presetOs);
+    const nextConfig = buildViaConfiguration(imported.profile, presetOs).config;
+    setProfiles(previous => previous.map(item => item.id === conflict.profileId ? imported.profile : item));
+    lastDeviceSnapshotRef.current = JSON.stringify(conflict.snapshot);
+    lastSyncedConfigKeyRef.current = JSON.stringify(nextConfig);
+    const checkpoint = deviceStatus.deviceId
+      ? saveDeviceSyncCheckpoint(
+        window.localStorage,
+        deviceStatus.deviceId,
+        conflict.profileId,
+        conflict.snapshot,
+        JSON.stringify({ profile: imported.profile, customItems: customItemsByTab }),
+      )
+      : null;
+    setDeviceSyncConflict(null);
+    setSyncIssue(checkpoint && !checkpoint.ok
+      ? `Imported device mappings, but the per-device checkpoint could not be saved: ${checkpoint.error || 'storage error'}. Further device writes are paused.`
+      : '');
+    setDeviceSyncReady(!checkpoint || checkpoint.ok);
+    showToast(imported.warnings.length
+      ? `Imported supported device mappings; ${imported.warnings.length} unsupported mapping${imported.warnings.length === 1 ? ' was' : 's were'} left unchanged`
+      : `Imported ${imported.importedMappings} device mapping${imported.importedMappings === 1 ? '' : 's'} into the desktop profile`);
+  };
+
+  const applyDesktopMappings = () => {
+    if (!deviceSyncConflict) return;
+    lastDeviceSnapshotRef.current = JSON.stringify(deviceSyncConflict.snapshot);
+    lastSyncedConfigKeyRef.current = '';
+    setDeviceSyncConflict(null);
+    setSyncIssue('');
+    setDeviceSyncReady(true);
+  };
+
+  const keepDeviceAndDesktopSeparate = () => {
+    if (deviceSyncConflict) lastDeviceSnapshotRef.current = JSON.stringify(deviceSyncConflict.snapshot);
+    setDeviceSyncConflict(null);
+    setDeviceSyncReady(false);
+    setSyncIssue('Sync is paused. The desktop profile and device keymap remain unchanged; reconnect to review the difference.');
+  };
+
   return (
     <>
     <div inert={deviceStatus.state !== 'connected' || resetKeysPending !== null} aria-hidden={deviceStatus.state !== 'connected' || resetKeysPending !== null ? true : undefined} className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
+      {deviceStatus.state === 'connected' && !deviceSyncReady && !deviceSyncConflict && !syncIssue && !profileLoadFailed && !profileSaveError && (
+        <div role="status" aria-live="polite" className="bg-blue-50 text-blue-950 px-4 py-2 text-xs shrink-0">
+          Reading device keymap… The saved desktop profile remains visible; device state is not yet verified.
+        </div>
+      )}
       {(profileLoadFailed || profileSaveError || syncIssue || agentSyncIssue) && (
         <div role="alert" className="bg-amber-100 text-amber-950 px-4 py-2 text-xs flex flex-wrap items-center gap-3">
           <span>{profileLoadFailed ? 'Saved profile could not be loaded. Original data preserved; saving and device sync are paused.' : profileSaveError || syncIssue || agentSyncIssue}</span>
+          {deviceSyncConflict && !profileLoadFailed && (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Resolve device and desktop keymap conflict">
+              <button type="button" className="underline font-semibold" onClick={importDeviceMappings}>Use device mappings</button>
+              <button type="button" className="underline font-semibold" onClick={applyDesktopMappings}>Apply desktop mappings</button>
+              <button type="button" className="underline" onClick={keepDeviceAndDesktopSeparate}>Keep both and pause</button>
+            </div>
+          )}
           {profileLoadFailed && (
             <button type="button" className="underline" onClick={() => {
               try {
@@ -4054,7 +4185,7 @@ export default function App() {
             <button type="button" className="underline" onClick={() => {
               setDeviceSyncReady(false);
               void deviceKeymapFileTools!.restoreFromFile(window.macropad, {
-                device: deviceStatus.device, firmware: deviceStatus.fw,
+                device: deviceStatus.device, deviceId: deviceStatus.deviceId, firmware: deviceStatus.fw,
               }).then(result => {
                 if (result.ok) setSyncIssue('Device backup restored. Sync remains paused; reconnect to review the desktop and device configurations.');
                 else if (result.error !== 'Restore cancelled') setSyncIssue(`Restore failed: ${result.error || 'unknown error'}. Sync remains paused.`);
