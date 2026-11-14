@@ -14,6 +14,9 @@ import usb_hid
 import usb_cdc
 import neopixel
 
+from config_validation import MAX_CONFIG_BYTES, sanitize_config
+from input_debounce import DebouncedInput
+from serial_line_reader import SerialLineReader
 from adafruit_hid.keyboard import Keyboard
 from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS
 from adafruit_hid.keycode import Keycode
@@ -75,8 +78,8 @@ encoder_sw.direction = digitalio.Direction.INPUT
 encoder_sw.pull = digitalio.Pull.UP
 
 last_encoder_pos = encoder.position
-last_sw_state = encoder_sw.value
-last_key_states = [k.value for k in keys]
+key_debouncers = [DebouncedInput(k.value) for k in keys]
+encoder_sw_debouncer = DebouncedInput(encoder_sw.value)
 
 # ---------------------------------------------------------------------------
 # KEYCODE & CONSUMER CONTROL LOOKUP DICTIONARY
@@ -150,7 +153,7 @@ MEDIA_MAP = {
 # DEFAULT CONFIGURATION
 # ---------------------------------------------------------------------------
 DEFAULT_CONFIG = {
-    "version": "1.0.2",
+    "version": "1.0.7",
     "deviceName": "Grid macro 1",
     "activeLayerIndex": 0,
     "layers": [
@@ -183,33 +186,44 @@ DEFAULT_CONFIG = {
 def load_config():
     try:
         with open("/keymap.json", "r") as f:
-            data = json.load(f)
-            return data
+            raw_data = f.read(MAX_CONFIG_BYTES + 1)
+        if len(raw_data.encode("utf-8")) > MAX_CONFIG_BYTES:
+            raise ValueError("configuration file exceeds the device storage limit")
+        return sanitize_config(json.loads(raw_data))
     except Exception as e:
         print("[GridMacro1] Using default config:", e)
-        return DEFAULT_CONFIG
+        return sanitize_config(DEFAULT_CONFIG)
 
 def save_config(cfg):
     try:
+        clean_config = sanitize_config(cfg)
+        serialized = json.dumps(clean_config)
+        if len(serialized.encode("utf-8")) > MAX_CONFIG_BYTES:
+            raise ValueError("configuration exceeds the device storage limit")
         with open("/keymap.json", "w") as f:
-            json.dump(cfg, f)
+            f.write(serialized)
         print("[GridMacro1] Saved config to /keymap.json")
         return True
     except Exception as e:
-        print("[GridMacro1] Save error (storage may be read-only):", e)
+        print("[GridMacro1] Save error (storage may be read-only or config invalid):", e)
         return False
 
 current_config = load_config()
-active_layer_idx = current_config.get("activeLayerIndex", 0)
+active_layer_idx = current_config["activeLayerIndex"]
 
 # ---------------------------------------------------------------------------
 # ACTION EXECUTION ENGINE
 # ---------------------------------------------------------------------------
 def execute_binding(binding_str):
-    if not binding_str or binding_str.lower() in ["blank", "—", ""]:
+    if not isinstance(binding_str, str) or not binding_str or binding_str.lower() in ["blank", "—", ""]:
         return
 
     b = binding_str.strip().lower()
+
+    # Desktop-managed multi-step actions are dispatched by the companion app
+    # from serial input events; never type their serialized descriptions as text.
+    if any(prefix in b for prefix in ["ontap:", "doubletap:", "onhold:", "taphold:", "(text:", "(cmd:", "(web:", "(app:", "cheat-sheet"]):
+        return
 
     # Check for Consumer Control Media Action (exact token match)
     clean_b = b.strip("()")
@@ -260,20 +274,18 @@ def send_serial_json(obj):
         except Exception:
             pass
 
-def handle_serial_input():
-    global current_config, active_layer_idx
-    port = usb_cdc.data if (usb_cdc.data and usb_cdc.data.in_waiting) else usb_cdc.console
-    if not port or not port.in_waiting:
-        return
+serial_line_reader = SerialLineReader(MAX_CONFIG_BYTES)
 
+
+def process_serial_line(raw_bytes):
+    global current_config, active_layer_idx
     try:
-        raw_bytes = port.readline()
-        if not raw_bytes:
-            return
         raw_line = raw_bytes.decode("utf-8", errors="replace").strip()
         if not raw_line:
             return
         msg = json.loads(raw_line)
+        if not isinstance(msg, dict):
+            raise ValueError("Command must be a JSON object")
         cmd = msg.get("cmd")
 
         if cmd == "PING":
@@ -281,7 +293,7 @@ def handle_serial_input():
                 "status": "OK",
                 "device": "Grid macro 1",
                 "mcu": "RP2040-Zero",
-                "version": current_config.get("version", "1.0.2"),
+                "version": current_config.get("version", "1.0.7"),
                 "activeLayer": active_layer_idx,
                 "layerCount": len(current_config.get("layers", []))
             })
@@ -298,28 +310,54 @@ def handle_serial_input():
             })
 
         elif cmd == "SET_CONFIG":
-            new_data = msg.get("data")
-            if new_data:
-                current_config = new_data
-                active_layer_idx = current_config.get("activeLayerIndex", 0)
-                saved = save_config(current_config)
-                send_serial_json({
-                    "status": "OK" if saved else "ERROR_READONLY",
-                    "saved": saved,
-                    "msg": "Keymap updated successfully" if saved else "Updated in RAM (Boot drive readonly)"
-                })
-                # Visual success flash
-                pixel[0] = (0, 255, 0)
-                time.sleep(0.12)
-                pixel[0] = (0, 81, 255)
+            try:
+                new_config = sanitize_config(msg.get("data"))
+            except (TypeError, ValueError) as e:
+                send_serial_json({"status": "ERROR_INVALID_CONFIG", "error": str(e)})
+                return
+
+            current_config = new_config
+            active_layer_idx = current_config["activeLayerIndex"]
+            saved = save_config(current_config)
+            send_serial_json({
+                "status": "OK" if saved else "ERROR_READONLY",
+                "saved": saved,
+                "msg": "Keymap updated successfully" if saved else "Updated in RAM (Boot drive readonly)"
+            })
+            # Visual success flash
+            pixel[0] = (0, 255, 0)
+            time.sleep(0.12)
+            pixel[0] = (0, 81, 255)
 
         elif cmd == "SET_LAYER":
             idx = msg.get("layer", 0)
             layers = current_config.get("layers", [])
-            if 0 <= idx < len(layers):
+            if type(idx) is int and 0 <= idx < len(layers):
                 active_layer_idx = idx
                 send_serial_json({"status": "OK", "activeLayer": active_layer_idx})
+            else:
+                send_serial_json({"status": "ERROR", "error": "Layer index is outside the configured range"})
 
+    except Exception as e:
+        send_serial_json({"status": "ERROR", "error": str(e)})
+
+
+def handle_serial_input():
+    port = usb_cdc.data if (usb_cdc.data and usb_cdc.data.in_waiting) else usb_cdc.console
+    if not port or not port.in_waiting:
+        return
+
+    try:
+        # Read bounded chunks; never materialize an unbounded readline() result.
+        chunk_size = min(int(port.in_waiting), 256)
+        chunk = port.read(chunk_size)
+        if not chunk:
+            return
+        complete_lines, rejected_count = serial_line_reader.feed(chunk)
+        for _ in range(rejected_count):
+            send_serial_json({"status": "ERROR", "error": "Command exceeds the device input limit"})
+        for complete_line in complete_lines:
+            process_serial_line(complete_line)
     except Exception as e:
         send_serial_json({"status": "ERROR", "error": str(e)})
 
@@ -331,24 +369,25 @@ print("[GridMacro1] RP2040-Zero Ready! Listening for USB HID + Serial...")
 while True:
     # 1. Check Web Serial Commands
     handle_serial_input()
+    now = time.monotonic()
 
     layers = current_config.get("layers", [])
     active_layer = layers[active_layer_idx] if (0 <= active_layer_idx < len(layers)) else {}
 
-    # 2. Scan 9 Matrix Keys (Direct Pin, active LOW)
+    # 2. Scan 9 Matrix Keys (Direct Pin, active LOW), debounced at 5 ms.
     for i, key_in in enumerate(keys):
-        val = key_in.value
+        stable_value = key_debouncers[i].update(key_in.value, now)
+        if stable_value is None:
+            continue
         slot = SLOT_NAMES[i]
-        if val != last_key_states[i]:
-            last_key_states[i] = val
-            if not val:  # Pressed (LOW)
-                pixel[0] = (255, 255, 255)  # Flash white on physical press
-                send_serial_json({"event": "KEY_DOWN", "slot": slot})
-                key_data = active_layer.get(slot, {})
-                execute_binding(key_data.get("binding", key_data.get("label", "")))
-            else:  # Released (HIGH)
-                pixel[0] = (0, 81, 255)
-                send_serial_json({"event": "KEY_UP", "slot": slot})
+        if not stable_value:  # Pressed (LOW)
+            pixel[0] = (255, 255, 255)  # Flash white on physical press
+            send_serial_json({"event": "KEY_DOWN", "slot": slot})
+            key_data = active_layer.get(slot, {})
+            execute_binding(key_data.get("binding", key_data.get("label", "")))
+        else:  # Released (HIGH)
+            pixel[0] = (0, 81, 255)
+            send_serial_json({"event": "KEY_UP", "slot": slot})
 
     # 3. Scan Rotary Encoder Position
     pos = encoder.position
@@ -373,10 +412,9 @@ while True:
         time.sleep(0.01)
         pixel[0] = (0, 81, 255)
 
-    # 4. Scan Rotary Encoder Press Switch (active LOW)
-    sw_val = encoder_sw.value
-    if sw_val != last_sw_state:
-        last_sw_state = sw_val
+    # 4. Scan Rotary Encoder Press Switch (active LOW), debounced at 5 ms.
+    sw_val = encoder_sw_debouncer.update(encoder_sw.value, now)
+    if sw_val is not None:
         if not sw_val:  # Encoder clicked down
             pixel[0] = (255, 120, 0)
             send_serial_json({"event": "DIAL_PRESS", "state": "down", "slot": "dial-tl"})

@@ -6,7 +6,10 @@
 #define MATRIX_COLS 3
 
 #define USB_POLLING_INTERVAL_MS 1
-#define DEBOUNCE 3
+#define DEBOUNCE 10
+
+/* Expose the RP2040 hardware ID as the USB serial number for per-unit sync identity. */
+#define SERIAL_NUMBER_USE_HARDWARE_ID TRUE
 
 /* EC11 encoder direction is reversed by the board's wiring. */
 #define ENCODER_DIRECTION_FLIP
@@ -15,7 +18,7 @@
 #define DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 4095
 #define DYNAMIC_KEYMAP_LAYER_COUNT 4
 
-#define TAPPING_TERM 200
+#define TAPPING_TERM 180
 
 /* One onboard WS2812 indicator on GP16. */
 #define WS2812_DI_PIN GP16

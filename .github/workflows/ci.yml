@@ -39,6 +39,9 @@ jobs:
       - name: Run Vitest Unit & Integration Suites
         run: npm test
 
+      - name: Run CircuitPython Configuration Validation Tests
+        run: npm run test:firmware
+
       - name: Install Cppcheck
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y cppcheck
 

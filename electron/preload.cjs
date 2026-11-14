@@ -17,9 +17,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
   flashFirmware: () => ipcRenderer.invoke('flash-uf2'),
   executeSmartAction: (payload) => ipcRenderer.invoke('execute-smart-action', payload),
   onHardwareSync: (callback) => {
-    ipcRenderer.on('trigger-hardware-sync', () => callback());
+    const listener = () => callback();
+    ipcRenderer.on('trigger-hardware-sync', listener);
+    return () => ipcRenderer.removeListener('trigger-hardware-sync', listener);
+  },
+  onResetMacropadKeys: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('trigger-reset-macropad-keys', listener);
+    return () => ipcRenderer.removeListener('trigger-reset-macropad-keys', listener);
+  },
+  onToggleCheatSheet: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('trigger-toggle-cheat-sheet', listener);
+    return () => ipcRenderer.removeListener('trigger-toggle-cheat-sheet', listener);
+  },
+  setCheatSheetActive: (active, data) => ipcRenderer.invoke('set-cheat-sheet-active', active, data),
+  onCloseCheatSheet: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('trigger-close-cheat-sheet', listener);
+    return () => ipcRenderer.removeListener('trigger-close-cheat-sheet', listener);
   },
   onOpenHardwareModal: (callback) => {
-    ipcRenderer.on('open-hardware-modal', () => callback());
+    const listener = () => callback();
+    ipcRenderer.on('open-hardware-modal', listener);
+    return () => ipcRenderer.removeListener('open-hardware-modal', listener);
+  },
+  getAgentStatus: () => ipcRenderer.invoke('agent:get-status'),
+  agentSetLayer: (layer) => ipcRenderer.invoke('agent:set-layer', layer),
+  agentSetProfile: (profileId) => ipcRenderer.invoke('agent:set-profile', profileId),
+  agentSyncProfiles: (profilesData, expectedGen) => ipcRenderer.invoke('agent:sync-profiles', profilesData, expectedGen),
+  agentSyncStudioProfiles: (profiles, activeProfileIndex, approvedGeneration) => ipcRenderer.invoke('agent:sync-studio-profiles', profiles, activeProfileIndex, approvedGeneration),
+  agentViaPassthrough: (report) => ipcRenderer.invoke('agent:via-passthrough', report),
+  onAgentHardwareEvent: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('agent:hardware-event', listener);
+    return () => ipcRenderer.removeListener('agent:hardware-event', listener);
+  },
+  onAgentGestureEvent: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('agent:gesture-event', listener);
+    return () => ipcRenderer.removeListener('agent:gesture-event', listener);
+  },
+  onAgentDeviceChange: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('agent:device-change', listener);
+    return () => ipcRenderer.removeListener('agent:device-change', listener);
   },
 });

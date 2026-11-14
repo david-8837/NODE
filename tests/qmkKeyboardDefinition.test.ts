@@ -47,6 +47,7 @@ describe('Grid Macro 1 QMK definition preflight', () => {
     expect(keyboard.rgblight).toMatchObject({ pin: 'GP16', led_count: 1, driver: 'ws2812' });
     expect(config).toMatch(/#define WS2812_DI_PIN GP16\b/);
     expect(config).toMatch(/#define DYNAMIC_KEYMAP_LAYER_COUNT 4\b/);
+    expect(config).toMatch(/#define SERIAL_NUMBER_USE_HARDWARE_ID TRUE\b/);
     expect(viaRules).toContain('VIA_ENABLE = yes');
     expect(viaRules).toContain('ENCODER_MAP_ENABLE = yes');
     expect(commonRules).toContain('RAW_ENABLE = yes');
@@ -63,5 +64,31 @@ describe('Grid Macro 1 QMK definition preflight', () => {
       expect(keymap).toContain('UG_VALD');
       expect(keymap).toContain('UG_VALU');
     }
+  });
+
+  it('keeps the experimental lighting build opt-in and separate from the release artifact', () => {
+    expect(viaRules).toContain('ifeq ($(strip $(NODE_EXPERIMENTAL_LAYER_LIGHTING)),yes)');
+    expect(viaRules).toContain('--defsym=FLASH_LEN=0x1fc000');
+    const workflow = readFileSync('.github/workflows/qmk-build.yml', 'utf8');
+    expect(workflow.indexOf('Upload the VIA UF2 and provenance files')).toBeLessThan(workflow.indexOf('Build per-layer lighting test firmware (experimental)'));
+    expect(workflow).toContain('grid-macro-1-per-layer-lighting-test');
+    expect(workflow).toContain('NODE_EXPERIMENTAL_LAYER_LIGHTING=yes');
+    expect(workflow).toContain('__flash_binary_end');
+    expect(workflow).toContain('TEST ONLY');
+  });
+
+  it('validates the checked-in compiled grid_macro_1_via.uf2 firmware binary', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { validateRp2040Uf2 } = require('../electron/uf2Validator.cjs');
+    const uf2Path = join(process.cwd(), 'firmware/grid_macro_1_via.uf2');
+    const uf2Bytes = readFileSync(uf2Path);
+    const validation = validateRp2040Uf2(uf2Bytes);
+    expect(validation.ok).toBe(true);
+    expect(validation.blockCount).toBeGreaterThan(0);
+    expect(validation.byteLength).toBe(uf2Bytes.byteLength);
+
+    // Verify USB descriptor strings in the binary payload
+    const utf16Text = uf2Bytes.toString('utf16le');
+    expect(utf16Text).toContain('Grid Macro 1');
   });
 });

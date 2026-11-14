@@ -1,4 +1,4 @@
-import type { ViaAction, ViaConfiguration } from './qmkViaBridge';
+import { viaKeycodeToAction, type ViaAction, type ViaConfiguration } from './qmkViaBridge';
 
 export type PresetOperatingSystem = 'mac' | 'win';
 
@@ -36,9 +36,14 @@ const MODIFIER_ALIASES: Record<string, string> = {
   super: 'GUI',
   meta: 'GUI',
   'right ctrl': 'RIGHT_CONTROL',
+  right_control: 'RIGHT_CONTROL',
   'right shift': 'RIGHT_SHIFT',
+  right_shift: 'RIGHT_SHIFT',
   'right alt': 'RIGHT_ALT',
+  right_alt: 'RIGHT_ALT',
   'right win': 'RIGHT_GUI',
+  right_gui: 'RIGHT_GUI',
+  gui: 'GUI',
 };
 
 const KEY_ALIASES: Record<string, string> = {
@@ -95,6 +100,15 @@ const KEY_ALIASES: Record<string, string> = {
   'num -': 'KEYPAD_MINUS',
 };
 
+const DIRECT_QMK_KEY_NAMES = new Set([
+  'ENTER', 'ESCAPE', 'BACKSPACE', 'TAB', 'SPACEBAR', 'MINUS', 'EQUALS', 'LEFT_BRACKET',
+  'RIGHT_BRACKET', 'BACKSLASH', 'POUND', 'SEMICOLON', 'QUOTE', 'GRAVE_ACCENT', 'COMMA',
+  'PERIOD', 'FORWARD_SLASH', 'CAPS_LOCK', 'PRINT_SCREEN', 'SCROLL_LOCK', 'PAUSE', 'INSERT',
+  'HOME', 'PAGE_UP', 'DELETE', 'END', 'PAGE_DOWN', 'RIGHT_ARROW', 'LEFT_ARROW', 'DOWN_ARROW',
+  'UP_ARROW', 'KEYPAD_NUMLOCK', 'KEYPAD_SLASH', 'KEYPAD_ASTERISK', 'KEYPAD_MINUS',
+  'KEYPAD_PLUS', 'KEYPAD_ENTER', 'KEYPAD_PERIOD', 'KEYPAD_EQUAL',
+]);
+
 const SYMBOL_MODIFIERS: Record<string, string> = {
   '⌘': 'CMD',
   '⇧': 'SHIFT',
@@ -136,6 +150,8 @@ function basicKeyName(value: string): string | null {
   const key = normalizeKey(value);
   if (!key) return null;
   if (KEY_ALIASES[key]) return KEY_ALIASES[key];
+  const canonical = key.toUpperCase();
+  if (DIRECT_QMK_KEY_NAMES.has(canonical) || /^KEYPAD_[0-9]$/.test(canonical)) return canonical;
   if (/^[a-z]$/.test(key)) return key.toUpperCase();
   if (/^[0-9]$/.test(key)) {
     return ['ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'][Number(key)];
@@ -205,18 +221,41 @@ function parseBinding(
   const media = MEDIA_ACTIONS[normalizeKey(clean)];
   if (media) return { action: { t: 'media', c: media } };
 
+  const macro = clean.match(/^(?:qmk\s+)?macro\s+([1-9]\d*)$/i);
+  if (macro) {
+    const index = Number(macro[1]) - 1;
+    return index < 16
+      ? { action: { t: 'macro', n: index } }
+      : { action: null, warning: 'QMK macro index is outside the supported 1 to 16 range' };
+  }
+
   const layer = clean.match(/^layer (\d)$/i);
   if (layer) return { action: { t: 'layer', op: 'set', n: Number(layer[1]) - 1 } };
   const temporaryLayer = clean.match(/^temp layer (\d)$/i);
   if (temporaryLayer) {
     return { action: { t: 'layer', op: 'hold', n: Number(temporaryLayer[1]) - 1 } };
   }
-  if (actionType === 'Layer Cycle') return { action: { t: 'layer', op: 'next' } };
+  if (actionType === 'Layer Cycle' || /layer\s*cycle/i.test(clean)) {
+    return { action: { t: 'none' } };
+  }
 
-  const onTap = clean.match(/onTap:\s*([^,)]+)/i);
-  if (onTap) {
-    const keys = parseShortcut(onTap[1], os);
-    if (keys) return { action: { t: 'keys', k: keys } };
+  // Profile keys and profile cycle run on desktop; hardware key is set to host-event mode (KC_NO)
+  if (/^profile\s*\d+/i.test(clean) || /profile\s*cycle/i.test(clean)) {
+    return { action: { t: 'none' } };
+  }
+
+  if (/cheat-?sheet/i.test(clean) || /cheat-?sheet/i.test(label)) {
+    return { action: { t: 'none' } };
+  }
+
+  // Multiactions are handled by desktop gesture engine; device matrix is set to host-event mode (KC_NO)
+  if (/multi/i.test(actionType) || /(?:onTap|doubleTap|onHold|tapHold):/i.test(clean)) {
+    return { action: { t: 'none' } };
+  }
+
+  // Smart Actions run on desktop; device matrix is set to host-event mode (KC_NO)
+  if (/smart/i.test(actionType) || /\((?:Text|Cmd|Web|App):/i.test(clean)) {
+    return { action: { t: 'none' } };
   }
 
   const wrapped = clean.match(/^(.*?)\s*\((.*)\)\s*$/);
@@ -266,32 +305,30 @@ function parseStructuredExecution(
       return parseBinding(value, '', 'Shortcut', os);
     }
     return {
-      action: null,
+      action: { t: 'none' },
       warning: 'Multi-step sequences cannot be represented by stock VIA keycodes',
     };
   }
 
   if (execution.kind === 'multi') {
-    const gestures = isRecord(execution.gestures) ? execution.gestures : {};
-    const onTap = typeof gestures.onTap === 'string' ? gestures.onTap : '';
-    const parsed = onTap
-      ? parseBinding(onTap, '', 'Shortcut', os)
-      : { action: null, warning: 'This multiaction has no onTap keycode for the device' };
-    const additionalGestures = ['doubleTap', 'onHold', 'tapHold']
-      .filter((gesture) => typeof gestures[gesture] === 'string' && (gestures[gesture] as string).trim());
-    if (additionalGestures.length) {
-      const suffix = `Stock VIA can send onTap only; ${additionalGestures.join(', ')} ${additionalGestures.length === 1 ? 'gesture is' : 'gestures are'} not available on the device`;
-      parsed.warning = parsed.warning ? `${parsed.warning}; ${suffix}` : suffix;
-    }
-    return parsed;
+    return {
+      action: { t: 'none' },
+      warning: 'Multiactions are handled by desktop software; hardware key is set to host-event mode',
+    };
   }
 
   if (execution.kind === 'text') {
-    return { action: null, warning: 'Text actions cannot be represented by a stock VIA keycode' };
+    return {
+      action: { t: 'none' },
+      warning: 'Text actions cannot be represented by a stock VIA keycode',
+    };
   }
 
   if (execution.kind === 'smart') {
-    return { action: null, warning: 'Smart Actions run on the desktop and are not executable by device firmware' };
+    return {
+      action: { t: 'none' },
+      warning: 'Smart Actions run on the desktop and are not executable by device firmware',
+    };
   }
 
   return { action: null, warning: `Unsupported structured execution kind "${execution.kind}"` };
@@ -318,12 +355,56 @@ function applyBinding(
   location: string,
   warnings: string[]
 ): ViaAction | undefined {
+  const cleanBinding = (entry.binding ?? '').trim();
+  if (!cleanBinding || cleanBinding === 'blank' || entry.label === '—') {
+    return { t: 'none' };
+  }
   const parsed = entry.execution === undefined
     ? parseBinding(entry.binding ?? '', entry.label ?? '', entry.actionType ?? '', os)
     : parseStructuredExecution(entry.execution, os)!;
   if (parsed.warning) warnings.push(`Layer ${layerNumber} ${location}: ${parsed.warning}`);
   if (parsed.action) return parsed.action;
   return parsed.warning ? undefined : { t: 'none' };
+}
+
+export interface ImportedViaBinding {
+  label: string;
+  binding: string;
+  actionType: 'Basic input' | 'Shortcut';
+}
+
+/** Convert a stock VIA keycode to an editor binding, or null when it is not losslessly representable. */
+export function viaKeycodeToProfileBinding(keycode: number): ImportedViaBinding | null {
+  const action = viaKeycodeToAction(keycode);
+  if (!action) return null;
+  if (action.t === 'none') return { label: '', binding: 'blank', actionType: 'Basic input' };
+
+  let binding: string;
+  if (action.t === 'keys' && Array.isArray(action.k) && action.k.length) {
+    binding = action.k.join(' + ');
+  } else if (action.t === 'media' && action.c) {
+    const names: Record<string, string> = {
+      MUTE: 'mute', VOLUME_INCREMENT: 'volume +', VOLUME_DECREMENT: 'volume -',
+      SCAN_NEXT_TRACK: 'next track', SCAN_PREVIOUS_TRACK: 'previous track', STOP: 'stop',
+      PLAY_PAUSE: 'play', FAST_FORWARD: 'fast forward', REWIND: 'rewind',
+      BRIGHTNESS_INCREMENT: 'bright up', BRIGHTNESS_DECREMENT: 'bright down',
+    };
+    binding = names[action.c];
+    if (!binding) return null;
+  } else if (action.t === 'layer' && Number.isInteger(action.n) && action.n! >= 0 && action.n! < 8) {
+    binding = action.op === 'set'
+      ? `Layer ${action.n! + 1}`
+      : action.op === 'hold'
+        ? `Temp Layer ${action.n! + 1}`
+        : '';
+    if (!binding) return null;
+  } else if (action.t === 'macro' && Number.isInteger(action.n) && action.n! >= 0 && action.n! < 16) {
+    binding = `QMK Macro ${action.n! + 1}`;
+  } else {
+    return null;
+  }
+
+  return { label: binding, binding, actionType: 'Shortcut' };
 }
 
 /** Build the stock VIA keycode/encoder payload without modifying local profile data. */

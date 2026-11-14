@@ -16,10 +16,10 @@ key1.direction = digitalio.Direction.INPUT
 key1.pull = digitalio.Pull.UP
 
 if not key1.value:
-    # Held down on boot: read-only to RP2040 script, writable by host PC USB drive
-    storage.remount("/", readonly=False)
+    # Held down on boot: CircuitPython must not write while the host edits files.
+    storage.remount("/", readonly=True)
 else:
-    # Default boot: Writable by Python script (for Web Serial live flashing)
+    # Default boot: allow the firmware to persist the device keymap.
     storage.remount("/", readonly=False)
 
 key1.deinit()

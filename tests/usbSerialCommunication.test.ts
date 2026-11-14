@@ -119,6 +119,40 @@ describe('USB Serial Communication: Connection & Protocol Lifecycle', () => {
     expect(response.mcu).toBe('RP2040-Zero');
   });
 
+  it('should resolve SET_CONFIG with a device validation error instead of timing out', async () => {
+    await serial.connect(mockPort);
+    const configPromise = serial.sendCommand('SET_CONFIG', { data: { layers: [] } });
+
+    mockPort.simulateIncoming(
+      JSON.stringify({
+        status: 'ERROR_INVALID_CONFIG',
+        error: 'layers must contain between 1 and 8 entries',
+      }) + '\n'
+    );
+
+    await expect(configPromise).resolves.toMatchObject({
+      status: 'ERROR_INVALID_CONFIG',
+      error: expect.stringContaining('layers'),
+    });
+  });
+
+  it('should resolve invalid SET_LAYER responses instead of timing out', async () => {
+    await serial.connect(mockPort);
+    const layerPromise = serial.sendCommand('SET_LAYER', { layer: 999 });
+
+    mockPort.simulateIncoming(
+      JSON.stringify({
+        status: 'ERROR',
+        error: 'Layer index is outside the configured range',
+      }) + '\n'
+    );
+
+    await expect(layerPromise).resolves.toMatchObject({
+      status: 'ERROR',
+      error: expect.stringContaining('Layer index'),
+    });
+  });
+
   it('should timeout and reject command if hardware fails to reply within timeoutMs', async () => {
     await serial.connect(mockPort);
 
@@ -172,6 +206,24 @@ describe('USB Serial Communication: Connection & Protocol Lifecycle', () => {
       status: 'OK',
       device: 'Grid Macro 1',
     });
+    await serial.disconnect();
+  });
+
+  it('recovers from fragmented and malformed data over Binding Mock and rejects a request on close', async () => {
+    SerialPortMock.binding.createPort('/dev/grid-macro-errors', { record: true });
+    const port = new SerialPortMock({ path: '/dev/grid-macro-errors', baudRate: 115200, autoOpen: false });
+    await new Promise<void>((resolve, reject) => port.open((error) => error ? reject(error) : resolve()));
+    await serial.connect(port);
+    const received: unknown[] = [];
+    serial.on('message', (message: unknown) => received.push(message));
+    (port.port as any).emitData(Buffer.from('bad json\n{"event":'));
+    (port.port as any).emitData(Buffer.from('"KEY_DOWN"}\n{"event":"KEY_UP"}\n'));
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(received).toEqual([{ event: 'KEY_DOWN' }, { event: 'KEY_UP' }]);
+    const pending = serial.sendCommand('GET_CONFIG');
+    const rejected = expect(pending).rejects.toThrow('Connection lost');
+    await new Promise<void>((resolve, reject) => port.close((error) => error ? reject(error) : resolve()));
+    await rejected;
     await serial.disconnect();
   });
 

@@ -26,6 +26,7 @@ export interface SerialManagerOptions {
 export class SerialManager {
   private state: ConnectionState = 'DISCONNECTED';
   private buffer: string = '';
+  private discardingOversizedLine = false;
   private reconnectAttempts = 0;
   private reconnectTimer: any = null;
   private pendingRequests = new Map<string, { resolve: (val: any) => void; reject: (err: any) => void; timer: any }>();
@@ -37,7 +38,8 @@ export class SerialManager {
 
   public port: any = null;
   private reader: any = null;
-  private writer: any = null;
+  private detachPortListeners: (() => void) | null = null;
+  private trackPortWrite: (() => () => void) | null = null;
   private options: Required<SerialManagerOptions>;
 
   constructor(opts?: SerialManagerOptions) {
@@ -92,28 +94,64 @@ export class SerialManager {
       }
 
       // Handle Web Serial API (browser/Electron)
-      if (typeof this.port.open === 'function' && !this.port.readable && typeof this.port.readable === 'undefined') {
+      if (typeof this.port.on !== 'function' && typeof this.port.open === 'function' && !this.port.readable) {
         await this.port.open({ baudRate: this.options.baudRate });
       }
 
       // Handle Node.js stream / SerialPort object
       if (typeof this.port.on === 'function') {
-        this.port.on('data', (chunk: Buffer | string) => {
-          this.handleIncomingChunk(chunk.toString('utf-8'));
-        });
-        this.port.on('close', () => {
-          this.handleDisconnect('Port closed by hardware');
-        });
-        this.port.on('error', (err: Error) => {
+        const port = this.port;
+        const decoder = new TextDecoder();
+        const onData = (chunk: Buffer | string) => {
+          if (this.port !== port) return;
+          this.handleIncomingChunk(typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true }));
+        };
+        const onClose = () => {
+          if (this.port === port) this.handleDisconnect('Port closed by hardware');
+        };
+        const onError = (err: Error) => {
+          if (this.port !== port) return;
           this.listeners.error.forEach(fn => fn(err));
           this.handleDisconnect(err.message);
-        });
-      } else if (this.port.readable) {
-        this.startWebSerialReader();
+        };
+        port.on('data', onData);
+        port.on('close', onClose);
+        port.on('error', onError);
+        let inFlightWrites = 0;
+        let detached = false;
+        const remove = port.off ?? port.removeListener;
+        const removeErrorWhenSafe = () => {
+          if (detached && inFlightWrites === 0 && typeof remove === 'function') {
+            // Node streams may emit the write error on a later tick after its callback.
+            setTimeout(() => remove.call(port, 'error', onError), 0);
+          }
+        };
+        this.trackPortWrite = () => {
+          inFlightWrites++;
+          let finished = false;
+          return () => {
+            if (finished) return;
+            finished = true;
+            inFlightWrites--;
+            removeErrorWhenSafe();
+          };
+        };
+        this.detachPortListeners = () => {
+          detached = true;
+          this.trackPortWrite = null;
+          if (typeof remove === 'function') {
+            remove.call(port, 'data', onData);
+            remove.call(port, 'close', onClose);
+          }
+          removeErrorWhenSafe();
+        };
       }
 
       this.setState('CONNECTED');
       this.reconnectAttempts = 0;
+      if (typeof this.port.on !== 'function' && this.port.readable) {
+        void this.startWebSerialReader(this.port);
+      }
       return true;
     } catch (err: any) {
       this.setState('DISCONNECTED');
@@ -123,49 +161,56 @@ export class SerialManager {
     }
   }
 
-  private async startWebSerialReader() {
+  private async startWebSerialReader(port: any) {
+    const decoder = new TextDecoder();
     try {
-      while (this.port && this.port.readable && this.state === 'CONNECTED') {
-        const textDecoder = new (globalThis as any).TextDecoderStream();
-        const readableStreamClosed = this.port.readable.pipeTo(textDecoder.writable);
-        const reader = textDecoder.readable.getReader();
+      while (this.port === port && port.readable && this.state === 'CONNECTED') {
+        const reader = port.readable.getReader();
         this.reader = reader;
-
         try {
-          while (true) {
+          while (this.port === port && this.state === 'CONNECTED') {
             const { value, done } = await reader.read();
-            if (done) break;
-            if (value) this.handleIncomingChunk(value);
+            if (done) {
+              // An ended stream is a disconnect, not a reason to spin on it.
+              if (this.port === port) this.handleDisconnect('Readable stream closed');
+              return;
+            }
+            if (value) this.handleIncomingChunk(decoder.decode(value, { stream: true }));
           }
         } finally {
           reader.releaseLock();
-          await readableStreamClosed.catch(() => {});
+          if (this.reader === reader) this.reader = null;
         }
       }
     } catch (e: any) {
-      this.handleDisconnect(e.message);
+      if (this.port === port) this.handleDisconnect(e.message);
     }
   }
 
-  /**
-   * Delimiter-based line parsing: handles chunk fragmentation and rapid messages
-   */
+  /** Process complete lines before limiting the unfinished line, even in large bursts. */
   public handleIncomingChunk(chunk: string) {
-    this.buffer += chunk;
-
-    // Safety buffer clamp against flood DoS
-    if (this.buffer.length > 64 * 1024) {
-      this.buffer = this.buffer.slice(-16 * 1024);
-    }
-
-    let newlineIdx: number;
-    while ((newlineIdx = this.buffer.indexOf('\n')) !== -1) {
-      const line = this.buffer.slice(0, newlineIdx).trim();
-      this.buffer = this.buffer.slice(newlineIdx + 1);
-
-      if (line.length > 0) {
-        this.parseIncomingLine(line);
+    const limit = 64 * 1024;
+    let offset = 0;
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf('\n', offset);
+      const end = newline === -1 ? chunk.length : newline;
+      const part = chunk.slice(offset, end);
+      if (!this.discardingOversizedLine) {
+        if (this.buffer.length + part.length > limit) {
+          this.buffer = '';
+          this.discardingOversizedLine = true;
+        } else {
+          this.buffer += part;
+        }
       }
+      if (newline === -1) break;
+      if (!this.discardingOversizedLine) {
+        const line = this.buffer.trim();
+        if (line) this.parseIncomingLine(line);
+      }
+      this.buffer = '';
+      this.discardingOversizedLine = false;
+      offset = newline + 1;
     }
   }
 
@@ -183,8 +228,8 @@ export class SerialManager {
           if (
             (reqKey === 'PING' && parsed.status === 'OK' && parsed.device) ||
             (reqKey === 'GET_CONFIG' && parsed.type === 'CONFIG_DATA') ||
-            (reqKey === 'SET_CONFIG' && (parsed.status === 'OK' || parsed.status === 'ERROR_READONLY')) ||
-            (reqKey === 'SET_LAYER' && parsed.activeLayer !== undefined)
+            (reqKey === 'SET_CONFIG' && ['OK', 'ERROR_READONLY', 'ERROR_INVALID_CONFIG'].includes(parsed.status)) ||
+            (reqKey === 'SET_LAYER' && (parsed.activeLayer !== undefined || parsed.status === 'ERROR'))
           ) {
             clearTimeout(req.timer);
             req.resolve(parsed);
@@ -231,9 +276,16 @@ export class SerialManager {
 
       try {
         if (typeof this.port.write === 'function') {
-          this.port.write(msg, (err: any) => {
-            if (err) failRequest(err);
-          });
+          const finishWrite = this.trackPortWrite?.();
+          try {
+            this.port.write(msg, (err: any) => {
+              finishWrite?.();
+              if (err) failRequest(err);
+            });
+          } catch (error) {
+            finishWrite?.();
+            throw error;
+          }
         } else if (this.port.writable) {
           const writer = this.port.writable.getWriter();
           writer.write(new TextEncoder().encode(msg)).then(
@@ -265,8 +317,11 @@ export class SerialManager {
   public handleDisconnect(reason: string) {
     if (this.state === 'DISCONNECTED') return;
     this.setState('DISCONNECTED');
+    this.detachPortListeners?.();
+    this.detachPortListeners = null;
     this.port = null;
     this.buffer = '';
+    this.discardingOversizedLine = false;
     this.rejectPendingRequests(new Error(`Connection lost: ${reason}`));
     this.scheduleReconnect();
   }
@@ -297,10 +352,16 @@ export class SerialManager {
     // implementations do not emit a close event that SerialManager can observe.
     this.rejectPendingRequests(new Error('Connection closed by client'));
     this.buffer = '';
+    this.discardingOversizedLine = false;
     const port = this.port;
+    this.detachPortListeners?.();
+    this.detachPortListeners = null;
     this.port = null;
     this.setState('DISCONNECTED');
 
+    if (this.reader) {
+      try { await this.reader.cancel(); } catch {}
+    }
     if (port && typeof port.close === 'function') {
       try {
         if (port.close.length === 0) {
