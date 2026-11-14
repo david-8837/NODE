@@ -145,21 +145,56 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # This is a compile-only safety gate. It runs after the standard firmware
-      # has been staged and uploaded, so the experimental UF2 cannot replace the
-      # release artifact. Never flash or publish the experimental build yet.
-      - name: Compile experimental lighting firmware (do not publish)
+      # Separate, explicitly experimental hardware-test artifact. It is never
+      # substituted for the standard VIA release artifact or published to a release.
+      - name: Build per-layer lighting test firmware (experimental)
         shell: bash
         run: |
           set -euo pipefail
           qmk compile -c -kb grid_macro_1 -km via -e NODE_EXPERIMENTAL_LAYER_LIGHTING=yes
           elf=.build/grid_macro_1_via.elf
+          uf2=.build/grid_macro_1_via.uf2
           test -s "$elf"
+          test -s "$uf2"
           end_hex="$(arm-none-eabi-nm "$elf" | awk '$3 == "__flash_binary_end" {print $1}')"
           test -n "$end_hex"
           if (( 16#$end_hex > 0x101fc000 )); then
             echo "Experimental firmware overlaps the reserved lighting sectors" >&2
             exit 1
           fi
-          echo "Experimental compile succeeded; flash end 0x$end_hex (not a release artifact)."
+
+          artifact_dir="$RUNNER_TEMP/grid-macro-1-per-layer-lighting-test"
+          mkdir -p "$artifact_dir"
+          cp "$uf2" "$artifact_dir/grid_macro_1_per_layer_lighting_test.uf2"
+          (
+            cd "$artifact_dir"
+            sha256sum grid_macro_1_per_layer_lighting_test.uf2 > SHA256SUMS.txt
+          )
+          {
+            printf 'Firmware: Grid Macro 1, VIA + experimental per-layer lighting (TEST ONLY)\n'
+            printf 'Repository commit: %s\n' "$GITHUB_SHA"
+            printf 'Workflow run: %s (attempt %s)\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'QMK firmware commit: %s\n' "$(git rev-parse HEAD)"
+            printf 'QMK CLI: %s\n' "$(qmk --version)"
+            printf 'ARM compiler: %s\n' "$(arm-none-eabi-gcc --version | head -n 1)"
+            printf 'Flash end: 0x%s (must be at or below 0x101fc000)\n' "$end_hex"
+            printf 'Artifact SHA-256: %s\n' "$(cut -d ' ' -f 1 "$artifact_dir/SHA256SUMS.txt")"
+            printf 'WARNING: experimental hardware-test build; not a release, not physically validated, and may reset existing VIA keymaps/macros when flashed. Back up first.\n'
+          } > "$artifact_dir/BUILD-INFO.txt"
+          {
+            echo '## Per-layer lighting hardware-test build (experimental)'
+            echo ''
+            echo "- Repository commit: $GITHUB_SHA"
+            echo "- Flash end: 0x$end_hex (within the reserved 0x101fc000 boundary)"
+            echo "- Test UF2 SHA-256: $(cut -d ' ' -f 1 "$artifact_dir/SHA256SUMS.txt")"
+            echo '- Test-only artifact is separate from the standard VIA firmware and is never published as a release.'
+          } >> "$GITHUB_STEP_SUMMARY"
         working-directory: ${{ runner.temp }}/qmk_firmware
+
+      - name: Upload per-layer lighting hardware-test artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: grid-macro-1-per-layer-lighting-test
+          path: ${{ runner.temp }}/grid-macro-1-per-layer-lighting-test/
+          if-no-files-found: error
+          retention-days: 7

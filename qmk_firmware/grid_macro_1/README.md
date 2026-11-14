@@ -88,27 +88,11 @@ firmware WS2812 byte order without removing the desktop compensation. Rainbow
 is firmware-generated, so this desktop color correction does not calibrate its
 color sequence.
 
-Per-layer persistent lighting is **not implemented**. A portable experimental
-two-slot journal, layer controller, and versioned command protocol exist with
-simulated tests. The app bridge can probe and perform guarded writes against this experimental
-protocol; it checks a device signature, captures the prior four-layer state,
-requires compare-and-swap and verifies read-back. No UI invokes these methods.
-A laboratory-only opt-in adds QMK hooks and proposes two 4 KiB sectors before
-QMK's 8 KiB wear-leveling store on a 2 MiB RP2040. It refuses unexpected sector
-contents and uses separate pages for staging and commit. Normal builds leave this
-code disabled. This layout and the linker limit have only been tested in a host
-simulation, not compiled with QMK or tested on hardware. The build-date VIA reset
-and migration issue remains unresolved; do not flash a laboratory build. The pinned QMK VIA
-implementation places dynamic keymaps immediately after VIA custom configuration;
-increasing `VIA_EEPROM_CUSTOM_CONFIG_SIZE` would move the existing keymap and
-encoder locations, while the remaining EEPROM range is available to dynamic
-macros. It is not safe to assume unused space. In addition, QMK's VIA magic is
-based on firmware build date, and a mismatch invokes `eeconfig_init_via`, which
-resets dynamic keymaps and macros. A firmware update may therefore reset device
-configuration. Back up both keymaps and any VIA macros before flashing; the
-app's existing keymap backup does not include VIA macros. Do not silently apply
-or migrate per-layer settings until a versioned layout, complete backup and
-verified restore/migration and failure recovery have been implemented and tested.
+Per-layer lighting controls are available in the app under **Settings → Device update → Per-layer lighting (experimental)**. After reading the device, users can choose one of the four VIA layers and set Off, Solid, Breath or Rainbow, hue/color, saturation and brightness; the app saves a local recovery copy before each guarded write and verifies all four layers after the update. The controls require a separate QMK hardware-test firmware build with `NODE_EXPERIMENTAL_LAYER_LIGHTING=yes`; ordinary VIA firmware does not implement the protocol. The build workflow creates a separately named test artifact, never substitutes it for the standard VIA artifact, and never attaches it to a release.
+
+The test firmware stores a versioned two-slot journal in two 4 KiB sectors immediately before QMK's 8 KiB wear-leveling store on a 2 MiB RP2040. Compile-time assertions check the expected QMK EEPROM base/size and a linker limit keeps the image below the reserved sectors. Unknown/nonblank sector contents are not erased; writes stage into the inactive slot and verify before commit. Host simulations and a successful compile do not prove the flash layout, power-loss recovery, LED color, or layer switching on real hardware. This remains a hardware-test build, not production-validated firmware.
+
+Flashing any QMK build can reset dynamic keymaps and VIA macros because VIA's magic is based on firmware build date; layout changes also affect keymap/encoder offsets. Before flashing, download and externally verify both keymap and VIA macro backups. The app's lighting recovery file is separate, browser-local, can be lost on reinstall, and has no automated restore path. Do not flash if those backups are unavailable or if the board is not the supported 2 MiB RP2040-Zero.
 
 ### VIA macro backup and experimental restore
 

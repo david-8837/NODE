@@ -69,9 +69,11 @@ describe('Grid Macro 1 QMK definition preflight', () => {
     expect(viaRules).toContain('ifeq ($(strip $(NODE_EXPERIMENTAL_LAYER_LIGHTING)),yes)');
     expect(viaRules).toContain('--defsym=FLASH_LEN=0x1fc000');
     const workflow = readFileSync('.github/workflows/qmk-build.yml', 'utf8');
-    expect(workflow.indexOf('Upload the VIA UF2 and provenance files')).toBeLessThan(workflow.indexOf('Compile experimental lighting firmware (do not publish)'));
+    expect(workflow.indexOf('Upload the VIA UF2 and provenance files')).toBeLessThan(workflow.indexOf('Build per-layer lighting test firmware (experimental)'));
+    expect(workflow).toContain('grid-macro-1-per-layer-lighting-test');
     expect(workflow).toContain('NODE_EXPERIMENTAL_LAYER_LIGHTING=yes');
     expect(workflow).toContain('__flash_binary_end');
+    expect(workflow).toContain('TEST ONLY');
   });
 
   it('validates the checked-in compiled grid_macro_1_via.uf2 firmware binary', () => {

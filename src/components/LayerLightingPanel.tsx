@@ -82,7 +82,7 @@ export default function LayerLightingPanel({ bridge, connected }: { bridge: QmkV
   };
   return <section aria-label="Experimental per-layer lighting" className="mt-3 rounded-2xl bg-[#e3e3e3] p-4 text-[#444] text-xs">
     <h3 className="font-semibold text-sm">Per-layer lighting <span className="font-normal text-[#777]">· experimental</span></h3>
-    <p className="mt-2 leading-5">Requires compatible experimental firmware. Back up your device before flashing. This has not been tested on a physical pad. Recovery copies are stored in this app’s local storage and can be lost on reinstall; download a copy separately. They are not a full device backup, and automatic lighting recovery is not yet available.</p>
+    <p className="mt-2 leading-5">Requires the separate per-layer lighting TEST firmware for the supported 2 MiB RP2040-Zero. This is experimental and has not been validated on a physical pad. Flashing may reset VIA keymaps and macros: back up both first and verify the backups. Lighting recovery copies are saved in this browser’s local storage, can be lost on reinstall, and are not a full device backup; download a copy separately. Automatic lighting recovery is not available.</p>
     <button type="button" onClick={read} disabled={busy || !connected} className="mt-2 rounded-full bg-white px-4 py-1.5 disabled:opacity-50">Read device lighting</button>
     {ready === false && <button type="button" onClick={initialize} disabled={busy || !connected} className="ml-2 mt-2 rounded-full bg-white px-4 py-1.5 disabled:opacity-50">Initialize four layers off…</button>}
     {ready && <div className="mt-3 space-y-2">
