@@ -32,10 +32,18 @@ export const MP_CMD_SAVE_PROFILE = 0x03;
 export const MP_CMD_SET_RGB = 0x04;
 export const MP_EVT_LAYER_STATE = 0x10;
 export const MP_EVT_HOST_TRIGGER = 0x11;
+export const MP_EVT_RGB_STATE = 0x12;
 export const MP_TRIG_BASE = 0x7e00;
 export const MP_TRIG_MAX = 0x7e3f;
 export const MP_PROF_BASE = 0x7e40;
 export const MP_PROF_MAX = 0x7e43;
+/** Custom keycode handled by process_record_user: advance one layer, wrapping. */
+export const MP_LAYER_CYCLE = 0x7e44;
+/** RGB keycodes that drive the firmware's own renderer state (not QMK rgblight). */
+export const MP_RGB_TOGG = 0x7e45;
+export const MP_RGB_MODE = 0x7e46;
+export const MP_RGB_SPDD = 0x7e47;
+export const MP_RGB_SPDU = 0x7e48;
 
 export const TRIGGER_SLOT_ORDER = [
   'r1c1', 'r1c2', 'r1c3',
@@ -60,6 +68,12 @@ export interface DeviceLayerStateEvent {
   type: 'layer_state';
   deviceActiveLayer: number;
   activeProfileSlot: number;
+}
+
+/** Emitted when RGB settings are changed on the device (FN keys / encoder). */
+export interface DeviceRgbStateEvent {
+  type: 'rgb_state';
+  rgbConfig: DeviceRgbConfig;
 }
 
 export interface LayerRgbColor {
@@ -328,10 +342,13 @@ export function actionToViaKeycode(action: ViaAction | null | undefined): number
   }
 
   if (action.t === 'layer') {
+    // Layer Cycle needs no target layer: the firmware advances from wherever it
+    // currently is. Handled by MP_LAYER_CYCLE in process_record_user.
+    if (action.op === 'next') return MP_LAYER_CYCLE;
     if (!Number.isInteger(action.n) || action.n! < 0 || action.n! > 31) return null;
     if (action.op === 'set') return 0x5200 | action.n!; // TO(layer)
     if (action.op === 'hold') return 0x5220 | action.n!; // MO(layer)
-    return null; // layer-cycle has no standard single VIA keycode
+    return null;
   }
 
   if (action.t !== 'keys' || !Array.isArray(action.k) || action.k.length === 0) return null;
@@ -399,6 +416,16 @@ export class QmkViaBridge {
         deviceActiveLayer,
         activeProfileSlot,
       } satisfies DeviceLayerStateEvent);
+      return;
+    }
+
+    // RGB edited on the device itself (FN keys / encoder). Adopt the firmware's
+    // values so the editor stops showing stale settings and does not overwrite
+    // them on the next sync.
+    if (bytes[0] === MP_HID_PREFIX && bytes[1] === MP_EVT_RGB_STATE) {
+      const parsed = this.parseDeviceStateReport(bytes);
+      this.setStatus({ ...this.status, ...parsed });
+      this.emit({ type: 'rgb_state', rgbConfig: parsed.rgbConfig } satisfies DeviceRgbStateEvent);
       return;
     }
 

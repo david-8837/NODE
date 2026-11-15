@@ -21,6 +21,7 @@ enum micro_pad_layers {
 #define MP_CMD_SET_RGB 0x04
 #define MP_EVT_LAYER_STATE 0x10
 #define MP_EVT_HOST_TRIGGER 0x11
+#define MP_EVT_RGB_STATE 0x12
 
 /* Host trigger keycode range: 0x7E00 .. 0x7E3F
  * Bits [5:4] = layer (0..3), Bits [3:0] = slot index (0..11: 0..8 keys, 9 cw, 10 press, 11 ccw)
@@ -35,6 +36,21 @@ enum micro_pad_layers {
 #define MP_PROF_2    0x7E41
 #define MP_PROF_3    0x7E42
 #define MP_PROF_4    0x7E43
+
+/* Layer cycle: advances to the next hardware layer, wrapping at MP_MAX_LAYERS.
+ * Uses layer_move() so the real keymap changes and layer_state_set_user() runs,
+ * keeping the RGB indicator and the desktop app in sync with the active layer.
+ */
+#define MP_LAYER_CYCLE 0x7E44
+
+/* RGB keycodes that drive the Micro Pad renderer state instead of QMK's rgblight
+ * config. The housekeeping renderer owns the LED, so stock UG_* keycodes would be
+ * overwritten within 20ms. These mutate mp_* state, which the renderer reads.
+ */
+#define MP_RGB_TOGG 0x7E45
+#define MP_RGB_MODE 0x7E46
+#define MP_RGB_SPDD 0x7E47
+#define MP_RGB_SPDU 0x7E48
 
 /* RP2040 EEPROM layout for 4-profile storage & RGB config (above VIA dynamic keymap region 0..1023) */
 #define MP_EEPROM_MAGIC_ADDR 1024
@@ -97,8 +113,8 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         KC_P1,      KC_P2,      MO(_FN)
     ),
     [_FN] = LAYOUT_grid_macro_1(
-        UG_TOGG,
-        UG_NEXT,    UG_HUEU,    UG_SATU,
+        MP_RGB_TOGG,
+        MP_RGB_MODE, MP_RGB_SPDD, MP_RGB_SPDU,
         TO(_BASE),  TO(_MEDIA), TO(_NUMPAD),
         QK_BOOT,    EE_CLR,     _______
     )
@@ -109,7 +125,7 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
     [_BASE]   = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU) },
     [_MEDIA]  = { ENCODER_CCW_CW(KC_MPRV, KC_MNXT) },
     [_NUMPAD] = { ENCODER_CCW_CW(C(KC_Z), C(KC_Y)) },
-    [_FN]     = { ENCODER_CCW_CW(UG_VALD, UG_VALU) },
+    [_FN]     = { ENCODER_CCW_CW(MP_RGB_SPDD, MP_RGB_SPDU) },
 };
 #endif
 
@@ -272,7 +288,98 @@ static void mp_init_eeprom_if_needed(void) {
     mp_load_profile_from_slot(mp_active_profile);
 }
 
+/* Deferred EEPROM write for interactive RGB edits. The FN encoder can emit many
+ * speed steps per second; writing on every tick would wear the flash backing
+ * store. Coalesce writes until input has been idle for MP_RGB_PERSIST_DELAY_MS.
+ */
+#define MP_RGB_PERSIST_DELAY_MS 1000
+static uint8_t  mp_rgb_state_dirty = 0;
+static uint32_t mp_rgb_dirty_tick = 0;
+
+static void mp_mark_rgb_dirty(void) {
+    mp_rgb_state_dirty = 1;
+    mp_rgb_dirty_tick = timer_read32();
+}
+
+/* Shared GET_STATE / RGB-event payload so both always describe state identically. */
+static void mp_fill_state_report(uint8_t *data, uint8_t length, uint8_t active_layer) {
+    data[2] = active_layer;
+    data[3] = mp_active_profile;
+    data[4] = MP_MAX_LAYERS;
+    data[5] = MP_MAX_PROFILES;
+    data[6] = mp_rgb_enabled;
+    for (uint8_t i = 0; i < MP_MAX_LAYERS; i++) {
+        data[7 + i * 3 + 0] = mp_layer_rgb[i][0];
+        data[7 + i * 3 + 1] = mp_layer_rgb[i][1];
+        data[7 + i * 3 + 2] = mp_layer_rgb[i][2];
+        if (length >= 27) {
+            data[19 + i] = mp_layer_mode[i];
+            data[23 + i] = mp_layer_speed[i];
+        }
+    }
+}
+
+/* Tell the desktop app that RGB state changed on the device, so its editor does
+ * not keep showing stale values and later overwrite these edits.
+ */
+static void mp_send_rgb_state(void) {
+#if defined(RAW_ENABLE)
+    uint8_t report[32] = {0};
+    report[0] = MP_HID_PREFIX;
+    report[1] = MP_EVT_RGB_STATE;
+    mp_fill_state_report(report, sizeof(report), get_highest_layer(layer_state));
+    raw_hid_send(report, sizeof(report));
+#endif
+}
+
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    if (keycode == MP_LAYER_CYCLE) {
+        if (record->event.pressed) {
+            /* layer_move() switches the real keymap and invokes
+             * layer_state_set_user(), which updates the LED and notifies the app.
+             * Do not touch the LED here or the two can drift apart.
+             */
+            uint8_t current = get_highest_layer(layer_state);
+            uint8_t next = (uint8_t)((current + 1) % MP_MAX_LAYERS);
+            layer_move(next);
+        }
+        return false;
+    }
+
+    if (keycode >= MP_RGB_TOGG && keycode <= MP_RGB_SPDU) {
+        if (record->event.pressed) {
+            uint8_t active_layer = get_highest_layer(layer_state);
+            uint8_t idx = (active_layer < MP_MAX_LAYERS) ? active_layer : 0;
+            switch (keycode) {
+                case MP_RGB_TOGG:
+                    mp_rgb_enabled = mp_rgb_enabled ? 0 : 1;
+                    break;
+                case MP_RGB_MODE:
+                    /* Cycle Solid -> Rainbow -> Breath -> Solid. "Off" is owned
+                     * by MP_RGB_TOGG so a mode cycle never silently kills the LED.
+                     */
+                    mp_layer_mode[idx] = (mp_layer_mode[idx] >= MP_LED_MODE_BREATH)
+                        ? MP_LED_MODE_SOLID
+                        : (uint8_t)(mp_layer_mode[idx] + 1);
+                    break;
+                case MP_RGB_SPDD:
+                    mp_layer_speed[idx] = (mp_layer_speed[idx] <= 10)
+                        ? 0
+                        : (uint8_t)(mp_layer_speed[idx] - 10);
+                    break;
+                case MP_RGB_SPDU:
+                    mp_layer_speed[idx] = (mp_layer_speed[idx] >= 90)
+                        ? 100
+                        : (uint8_t)(mp_layer_speed[idx] + 10);
+                    break;
+            }
+            mp_apply_layer_rgb(active_layer);
+            mp_mark_rgb_dirty();
+            mp_send_rgb_state();
+        }
+        return false;
+    }
+
     if (keycode >= MP_PROF_BASE && keycode <= MP_PROF_MAX) {
         if (record->event.pressed) {
             uint8_t target_slot = (uint8_t)(keycode - MP_PROF_BASE);
@@ -328,20 +435,7 @@ bool via_command_kb(uint8_t *data, uint8_t length) {
     uint8_t current_layer = get_highest_layer(layer_state);
 
     if (subcmd == MP_CMD_GET_STATE) {
-        data[2] = current_layer;
-        data[3] = mp_active_profile;
-        data[4] = MP_MAX_LAYERS;
-        data[5] = MP_MAX_PROFILES;
-        data[6] = mp_rgb_enabled;
-        for (uint8_t i = 0; i < MP_MAX_LAYERS; i++) {
-            data[7 + i * 3 + 0] = mp_layer_rgb[i][0];
-            data[7 + i * 3 + 1] = mp_layer_rgb[i][1];
-            data[7 + i * 3 + 2] = mp_layer_rgb[i][2];
-            if (length >= 27) {
-                data[19 + i] = mp_layer_mode[i];
-                data[23 + i] = mp_layer_speed[i];
-            }
-        }
+        mp_fill_state_report(data, length, current_layer);
         raw_hid_send(data, length);
         return true;
     }
@@ -393,6 +487,10 @@ bool via_command_kb(uint8_t *data, uint8_t length) {
             }
         }
         mp_apply_layer_rgb(current_layer);
+        /* The host is now authoritative for RGB state. Drop any pending local
+         * edit so a deferred write cannot persist a non-persistent preview.
+         */
+        mp_rgb_state_dirty = 0;
         if (persist) {
             mp_persist_state_header();
         }
@@ -419,6 +517,12 @@ layer_state_t layer_state_set_user(layer_state_t state) {
 }
 
 void housekeeping_task_user(void) {
+    /* Persist interactive RGB edits once the user stops adjusting. */
+    if (mp_rgb_state_dirty && timer_elapsed32(mp_rgb_dirty_tick) >= MP_RGB_PERSIST_DELAY_MS) {
+        mp_rgb_state_dirty = 0;
+        mp_persist_state_header();
+    }
+
     if (timer_elapsed32(mp_last_anim_tick) < 20) {
         return;
     }

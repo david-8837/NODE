@@ -39,4 +39,7 @@ jobs:
       - name: Run Vitest Unit & Integration Suites
         run: npm test
 
+      - name: Firmware Keymap Logic (host-compiled)
+        run: bash qmk_firmware/tests/host/run.sh
+
 

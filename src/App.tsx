@@ -43,6 +43,8 @@ import {
 } from './appSettings';
 import type {
   DeviceLayerStateEvent,
+  DeviceRgbConfig,
+  DeviceRgbStateEvent,
   HardwareTriggerEvent,
   QmkViaStatus,
 } from './qmkViaBridge';
@@ -1255,6 +1257,65 @@ export default function App() {
 
   const hydratedRgbConnectionRef = useRef<boolean>(false);
 
+  /** Adopt RGB values reported by the firmware into the editor. */
+  const hydrateRgbFromDevice = useCallback((remoteRgb: DeviceRgbConfig) => {
+    const modeMap = ['Off', 'Solid', 'Rainbow', 'Breath'] as const;
+    setLayerLedConfigs((prev) =>
+      prev.map((currentCfg, idx) => {
+        const c = remoteRgb.layerColors[idx];
+        const rawMode = remoteRgb.layerModes?.[idx];
+        const preset =
+          rawMode !== undefined && rawMode >= 0 && rawMode <= 3
+            ? modeMap[rawMode]
+            : remoteRgb.enabled
+              ? 'Solid'
+              : 'Off';
+        const rawSpeed = remoteRgb.layerSpeeds?.[idx];
+        const speed =
+          typeof rawSpeed === 'number' && rawSpeed >= 0 && rawSpeed <= 100
+            ? rawSpeed
+            : currentCfg.speed;
+        if (!c) {
+          return { ...currentCfg, preset, speed };
+        }
+        const maxChannel = Math.max(c.r, c.g, c.b);
+        if (maxChannel === 0) {
+          return {
+            ...currentCfg,
+            preset,
+            speed,
+            light: preset === 'Off' ? currentCfg.light : 0,
+          };
+        }
+        const scale = 255 / maxChannel;
+        const nr = Math.min(255, Math.round(c.r * scale));
+        const ng = Math.min(255, Math.round(c.g * scale));
+        const nb = Math.min(255, Math.round(c.b * scale));
+        const colorHex = `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`.toUpperCase();
+        const rNorm = nr / 255;
+        const gNorm = ng / 255;
+        const bNorm = nb / 255;
+        const cMin = Math.min(rNorm, gNorm, bNorm);
+        const delta = 1 - cMin;
+        let hue = currentCfg.hue;
+        if (delta > 0.0001) {
+          if (rNorm === 1) hue = Math.round(((gNorm - bNorm) / delta) * 60);
+          else if (gNorm === 1) hue = Math.round((((bNorm - rNorm) / delta) + 2) * 60);
+          else hue = Math.round((((rNorm - gNorm) / delta) + 4) * 60);
+          if (hue < 0) hue += 360;
+        }
+        return {
+          ...currentCfg,
+          preset,
+          speed,
+          light: Math.round((maxChannel / 255) * 100),
+          hue,
+          colorHex,
+        };
+      }) as [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig]
+    );
+  }, []);
+
   const applyConnectedStatus = useCallback((status: QmkViaStatus) => {
     setDeviceStatus(status);
     if (typeof status.deviceActiveLayer === 'number') {
@@ -1266,64 +1327,9 @@ export default function App() {
     }
     if (status.rgbConfig && !hydratedRgbConnectionRef.current) {
       hydratedRgbConnectionRef.current = true;
-      const remoteRgb = status.rgbConfig;
-      const modeMap = ['Off', 'Solid', 'Rainbow', 'Breath'] as const;
-      setLayerLedConfigs((prev) =>
-        prev.map((currentCfg, idx) => {
-          const c = remoteRgb.layerColors[idx];
-          const rawMode = remoteRgb.layerModes?.[idx];
-          const preset =
-            rawMode !== undefined && rawMode >= 0 && rawMode <= 3
-              ? modeMap[rawMode]
-              : remoteRgb.enabled
-                ? 'Solid'
-                : 'Off';
-          const rawSpeed = remoteRgb.layerSpeeds?.[idx];
-          const speed =
-            typeof rawSpeed === 'number' && rawSpeed >= 0 && rawSpeed <= 100
-              ? rawSpeed
-              : currentCfg.speed;
-          if (!c) {
-            return { ...currentCfg, preset, speed };
-          }
-          const maxChannel = Math.max(c.r, c.g, c.b);
-          if (maxChannel === 0) {
-            return {
-              ...currentCfg,
-              preset,
-              speed,
-              light: preset === 'Off' ? currentCfg.light : 0,
-            };
-          }
-          const scale = 255 / maxChannel;
-          const nr = Math.min(255, Math.round(c.r * scale));
-          const ng = Math.min(255, Math.round(c.g * scale));
-          const nb = Math.min(255, Math.round(c.b * scale));
-          const colorHex = `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`.toUpperCase();
-          const rNorm = nr / 255;
-          const gNorm = ng / 255;
-          const bNorm = nb / 255;
-          const cMin = Math.min(rNorm, gNorm, bNorm);
-          const delta = 1 - cMin;
-          let hue = currentCfg.hue;
-          if (delta > 0.0001) {
-            if (rNorm === 1) hue = Math.round(((gNorm - bNorm) / delta) * 60);
-            else if (gNorm === 1) hue = Math.round((((bNorm - rNorm) / delta) + 2) * 60);
-            else hue = Math.round((((rNorm - gNorm) / delta) + 4) * 60);
-            if (hue < 0) hue += 360;
-          }
-          return {
-            ...currentCfg,
-            preset,
-            speed,
-            light: Math.round((maxChannel / 255) * 100),
-            hue,
-            colorHex,
-          };
-        }) as [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig]
-      );
+      hydrateRgbFromDevice(status.rgbConfig);
     }
-  }, []);
+  }, [hydrateRgbFromDevice]);
 
   useEffect(() => {
     const bridge = window.macropad;
@@ -1641,6 +1647,13 @@ export default function App() {
 
     const unsubscribe = bridge.onEvent((rawEvent) => {
       if (!isRecordValue(rawEvent)) return;
+      if (rawEvent.type === 'rgb_state') {
+        // RGB was changed on the device (FN keys / encoder). Adopt it so the
+        // editor does not push stale values back over the user's edit.
+        const rgbEvent = rawEvent as unknown as DeviceRgbStateEvent;
+        if (rgbEvent.rgbConfig) hydrateRgbFromDevice(rgbEvent.rgbConfig);
+        return;
+      }
       if (rawEvent.type === 'layer_state') {
         const layerEvent = rawEvent as unknown as DeviceLayerStateEvent;
         if (typeof layerEvent.deviceActiveLayer === 'number') {
@@ -1694,7 +1707,7 @@ export default function App() {
       unsubscribe();
       triggerController.cancelAll();
     };
-  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, presetOs]);
+  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, presetOs, hydrateRgbFromDevice]);
 
   // Listen for native Electron menu hardware actions when running inside desktop shell
   useEffect(() => {

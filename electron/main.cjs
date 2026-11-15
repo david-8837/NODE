@@ -470,6 +470,11 @@ function createWindow() {
       enableRemoteModule: false,
       webSecurity: true,
       sandbox: true, // Hardened Sandbox Enabled
+      // Multi-action tap/hold gestures are timed in the renderer against a 200ms
+      // tapping term. Chromium throttles hidden-window timers to ~1s, which would
+      // turn every tap into a hold once the app is minimized or tray-hidden.
+      // Physical keys must behave identically whether or not the window is visible.
+      backgroundThrottling: false,
     },
     icon: path.join(__dirname, '../public/favicon.ico'),
     show: false,

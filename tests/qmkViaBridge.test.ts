@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   actionToViaKeycode,
+  MP_LAYER_CYCLE,
+  MP_PROF_MAX,
+  MP_TRIG_MAX,
   QmkViaBridge,
   VIA_PROTOCOL_VERSION,
   VIA_RAW_REPORT_SIZE,
@@ -130,6 +133,10 @@ describe('QMK/VIA keycode translation', () => {
     [{ t: 'media', c: 'BRIGHTNESS_DECREMENT' }, 0x00be],
     [{ t: 'layer', op: 'set', n: 2 }, 0x5202],
     [{ t: 'layer', op: 'hold', n: 1 }, 0x5221],
+    // Layer Cycle previously returned null and was silently dropped before ever
+    // reaching the device. It now maps to a firmware-handled custom keycode.
+    [{ t: 'layer', op: 'next' }, 0x7e44],
+    [{ t: 'layer', op: 'next', n: 0 }, 0x7e44],
   ])('translates supported action %j to VIA keycode %j', (action, expected) => {
     expect(actionToViaKeycode(action)).toBe(expected);
   });
@@ -138,8 +145,18 @@ describe('QMK/VIA keycode translation', () => {
     expect(actionToViaKeycode(undefined)).toBe(0);
     expect(actionToViaKeycode({ t: 'keys', k: ['A', 'B'] })).toBeNull();
     expect(actionToViaKeycode({ t: 'keys', k: ['CONTROL', 'RIGHT_SHIFT', 'A'] })).toBeNull();
-    expect(actionToViaKeycode({ t: 'layer', op: 'next', n: 0 })).toBeNull();
     expect(actionToViaKeycode({ t: 'media', c: 'UNKNOWN' })).toBeNull();
+    expect(actionToViaKeycode({ t: 'layer', op: 'unknown', n: 1 })).toBeNull();
+    expect(actionToViaKeycode({ t: 'layer', op: 'set' })).toBeNull();
+  });
+
+  it('keeps Layer Cycle clear of the host-trigger and profile keycode ranges', () => {
+    const cycle = actionToViaKeycode({ t: 'layer', op: 'next' });
+    expect(cycle).toBe(MP_LAYER_CYCLE);
+    expect(cycle).toBeGreaterThan(MP_TRIG_MAX);
+    expect(cycle).toBeGreaterThan(MP_PROF_MAX);
+    // Layer Cycle takes no target layer, so it must survive an out-of-range n.
+    expect(actionToViaKeycode({ t: 'layer', op: 'next', n: 99 })).toBe(MP_LAYER_CYCLE);
   });
 });
 
@@ -288,12 +305,16 @@ describe('QMK/VIA WebHID bridge', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.warnings).toContain('Layer 1 R1C3: unsupported action was not synced');
+    // Layer Cycle is now a real keycode, so it must sync without a warning.
+    expect(result.warnings ?? []).not.toContain('Layer 1 R1C3: unsupported action was not synced');
     const writes = hid.device.reports.filter((report) => report[0] === 0x05);
     expect(writes.find((report) => report[1] === 0 && report[2] === 0 && report[3] === 0)?.slice(4, 6))
       .toEqual(new Uint8Array([0x03, 0x16]));
     expect(writes.find((report) => report[1] === 0 && report[2] === 0 && report[3] === 1)?.slice(4, 6))
       .toEqual(new Uint8Array([0x52, 0x21]));
+    // R1C3 = Layer Cycle -> MP_LAYER_CYCLE (0x7E44) written big-endian to the device.
+    expect(writes.find((report) => report[1] === 0 && report[2] === 0 && report[3] === 2)?.slice(4, 6))
+      .toEqual(new Uint8Array([0x7e, 0x44]));
     expect(writes.find((report) => report[1] === 0 && report[2] === 3 && report[3] === 0)?.slice(4, 6))
       .toEqual(new Uint8Array([0x00, 0x28]));
 
@@ -491,5 +512,49 @@ describe('QMK/VIA WebHID bridge', () => {
     const rgbPacket = hid.device.reports.find((r) => r[0] === 0xfd && r[1] === 0x04);
     expect(rgbPacket).toBeDefined();
     expect(Array.from(rgbPacket!.slice(16, 24))).toEqual([2, 3, 1, 0, 80, 35, 50, 10]);
+  });
+
+  it('adopts RGB changes made on the device so the editor cannot overwrite them', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+
+    const events: unknown[] = [];
+    const unsubscribe = bridge.onEvent((event) => events.push(event));
+
+    // Firmware FN key press: LED toggled off, layer 2 speed dropped to 30.
+    const report = new Uint8Array(32);
+    report[0] = 0xfd;
+    report[1] = 0x12; // MP_EVT_RGB_STATE
+    report[2] = 1;    // active layer
+    report[3] = 2;    // active profile slot
+    report[4] = 4;
+    report[5] = 4;
+    report[6] = 0;    // rgb disabled on the device
+    report.set([0, 81, 255, 16, 185, 129, 245, 158, 11, 225, 29, 72], 7);
+    report.set([1, 1, 2, 3], 19);
+    report.set([50, 30, 50, 50], 23);
+    hid.device.dispatchEvent(Object.assign(new Event('inputreport'), {
+      device: hid.device,
+      reportId: 0,
+      data: new DataView(report.buffer),
+    }));
+
+    expect(events).toContainEqual({
+      type: 'rgb_state',
+      rgbConfig: expect.objectContaining({
+        enabled: false,
+        layerModes: [1, 1, 2, 3],
+        layerSpeeds: [50, 30, 50, 50],
+      }),
+    });
+    await expect(bridge.getStatus()).resolves.toMatchObject({
+      deviceActiveLayer: 1,
+      activeProfileSlot: 2,
+      rgbConfig: expect.objectContaining({ enabled: false }),
+    });
+
+    unsubscribe();
+    await bridge.disconnect();
   });
 });
