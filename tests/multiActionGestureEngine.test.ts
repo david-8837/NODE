@@ -5,6 +5,61 @@ import { buildViaConfiguration } from '../src/qmkProfileSync';
 import { actionToViaKeycode, QmkViaBridge, VIA_PROTOCOL_VERSION, VIA_RAW_REPORT_SIZE, VIA_RAW_USAGE_ID, VIA_RAW_USAGE_PAGE, VIA_USB_PRODUCT_ID, VIA_USB_VENDOR_ID, type HidApiLike, type HidDeviceLike } from '../src/qmkViaBridge';
 
 describe('MultiActionGestureEngine (4-gesture state machine)', () => {
+  it('fires a lone onTap on the press edge, not after release (latency fix)', () => {
+    vi.useFakeTimers();
+    const fired: Array<{ gesture: string; binding: string }> = [];
+    const engine = new MultiActionGestureEngine(
+      (event) => fired.push({ gesture: event.gesture, binding: event.binding }),
+      { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: (id) => clearTimeout(id), now: () => Date.now() }
+    );
+
+    // Hardware report: the switch clicked audibly before the character appeared.
+    // With no competing gesture there is nothing to disambiguate, so the action
+    // must not wait out the physical press duration.
+    engine.handleKeyDown('r1c1', { gestures: { onTap: 'A' } });
+    expect(fired).toEqual([{ gesture: 'onTap', binding: 'A' }]);
+
+    // Release must not fire it a second time.
+    vi.advanceTimersByTime(120);
+    engine.handleKeyUp('r1c1');
+    vi.advanceTimersByTime(1000);
+    expect(fired).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('still waits for release when a competing gesture makes the press ambiguous', () => {
+    vi.useFakeTimers();
+    const fired: string[] = [];
+    const engine = new MultiActionGestureEngine(
+      (event) => fired.push(event.gesture),
+      { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: (id) => clearTimeout(id), now: () => Date.now() }
+    );
+
+    engine.handleKeyDown('r1c1', { gestures: { onTap: 'A', onHold: 'B' }, tappingTermMs: 200 });
+    expect(fired).toEqual([]); // must not guess before the hold threshold
+    vi.advanceTimersByTime(80);
+    engine.handleKeyUp('r1c1');
+    expect(fired).toEqual(['onTap']);
+    vi.useRealTimers();
+  });
+
+  it('does not fire onTap early when doubleTap is configured', () => {
+    vi.useFakeTimers();
+    const fired: string[] = [];
+    const engine = new MultiActionGestureEngine(
+      (event) => fired.push(event.gesture),
+      { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: (id) => clearTimeout(id), now: () => Date.now() }
+    );
+
+    engine.handleKeyDown('r1c1', { gestures: { onTap: 'A', doubleTap: 'B' }, tappingTermMs: 200 });
+    expect(fired).toEqual([]);
+    engine.handleKeyUp('r1c1');
+    expect(fired).toEqual([]);
+    vi.advanceTimersByTime(250);
+    expect(fired).toEqual(['onTap']);
+    vi.useRealTimers();
+  });
+
   it('fires onTap immediately on release when neither doubleTap nor tapHold is configured', () => {
     vi.useFakeTimers();
     const fired: Array<{ slotId: string; gesture: string; binding: string }> = [];

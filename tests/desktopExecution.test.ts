@@ -6,6 +6,8 @@ const {
   createDesktopActionExecutor,
   normalizePayload,
   parseCommandLine,
+  resolveCommandInvocation,
+  SAFE_SHELL_COMMANDS,
   parseKeyCombo,
   parseSequenceSteps,
   parseShortcutToVK,
@@ -278,5 +280,80 @@ describe('shared desktop action executor', () => {
     expect(POWERSHELL_WORKER_SCRIPT).toContain('WmiSetBrightness');
     expect(POWERSHELL_WORKER_SCRIPT).toContain("$opKind -eq 'brightness'");
     expect(POWERSHELL_WORKER_SCRIPT).not.toContain('keybd_event');
+  });
+});
+
+describe('Cmd Smart Action invocation (hardware-reported failures)', () => {
+  const resolve = (value: string) => resolveCommandInvocation(value, 'win32');
+
+  it('resolves "start <app>" to a direct launch instead of spawning a nonexistent start.exe', () => {
+    // Reported on hardware as: Action failed: Spawn start ENOENT
+    expect(resolve('start calc')).toEqual({ kind: 'launch', command: 'calc.exe', args: [] });
+    expect(resolve('start notepad')).toEqual({ kind: 'launch', command: 'notepad.exe', args: [] });
+    expect(resolve('START Calculator')).toEqual({ kind: 'launch', command: 'calc.exe', args: [] });
+  });
+
+  it('accepts the quoted empty window title used by "cmd /c start "" calc"', () => {
+    // Reported on hardware as: Command "cmd.exe" is blocked for safety
+    expect(resolve('cmd.exe /c start "" calc')).toEqual({ kind: 'launch', command: 'calc.exe', args: [] });
+    expect(resolve('cmd /c start "" notepad')).toEqual({ kind: 'launch', command: 'notepad.exe', args: [] });
+  });
+
+  it('runs allowlisted informational commands through cmd with AutoRun disabled', () => {
+    expect(resolve('cmd /c ipconfig')).toEqual({
+      kind: 'exec', command: 'cmd.exe', args: ['/d', '/c', 'ipconfig'],
+    });
+    expect(resolve('cmd.exe /c ipconfig /all')).toEqual({
+      kind: 'exec', command: 'cmd.exe', args: ['/d', '/c', 'ipconfig', '/all'],
+    });
+    // /d prevents AutoRun registry scripts from executing alongside the command.
+    expect(resolve('cmd /c whoami').args[0]).toBe('/d');
+  });
+
+  it('keeps the allowlist free of destructive or system-modifying tools', () => {
+    for (const forbidden of ['del', 'erase', 'reg', 'regedit', 'shutdown', 'format', 'diskpart', 'taskkill', 'powershell', 'cmd', 'wmic', 'bcdedit', 'rmdir']) {
+      expect(SAFE_SHELL_COMMANDS.has(forbidden)).toBe(false);
+    }
+  });
+
+  it('still blocks interpreters and destructive commands nested inside cmd /c', () => {
+    for (const value of [
+      'cmd /c powershell -NoProfile',
+      'cmd /c cmd /c calc',
+      'cmd /c del file.txt',
+      'cmd /c reg add HKLM\\Test',
+      'cmd /c shutdown /s',
+      'cmd /c format c:',
+      'cmd /c taskkill /im app.exe',
+    ]) {
+      expect(() => resolve(value)).toThrow(/blocked for safety/i);
+    }
+  });
+
+  it('rejects shell metacharacters so commands cannot be chained', () => {
+    for (const value of ['cmd /c echo hi & calc', 'cmd /c ipconfig | findstr x', 'cmd /c echo %PATH%', 'cmd /c dir > out.txt']) {
+      expect(() => resolve(value)).toThrow(/restricted/i);
+    }
+  });
+
+  it('refuses commands outside the allowlist and points at the App action', () => {
+    expect(() => resolve('cmd /c notepad')).toThrow(/App Smart Action/i);
+    expect(() => resolve('cmd /c mystery.exe')).toThrow(/not permitted through cmd/i);
+  });
+
+  it('gives actionable errors for builtins, persistent shells, and URLs', () => {
+    expect(() => resolve('dir')).toThrow(/builtin/i);
+    expect(() => resolve('cmd /k ipconfig')).toThrow(/cmd \/c/i);
+    expect(() => resolve('cmd')).toThrow(/Only "cmd \/c/i);
+    expect(() => resolve('cmd /c')).toThrow(/Usage/i);
+    expect(() => resolve('start')).toThrow(/Usage: start/i);
+    expect(() => resolve('start https://example.com')).toThrow(/Website Smart Action/i);
+  });
+
+  it('leaves ordinary executable commands working exactly as before', () => {
+    expect(resolve('echo safe')).toEqual({ kind: 'exec', command: 'echo', args: ['safe'] });
+    expect(() => resolve('powershell.exe -NoProfile')).toThrow(/blocked for safety/i);
+    expect(parseCommandLine('"C:\\Program Files\\App\\app.exe" --name "hello world"', 'win32'))
+      .toEqual(['C:\\Program Files\\App\\app.exe', '--name', 'hello world']);
   });
 });

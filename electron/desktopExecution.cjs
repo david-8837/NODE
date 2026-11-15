@@ -1023,10 +1023,35 @@ function createWindowsInputAdapter({
     await inputQueue.catch(() => undefined);
   };
 
-  return { sendOperations, cancelAll, close };
+  // Start the persistent PowerShell worker ahead of the first keystroke. Without
+  // this, the first Multi-Action after enabling simulation pays the interpreter
+  // startup cost (hundreds of ms) on top of the gesture time.
+  const prewarm = () => ensureWorker().then(() => ({ success: true }), (error) => ({
+    success: false,
+    error: String(error?.message || error),
+  }));
+
+  return { sendOperations, cancelAll, close, prewarm };
 }
 
-function parseCommandLine(value, platform = process.platform) {
+/**
+ * Commands that may run through cmd.exe. Deliberately limited to read-only /
+ * informational tools: nothing here can modify the registry, disks, services,
+ * boot config, or other processes. Interpreters and destructive tools stay in
+ * BLOCKED_COMMANDS and are rejected even when nested inside `cmd /c`.
+ */
+const SAFE_SHELL_COMMANDS = new Set([
+  'ipconfig', 'systeminfo', 'whoami', 'hostname', 'ver', 'echo', 'ping',
+  'tracert', 'nslookup', 'getmac', 'netstat', 'tasklist', 'driverquery', 'where',
+]);
+
+/** Windows shell builtins that have no .exe and therefore cannot be spawned. */
+const SHELL_BUILTINS = new Set([
+  'start', 'dir', 'copy', 'xcopy', 'move', 'ren', 'rename', 'md', 'mkdir',
+  'type', 'set', 'cd', 'chdir', 'cls', 'title', 'assoc', 'ftype', 'call', 'exit',
+]);
+
+function tokenizeCommandLine(value) {
   if (typeof value !== 'string' || !value.trim()) throw new Error('Empty command');
   if (value.length > 4096) throw new Error('Command line is too long');
   if (/[\u0000-\u001f\u007f;&|<>`$%]/.test(value)) {
@@ -1066,13 +1091,94 @@ function parseCommandLine(value, platform = process.platform) {
   if (quote) throw new Error('Command contains an unmatched quote');
   if (tokenStarted) parts.push(current);
   if (parts.length === 0) throw new Error('Empty command');
-
-  const pathApi = platform === 'win32' ? path.win32 : path;
-  const executable = parts[0].toLowerCase();
-  if (BLOCKED_COMMANDS.has(executable) || BLOCKED_COMMANDS.has(pathApi.basename(executable).toLowerCase())) {
-    throw new Error(`Command "${parts[0]}" is blocked for safety`);
-  }
   return parts;
+}
+
+function assertCommandNotBlocked(name, platform = process.platform) {
+  const pathApi = platform === 'win32' ? path.win32 : path;
+  const executable = String(name).toLowerCase();
+  if (BLOCKED_COMMANDS.has(executable) || BLOCKED_COMMANDS.has(pathApi.basename(executable).toLowerCase())) {
+    throw new Error(`Command "${name}" is blocked for safety`);
+  }
+}
+
+function parseCommandLine(value, platform = process.platform) {
+  const parts = tokenizeCommandLine(value);
+  assertCommandNotBlocked(parts[0], platform);
+  return parts;
+}
+
+/**
+ * Translate `start <target>` into a direct executable launch.
+ *
+ * `start` is a cmd.exe builtin with no .exe on disk, so spawning it directly
+ * fails with ENOENT. Rather than opening a shell, resolve the target with the
+ * same validated resolver the App action uses and launch it without a shell.
+ */
+function resolveStartInvocation(args, platform, options) {
+  let target = args[0];
+  // `start "" calc` passes an empty window title first; drop it.
+  if (target === '' && args.length > 1) target = args[1];
+  if (!target || !String(target).trim()) {
+    throw new Error('Usage: start <application>. Example: start calc');
+  }
+  if (/^https?:\/\//i.test(target)) {
+    throw new Error('Use a Website Smart Action to open URLs, not "start".');
+  }
+  const executable = resolveApplicationPath(target, { platform, ...options });
+  assertCommandNotBlocked(executable, platform);
+  return { kind: 'launch', command: executable, args: [] };
+}
+
+/**
+ * Decide how a Cmd Smart Action should run, without ever handing an arbitrary
+ * string to a shell. Returns a launch, a direct exec, or a tightly scoped
+ * `cmd.exe /d /c` invocation limited to SAFE_SHELL_COMMANDS.
+ */
+function resolveCommandInvocation(value, platform = process.platform, options = {}) {
+  const parts = tokenizeCommandLine(value);
+  const pathApi = platform === 'win32' ? path.win32 : path;
+  const head = pathApi.basename(String(parts[0])).toLowerCase().replace(/\.exe$/, '');
+
+  if (head === 'start') {
+    return resolveStartInvocation(parts.slice(1), platform, options);
+  }
+
+  if (head === 'cmd') {
+    const switchArg = String(parts[1] || '').toLowerCase();
+    if (switchArg !== '/c' && switchArg !== '/k') {
+      throw new Error('Only "cmd /c <command>" is supported. Example: cmd /c ipconfig');
+    }
+    if (switchArg === '/k') {
+      throw new Error('Use "cmd /c" instead of "cmd /k" so the command can finish and report output.');
+    }
+    const inner = parts.slice(2);
+    if (inner.length === 0) throw new Error('Usage: cmd /c <command>. Example: cmd /c ipconfig');
+    const innerHead = pathApi.basename(String(inner[0])).toLowerCase().replace(/\.exe$/, '');
+
+    if (innerHead === 'start') {
+      return resolveStartInvocation(inner.slice(1), platform, options);
+    }
+    assertCommandNotBlocked(inner[0], platform);
+    if (!SAFE_SHELL_COMMANDS.has(innerHead)) {
+      throw new Error(
+        `Command "${inner[0]}" is not permitted through cmd. ` +
+        `Allowed: ${[...SAFE_SHELL_COMMANDS].join(', ')}, start <app>. ` +
+        'To run other programs, use an App Smart Action with the full .exe path.'
+      );
+    }
+    // /d disables AutoRun registry scripts, so nothing extra executes on startup.
+    return { kind: 'exec', command: 'cmd.exe', args: ['/d', '/c', ...inner] };
+  }
+
+  assertCommandNotBlocked(parts[0], platform);
+  if (SHELL_BUILTINS.has(head)) {
+    throw new Error(
+      `"${parts[0]}" is a cmd.exe builtin, not a program. ` +
+      `Use "cmd /c ${parts[0]}" if it is supported, or an App Smart Action to launch a program.`
+    );
+  }
+  return { kind: 'exec', command: parts[0], args: parts.slice(1) };
 }
 
 function safePathExists(filePath, fsModule = fs) {
@@ -1484,15 +1590,22 @@ function createDesktopActionExecutor({
       }
       try {
         requireCurrentSimulation(startedGeneration, hardwareTrigger);
-        const [command, ...args] = parseCommandLine(normalized.smartAction.value, platform);
+        const invocation = resolveCommandInvocation(normalized.smartAction.value, platform, {
+          env: process.env,
+          fsModule,
+        });
         const cwd = typeof payload.workingDirectory === 'string' && payload.workingDirectory.trim()
           ? payload.workingDirectory.trim()
           : undefined;
         if (cwd && !fsModule.existsSync(cwd)) return { success: false, error: `Working directory does not exist: ${cwd}` };
-        const result = await runExecutable(command, args, {
-          cwd,
-          timeoutMs: boundedDelay(payload.timeoutMs, 'Command timeout') || 10_000,
-        });
+        // `start <app>` resolves to a real executable and is launched without a
+        // shell, exactly like an App Smart Action.
+        const result = invocation.kind === 'launch'
+          ? await launchExecutable(invocation.command, invocation.args, cwd)
+          : await runExecutable(invocation.command, invocation.args, {
+            cwd,
+            timeoutMs: boundedDelay(payload.timeoutMs, 'Command timeout') || 10_000,
+          });
         requireCurrentSimulation(startedGeneration, hardwareTrigger);
         return result;
       } catch (error) {
@@ -1522,6 +1635,10 @@ function createDesktopActionExecutor({
       }
       simulationEnabled = true;
       generation += 1;
+      // Warm the input worker in the background so the first physical press is
+      // not delayed by PowerShell startup. Failures stay non-fatal: the normal
+      // execute path surfaces them when an action actually runs.
+      void Promise.resolve(input.prewarm?.()).catch(() => undefined);
       return { success: true, enabled: true };
     }
 
@@ -1580,6 +1697,8 @@ module.exports = {
   setNativeSimulationEnabled,
   closeNativeActionExecutor,
   parseCommandLine,
+  resolveCommandInvocation,
+  SAFE_SHELL_COMMANDS,
   parseKeyCombo,
   parseShortcutToVK,
   parseSequenceSteps,
