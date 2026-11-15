@@ -501,7 +501,9 @@ $ProgressPreference = 'SilentlyContinue'
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -571,20 +573,86 @@ public static class NodeStudioNativeInput {
         }
     }
 
-    public static void SendUnicodeChar(ushort codeUnit) {
+    private static void AppendVirtualKey(List<INPUT> inputs, ushort virtualKey) {
+        INPUT down = new INPUT();
+        down.type = 1;
+        down.U.ki = new KEYBDINPUT { wVk = virtualKey, wScan = 0, dwFlags = 0u, time = 0, dwExtraInfo = UIntPtr.Zero };
+        INPUT up = new INPUT();
+        up.type = 1;
+        up.U.ki = new KEYBDINPUT { wVk = virtualKey, wScan = 0, dwFlags = 0x0002u, time = 0, dwExtraInfo = UIntPtr.Zero };
+        inputs.Add(down);
+        inputs.Add(up);
+    }
+
+    private static void AppendUnicodeUnit(List<INPUT> inputs, ushort codeUnit) {
         INPUT down = new INPUT();
         down.type = 1;
         down.U.ki = new KEYBDINPUT { wVk = 0, wScan = codeUnit, dwFlags = 0x0004u, time = 0, dwExtraInfo = UIntPtr.Zero };
         INPUT up = new INPUT();
         up.type = 1;
         up.U.ki = new KEYBDINPUT { wVk = 0, wScan = codeUnit, dwFlags = 0x0006u, time = 0, dwExtraInfo = UIntPtr.Zero };
-        INPUT[] inputs = new INPUT[] { down, up };
-        uint sent = SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
-        if (sent != 2) {
+        inputs.Add(down);
+        inputs.Add(up);
+    }
+
+    private static void FlushInputs(List<INPUT> inputs) {
+        if (inputs.Count == 0) return;
+        INPUT[] array = inputs.ToArray();
+        inputs.Clear();
+        uint sent = SendInput((uint)array.Length, array, Marshal.SizeOf(typeof(INPUT)));
+        if (sent != (uint)array.Length) {
             int error = Marshal.GetLastWin32Error();
             throw new Win32Exception(error, "Windows SendInput rejected Unicode text. The target may be elevated or the input desktop may be unavailable.");
         }
     }
+
+    /// <summary>
+    /// Split into user-perceived characters so surrogate pairs are never separated.
+    /// Used by the paced path; the default path sends the whole string at once.
+    /// </summary>
+    public static string[] SplitCodePoints(string text) {
+        var parts = new List<string>();
+        if (string.IsNullOrEmpty(text)) return parts.ToArray();
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        while (enumerator.MoveNext()) parts.Add((string)enumerator.Current);
+        return parts.ToArray();
+    }
+
+    /// <summary>
+    /// Insert a whole string as ONE SendInput call.
+    ///
+    /// SendInput guarantees no other input is inserted between the events of a
+    /// single call. The previous implementation issued one SendInput per
+    /// character, so events from another press (or the physical keyboard) could
+    /// interleave mid-string, which is what mixed and duplicated the text during
+    /// rapid repeated presses. Batching removes that window without adding delay.
+    ///
+    /// Newlines and tabs must be real virtual keys: injecting U+000A/U+0009 as
+    /// Unicode does not produce a line break or tab in many editors.
+    /// </summary>
+    public static void SendUnicodeText(string text) {
+        if (string.IsNullOrEmpty(text)) return;
+        var inputs = new List<INPUT>(text.Length * 2);
+        for (int i = 0; i < text.Length; i++) {
+            char c = text[i];
+            if (c == '\r') {
+                if (i + 1 < text.Length && text[i + 1] == '\n') i++;
+                AppendVirtualKey(inputs, 0x0D);
+                continue;
+            }
+            if (c == '\n') { AppendVirtualKey(inputs, 0x0D); continue; }
+            if (c == '\t') { AppendVirtualKey(inputs, 0x09); continue; }
+            // Surrogate halves are appended adjacently inside the same call so
+            // Windows reassembles them into one non-BMP character.
+            AppendUnicodeUnit(inputs, c);
+            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1])) {
+                i++;
+                AppendUnicodeUnit(inputs, text[i]);
+            }
+        }
+        FlushInputs(inputs);
+    }
+
 }
 
 public sealed class NodeStudioInputReader {
@@ -757,10 +825,19 @@ while ($true) {
             } elseif ($opKind -eq 'text') {
                 $text = [string]$op.text
                 $interval = [int]$op.interKeyDelayMs
-                foreach ($character in $text.ToCharArray()) {
+                if ($interval -gt 0) {
+                    # Explicit user pacing: send one whole character at a time so
+                    # surrogate pairs stay intact, checking for cancel between them.
+                    foreach ($element in [NodeStudioNativeInput]::SplitCodePoints($text)) {
+                        Read-ControlLines
+                        [NodeStudioNativeInput]::SendUnicodeText([string]$element)
+                        Wait-Cancelable $interval
+                    }
+                } else {
+                    # Default: one atomic SendInput for the entire string, so no
+                    # other input can interleave between its characters.
                     Read-ControlLines
-                    [NodeStudioNativeInput]::SendUnicodeChar([uint16][char]$character)
-                    if ($interval -gt 0) { Wait-Cancelable $interval }
+                    [NodeStudioNativeInput]::SendUnicodeText($text)
                 }
             } elseif ($opKind -eq 'wait') {
                 Wait-Cancelable ([int]$op.durationMs)
