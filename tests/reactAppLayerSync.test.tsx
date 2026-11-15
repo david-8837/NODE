@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { installConnectedDevice, removeConnectedDevice } from './helpers/connectedDevice';
+import { emptyKeymapSnapshot } from './helpers/connectedDevice';
 import { PROFILE_FILE_STORAGE_KEY } from '../src/profileFiles';
 
 let container: HTMLDivElement;
@@ -126,7 +127,7 @@ describe('bidirectional hardware layer synchronisation', () => {
         if (payload.cmd === 'select_layer') {
           return { ok: true, deviceActiveLayer: 0, requestedLayer: Number(payload.layer), confirmed: false };
         }
-        if (payload.cmd === 'get_config') return { ok: false, error: 'none' };
+        if (payload.cmd === 'get_config') return { ok: true, snapshot: emptyKeymapSnapshot(), warnings: [] };
         return { ok: true, warnings: [] };
       },
     });
@@ -143,7 +144,7 @@ describe('bidirectional hardware layer synchronisation', () => {
     const device = installConnectedDevice({
       request: async (payload) => {
         if (payload.cmd === 'select_layer') return { ok: false, error: 'Timed out' };
-        if (payload.cmd === 'get_config') return { ok: false, error: 'none' };
+        if (payload.cmd === 'get_config') return { ok: true, snapshot: emptyKeymapSnapshot(), warnings: [] };
         return { ok: true, warnings: [] };
       },
     });
@@ -167,7 +168,7 @@ describe('bidirectional hardware layer synchronisation', () => {
           hardwareLayer = Number(payload.layer);
           return { ok: true, deviceActiveLayer: hardwareLayer, confirmed: true };
         }
-        if (payload.cmd === 'get_config') return { ok: false, error: 'none' };
+        if (payload.cmd === 'get_config') return { ok: true, snapshot: emptyKeymapSnapshot(), warnings: [] };
         return { ok: true, warnings: [] };
       },
     });
@@ -213,7 +214,7 @@ describe('bidirectional hardware layer synchronisation', () => {
           // Firmware answers with what it is actually on after the physical press.
           return { ok: true, deviceActiveLayer: 2, confirmed: false };
         }
-        if (payload.cmd === 'get_config') return { ok: false, error: 'none' };
+        if (payload.cmd === 'get_config') return { ok: true, snapshot: emptyKeymapSnapshot(), warnings: [] };
         return { ok: true, warnings: [] };
       },
     });
@@ -247,7 +248,7 @@ describe('bidirectional hardware layer synchronisation', () => {
           await new Promise<void>((resolve) => { release = resolve; });
           return { ok: true, deviceActiveLayer: Number(payload.layer), confirmed: true };
         }
-        if (payload.cmd === 'get_config') return { ok: false, error: 'none' };
+        if (payload.cmd === 'get_config') return { ok: true, snapshot: emptyKeymapSnapshot(), warnings: [] };
         return { ok: true, warnings: [] };
       },
     });

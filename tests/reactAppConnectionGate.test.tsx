@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { PROFILE_FILE_STORAGE_KEY } from '../src/profileFiles';
+import { emptyKeymapSnapshot } from './helpers/connectedDevice';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -77,7 +78,7 @@ function installBridge(options: FakeBridgeOptions = {}) {
     putFile: vi.fn(async () => ({ ok: true, localOnly: true })),
     request: vi.fn(async (payload: { cmd?: string }) => {
       if (state !== 'connected') return { ok: false, error: 'No QMK/VIA device is connected' };
-      if (payload.cmd === 'get_config') return { ok: false, error: 'none' };
+      if (payload.cmd === 'get_config') return { ok: true, snapshot: emptyKeymapSnapshot(), warnings: [] };
       return { ok: true, warnings: [] };
     }),
   };

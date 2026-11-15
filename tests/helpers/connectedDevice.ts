@@ -1,4 +1,23 @@
 import { vi } from 'vitest';
+import { VIA_PROTOCOL_VERSION, type ViaKeymapSnapshot } from '../../src/qmkViaBridge';
+
+/**
+ * A readable keymap, as real firmware always returns. Without it the app treats
+ * the pre-sync backup as failed and raises a background toast ~500ms after
+ * mount, which races whatever toast a test is asserting on.
+ */
+export function emptyKeymapSnapshot(): ViaKeymapSnapshot {
+  const slots = ['r1c1', 'r1c2', 'r1c3', 'r2c1', 'r2c2', 'r2c3', 'r3c1', 'r3c2', 'r3c3'];
+  return {
+    protocolVersion: VIA_PROTOCOL_VERSION,
+    layerCount: 4,
+    capturedLayerCount: 4,
+    layers: Array.from({ length: 4 }, () => ({
+      keys: Object.fromEntries(slots.map((slot) => [slot, 0])),
+      enc: { ccw: 0, cw: 0, press: 0 },
+    })),
+  };
+}
 
 export interface FakeConnectedBridgeOptions {
   deviceActiveLayer?: number;
@@ -49,7 +68,7 @@ export function installConnectedDevice(options: FakeConnectedBridgeOptions = {})
     if (payload.cmd === 'get_device_state') {
       return { ok: true, deviceActiveLayer: layer, activeProfileSlot: slot };
     }
-    if (payload.cmd === 'get_config') return { ok: false, error: 'No snapshot in this test' };
+    if (payload.cmd === 'get_config') return { ok: true, snapshot: emptyKeymapSnapshot(), warnings: [] };
     return { ok: true, warnings: [] };
   };
 
