@@ -134,6 +134,42 @@ export async function requestSimulationMode(
   }
 }
 
+/**
+ * A gesture/slot value may reference a Smart Action, either wrapped "(Text: hi)"
+ * or bare "Text: hi". The wrapped form is unwrapped by removing exactly one
+ * leading '(' and its matching final ')', so text that itself contains
+ * parentheses (e.g. "12:30 (noon)") survives intact.
+ */
+function smartPayloadFromBinding(rawValue: string): {
+  payload: Record<string, unknown>;
+  type: string;
+  value: string;
+} | null {
+  let value = rawValue.trim();
+  if (value.startsWith('(') && value.endsWith(')')) {
+    value = value.slice(1, -1).trim();
+  }
+  const match = value.match(/^(Web|App|Cmd|Text)\s*:\s*([\s\S]+)$/i);
+  if (!match) return null;
+  const inner = match[2].trim();
+  if (!inner) return null;
+  // Canonicalise capitalisation so downstream consent/allow-list checks match.
+  const type = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+  return { payload: { type, value: inner }, type, value: inner };
+}
+
+/**
+ * The binding a gesture actually resolves to. For a structured Multi-Action the
+ * summary string lists *every* gesture, so it must never be used to decide what
+ * a single resolved gesture does.
+ */
+function resolvedBindingFor(action: SimulationAction): string | null {
+  const execution = action.execution;
+  if (execution?.kind !== 'multi') return null;
+  const gesture = action.gesture || 'onTap';
+  return execution.gestures[gesture]?.trim() || '';
+}
+
 function executePayloadFor(action: SimulationAction): {
   payload: Record<string, unknown>;
   type: string;
@@ -176,6 +212,10 @@ function executePayloadFor(action: SimulationAction): {
   const gesture = action.gesture || 'onTap';
   const value = execution.gestures[gesture]?.trim() || '';
   if (!value) return null;
+  // A gesture may hold a Smart Action, not just a chord. Dispatching "(Text: …)"
+  // as a Shortcut made the executor reject it as an unsupported key.
+  const smart = smartPayloadFromBinding(value);
+  if (smart) return smart;
   return { payload: { type: 'Shortcut', value }, type: 'Shortcut', value };
 }
 
@@ -216,11 +256,16 @@ export function triggerSimulationAction(
   const label = action.label || '';
   const id = action.id || '';
 
+  // A resolved Multi-Action gesture must be judged on its OWN binding. Matching
+  // the whole summary let an `onHold: Layer 2` entry hijack `onTap: Ctrl + C`.
+  const resolvedGestureBinding = resolvedBindingFor(action);
+  const layerSourceBinding = resolvedGestureBinding === null ? binding : resolvedGestureBinding;
+  const isResolvedGesture = resolvedGestureBinding !== null;
   const layerMatch =
-    id.match(/lyr-(\d+)/) ||
-    binding.match(/Layer\s*(\d+)/i) ||
-    label.match(/^L(\d+)$/i) ||
-    label.match(/^TL(\d+)$/i);
+    (isResolvedGesture ? null : id.match(/lyr-(\d+)/)) ||
+    layerSourceBinding.match(/Layer\s*(\d+)/i) ||
+    (isResolvedGesture ? null : label.match(/^L(\d+)$/i)) ||
+    (isResolvedGesture ? null : label.match(/^TL(\d+)$/i));
   if (layerMatch) {
     const targetLayer = Number.parseInt(layerMatch[1], 10) - 1;
     if (targetLayer >= 0) {

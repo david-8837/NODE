@@ -1374,9 +1374,32 @@ function validateUrl(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 4096) {
     throw new Error('URL is empty or too long');
   }
+  const trimmed = value.trim();
+
+  // Reject local/UNC paths explicitly. Prefixing them with https:// used to turn
+  // "C:\Users\me" into "https://c/Users/me" and "\\server\share" into
+  // "https://server/share", silently opening a browser at a bogus host instead
+  // of telling the user they picked the wrong action type.
+  if (/^[a-z]:[\\/]/i.test(trimmed) || trimmed.startsWith('\\\\')) {
+    throw new Error('This is a local file path, not a website. Use an App action to open files or programs.');
+  }
+
+  const hasExplicitScheme = /^https?:\/\//i.test(trimmed);
+  if (!hasExplicitScheme) {
+    // An explicit non-web scheme must be rejected, not rewritten. "host:8080"
+    // is a port, not a scheme, so it still gets the https:// default.
+    const schemeMatch = trimmed.match(/^([a-z][a-z0-9+.-]*):(.*)$/i);
+    if (schemeMatch && !/^\d+(?:[/?#]|$)/.test(schemeMatch[2])) {
+      throw new Error(
+        `Only HTTP and HTTPS URLs are supported (got "${schemeMatch[1].toLowerCase()}://"). `
+        + 'Use an App action for local files or programs.'
+      );
+    }
+  }
+
   let url;
   try {
-    url = new URL(/^https?:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`);
+    url = new URL(hasExplicitScheme ? trimmed : `https://${trimmed}`);
   } catch {
     throw new Error('Invalid website URL');
   }
