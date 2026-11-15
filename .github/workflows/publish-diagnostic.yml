@@ -1,0 +1,66 @@
+name: Publish step diagnostic
+
+# Temporary: reproduces the tagged Windows publish logic under PowerShell and
+# reports variable state through annotations, because raw Actions logs are not
+# readable from the development sandbox. Remove once the cause is confirmed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to inspect
+        required: true
+        default: v1.1.1
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reproduce publish logic
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          $tag = $env:TAG
+          $report = [System.Collections.Generic.List[string]]::new()
+          try {
+            $ErrorActionPreference = 'Stop'
+            $report.Add("pwsh=$($PSVersionTable.PSVersion)")
+
+            # Stand in for the two build outputs, using the real asset names.
+            $names = @(gh release view $tag --json assets --jq '.assets[].name')
+            $report.Add("assetCount=$($names.Count)")
+            foreach ($n in $names) { $report.Add("asset=$n") }
+            $installer = [pscustomobject]@{ Name = ($names | Where-Object { $_ -like '*.exe' } | Select-Object -First 1) }
+            $portableZip = [pscustomobject]@{ Name = ($names | Where-Object { $_ -like '*.zip' } | Select-Object -First 1) }
+            $report.Add("installerName=$($installer.Name)")
+            $report.Add("zipName=$($portableZip.Name)")
+
+            # ---- exact block from the tagged workflow ----
+            $existingNames = @()
+            $releaseJson = gh release view $tag --json assets 2>$null
+            $releaseExists = ($LASTEXITCODE -eq 0)
+            $report.Add("releaseExists=$releaseExists")
+            $report.Add("releaseJsonType=$($releaseJson.GetType().Name)")
+            if ($releaseExists -and $releaseJson) {
+              $existingNames = @((($releaseJson | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
+            }
+            $report.Add("existingNamesCount=$($existingNames.Count)")
+            $missing = @(@($installer, $portableZip) | Where-Object { $existingNames -notcontains $_.Name })
+            $report.Add("missingCount=$($missing.Count)")
+            # ---- end block ----
+
+            $report.Add("WOULD_SKIP=$($missing.Count -eq 0)")
+          } catch {
+            $report.Add("EXCEPTION_TYPE=$($_.GetType().FullName)")
+            $report.Add("EXCEPTION_MSG=$($_.Exception.Message)")
+            $report.Add("AT=$($_.InvocationInfo.PositionMessage -replace '\r?\n',' | ')")
+          }
+          foreach ($line in $report) { Write-Host $line }
+          # Annotations are readable from the sandbox; raw logs are not.
+          Write-Host "::error::DIAGNOSTIC $([string]::Join(' ;; ', $report))"
