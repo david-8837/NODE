@@ -1,27 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
-  <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0.4" y2="1">
-      <stop offset="0" stop-color="#1c1c1c"/>
-      <stop offset="1" stop-color="#000000"/>
-    </linearGradient>
-  </defs>
-
   <rect width="150" height="57" fill="#ffffff"/>
 
-  <!-- Logo tile -->
-  <rect x="9" y="11" width="35" height="35" rx="8" fill="url(#tile)"/>
-  <g fill="#ffffff">
-    <rect x="15" y="17" width="9" height="9" rx="2.5"/>
-    <rect x="28" y="30" width="9" height="9" rx="2.5"/>
-  </g>
-  <g fill="#ffffff" fill-opacity="0.34">
-    <rect x="28" y="17" width="9" height="9" rx="2.5"/>
-    <rect x="15" y="30" width="9" height="9" rx="2.5"/>
+  <!-- Same tall shell, inner frame, square keys, light and dial as the home pad. -->
+  <g id="micro-pad" transform="translate(7 4.75) scale(0.22)">
+<rect data-part="case" x="0" y="0" width="172" height="216" rx="24" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="inner-frame" x="12" y="12" width="148" height="192" rx="16" fill="#ebebeb"/>
+<circle data-part="status-light" cx="39" cy="39" r="2.5" fill="#888888"/>
+<circle data-part="dial" cx="130.6666666667" cy="39" r="19.5" fill="#fafafa" stroke="#999999" stroke-width="2"/>
+<line data-part="dial-marker" x1="117.1666666667" y1="39" x2="144.1666666667" y2="39" stroke="#999999" stroke-width="2" stroke-linecap="round"/>
+<rect data-part="key" x="18.6666666667" y="66" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="65" y="66" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="111.3333333333" y="66" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="18.6666666667" y="111" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="65" y="111" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="111.3333333333" y="111" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="18.6666666667" y="156" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="65" y="156" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="111.3333333333" y="156" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
   </g>
 
-  <!-- Wordmark -->
-  <text x="52" y="27" fill="#0a0a0a" font-family="DejaVu Sans" font-size="9.2" font-weight="700" letter-spacing="0.3">NØDE STUDIO</text>
-  <text x="52" y="38" fill="#767676" font-family="DejaVu Sans" font-size="4.9" font-weight="700" letter-spacing="0.75">GRID MACRO 1</text>
-
-  <rect x="139" y="11" width="2" height="35" rx="1" fill="#0a0a0a"/>
+  <text x="52" y="27" fill="#333333" font-family="DejaVu Sans" font-size="9.2" font-weight="700" letter-spacing="0.3">NØDE STUDIO</text>
+  <text x="52" y="38" fill="#777777" font-family="DejaVu Sans" font-size="4.9" font-weight="700" letter-spacing="0.75">GRID MACRO 1</text>
+  <rect x="139" y="11" width="2" height="35" rx="1" fill="#999999"/>
 </svg>

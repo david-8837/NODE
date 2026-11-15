@@ -1,0 +1,15 @@
+{
+  "width": 172,
+  "height": 216,
+  "case": { "x": 0, "y": 0, "width": 172, "height": 216, "radius": 24 },
+  "plate": { "x": 12, "y": 12, "width": 148, "height": 192, "radius": 16 },
+  "indicator": { "cx": 39, "cy": 39, "radius": 2.5 },
+  "dial": { "cx": 130.6666666667, "cy": 39, "radius": 19.5, "markerHalfLength": 13.5 },
+  "keys": {
+    "width": 42,
+    "height": 42,
+    "radius": 5,
+    "columns": [18.6666666667, 65, 111.3333333333],
+    "rows": [66, 111, 156]
+  }
+}

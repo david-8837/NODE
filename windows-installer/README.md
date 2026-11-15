@@ -8,9 +8,16 @@ The `.svg` files are the editable artwork sources. The matching `.bmp` files are
 | `installerSidebar.bmp` | 164 × 314 | Welcome page, finish page, uninstaller |
 | `installerHeader.bmp` | 150 × 57 | Wizard page header |
 
-The artwork is **monochrome** (black and white only). `tests/installerBranding.test.ts`
-enforces the exact dimensions, 24-bit depth and the absence of any colour cast in
-both the SVG sources and the decoded BMP pixels.
+The artwork is **grey and white**. Both bitmaps use the same tall rounded shell,
+inset frame, nine square keys, top-left status light and top-right dial as the
+home-screen Micro Pad. `src/microPadGeometry.json` records that geometry; the
+connection-screen illustration imports it and `render.mjs` synchronizes the SVG
+artwork groups from it. The interactive home-screen component is not modified.
+
+`tests/installerBranding.test.ts` enforces the exact dimensions, 24-bit depth and
+the absence of any colour cast in both the SVG sources and the decoded BMP pixels.
+`tests/microPadShape.test.tsx` checks the shared layout and protects against the
+old square case / flattened-key illustration returning.
 
 ## Welcome page
 
@@ -33,7 +40,8 @@ npm install --no-save --no-package-lock @resvg/resvg-js
 node windows-installer/render.mjs
 ```
 
-This writes both `.bmp` files at their exact required sizes and enlarged PNGs into
+This synchronizes the marked `micro-pad` groups in both SVG sources, writes both
+`.bmp` files at their exact required sizes and creates enlarged PNGs into
 `previews/` for visual review. `resvg` is used because ImageMagick's SVG delegate is
 missing in some environments; ImageMagick is still used for the PNG → 24-bit BMP
 encode. DejaVu Sans is loaded explicitly so text renders without fontconfig.

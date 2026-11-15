@@ -80,13 +80,15 @@ describe('Windows installer artwork', () => {
     expect(pixels.filter(([r, g, b]) => r !== g || g !== b)).toHaveLength(0);
   });
 
-  it('sidebar actually uses the full black-to-white range rather than being blank', () => {
+  it('sidebar uses a light grey/white panel with readable dark-grey type', () => {
     const pixels = readPixels(path.join(root, nsis.installerSidebar));
     const levels = pixels.map(([r]) => r);
-    expect(Math.min(...levels)).toBeLessThan(24);
+    // Grey/white artwork still needs real contrast, not a blank pale rectangle.
+    expect(Math.min(...levels)).toBeLessThan(100);
     expect(Math.max(...levels)).toBeGreaterThan(230);
-    // A single flat fill would collapse to one distinct level.
-    expect(new Set(levels).size).toBeGreaterThan(20);
+    expect(new Set(levels).size).toBeGreaterThan(10);
+    const lightPixels = levels.filter((level) => level >= 235).length;
+    expect(lightPixels / levels.length).toBeGreaterThan(0.7);
   });
 
   it('keeps the editable SVG sources monochrome too', () => {

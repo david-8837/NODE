@@ -16,6 +16,7 @@ import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
+import { syncDeviceArtwork } from './deviceMarkup.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const previewDir = path.join(here, 'previews');
@@ -40,8 +41,13 @@ function render(svgSource, fitWidth) {
   return renderer.render().asPng();
 }
 
+const geometry = JSON.parse(readFileSync(path.join(here, '../src/microPadGeometry.json'), 'utf8'));
+
 for (const target of targets) {
-  const svg = readFileSync(path.join(here, target.svg), 'utf8');
+  const sourcePath = path.join(here, target.svg);
+  const svg = syncDeviceArtwork(readFileSync(sourcePath, 'utf8'), geometry);
+  // Keep the editable SVG complete and in sync with the connection-screen shape.
+  writeFileSync(sourcePath, svg);
 
   // Exact-size raster for the wizard.
   const png = render(svg, target.width);

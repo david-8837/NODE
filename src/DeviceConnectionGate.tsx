@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { QmkViaStatus } from './qmkViaBridge';
+import padGeometry from './microPadGeometry.json';
 
 export interface DeviceConnectionGateProps {
   status: QmkViaStatus;
@@ -30,37 +31,46 @@ const STATUS_COPY: Record<QmkViaStatus['state'], { label: string; detail: string
   },
 };
 
-/** Simple line illustration of the 3x3 pad plus encoder; no external assets. */
+/**
+ * Grey/white illustration matching the home-screen MacropadDevice: tall rounded
+ * shell, inset plate, status light above the keys and dial at the top right.
+ * Geometry is shared with the installer artwork; the interactive home component
+ * is deliberately untouched.
+ */
 function MicroPadIllustration({ active }: { active: boolean }) {
-  const stroke = active ? '#0051ff' : '#c9ced8';
+  const stroke = active ? '#666666' : '#aaaaaa';
+  const { case: shell, plate, indicator, dial, keys } = padGeometry;
   return (
     <svg
-      width="168"
-      height="150"
-      viewBox="0 0 168 150"
+      width="136"
+      height="171"
+      viewBox={`0 0 ${padGeometry.width} ${padGeometry.height}`}
       role="img"
       aria-label="Micro Pad illustration"
-      className="select-none"
+      className="select-none overflow-visible"
+      data-pad-shape="home-screen"
     >
-      <rect x="8" y="8" width="152" height="134" rx="18" fill="#ffffff" stroke={stroke} strokeWidth="2.5" />
-      <circle cx="126" cy="38" r="15" fill="none" stroke={stroke} strokeWidth="2.5" />
-      <circle cx="126" cy="38" r="4" fill={stroke} />
-      {[0, 1, 2].map((row) =>
-        [0, 1, 2].map((col) => (
+      <rect data-part="case" x={shell.x} y={shell.y} width={shell.width} height={shell.height} rx={shell.radius} fill="#ffffff" stroke={stroke} strokeWidth="2" />
+      <rect data-part="inner-frame" x={plate.x} y={plate.y} width={plate.width} height={plate.height} rx={plate.radius} fill="#ebebeb" />
+      <circle data-part="status-light" cx={indicator.cx} cy={indicator.cy} r={indicator.radius} fill={active ? '#555555' : '#888888'} />
+      <circle data-part="dial" cx={dial.cx} cy={dial.cy} r={dial.radius} fill="#fafafa" stroke={active ? '#777777' : '#999999'} strokeWidth="2" />
+      <line data-part="dial-marker" x1={dial.cx - dial.markerHalfLength} y1={dial.cy} x2={dial.cx + dial.markerHalfLength} y2={dial.cy} stroke={active ? '#777777' : '#999999'} strokeWidth="2" strokeLinecap="round" />
+      {keys.rows.flatMap((y, row) =>
+        keys.columns.map((x, col) => (
           <rect
-            key={`${row}-${col}`}
-            x={26 + col * 34}
-            y={62 + row * 24}
-            width="26"
-            height="18"
-            rx="5"
-            fill="none"
+            key={`r${row + 1}c${col + 1}`}
+            data-part="key"
+            x={x}
+            y={y}
+            width={keys.width}
+            height={keys.height}
+            rx={keys.radius}
+            fill="#ffffff"
             stroke={stroke}
             strokeWidth="2"
           />
         ))
       )}
-      <rect x="26" y="26" width="26" height="18" rx="5" fill="none" stroke={stroke} strokeWidth="2" />
     </svg>
   );
 }
@@ -96,7 +106,7 @@ export default function DeviceConnectionGate({ status, onRetry }: DeviceConnecti
   return (
     <div
       data-testid="device-connection-gate"
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#f4f6fa] px-6 text-center"
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#f4f4f4] px-6 text-center"
     >
       <MicroPadIllustration active={status.state === 'connected'} />
 
