@@ -2,8 +2,16 @@
 
 const { spawn: nodeSpawn, execFile: nodeExecFile } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const readline = require('node:readline');
+
+/**
+ * CreateProcess caps a command line at 32,767 UTF-16 characters; libuv reports an
+ * over-long one as ENAMETOOLONG. Kept well below the cap so argument quoting and
+ * a long temp path can never push the worker spawn over it.
+ */
+const MAX_WORKER_COMMAND_LINE = 8192;
 
 const MAX_ACTION_TEXT = 32 * 1024;
 const MAX_SEQUENCE_STEPS = 256;
@@ -875,8 +883,49 @@ function createWindowsInputAdapter({
   let generation = 0;
   let closed = false;
   let recentStderr = '';
+  let workerScriptDir = null;
+  let workerScriptPath = null;
   const pending = new Map();
   const heldKeys = new Map();
+
+  /**
+   * The worker script used to be passed inline via -EncodedCommand. UTF-16LE plus
+   * base64 inflates it ~2.67x, and once the atomic-text fix grew the script the
+   * command line reached 37,210 characters -- past the 32,767 CreateProcess cap.
+   * libuv then failed the spawn with ENAMETOOLONG, which broke *every* keystroke
+   * and text action while execFile-based App/Web/CMD actions kept working.
+   *
+   * Delivering the script as a file keeps the command line a few hundred
+   * characters no matter how large the script grows. mkdtemp gives a private,
+   * unpredictable directory so the path cannot be pre-created or symlinked by
+   * another local user.
+   */
+  const ensureWorkerScriptFile = () => {
+    if (workerScriptPath) return workerScriptPath;
+    workerScriptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'node-studio-input-'));
+    const file = path.join(workerScriptDir, 'worker.ps1');
+    // BOM so Windows PowerShell 5.1 reads UTF-8 rather than the ANSI code page.
+    fs.writeFileSync(file, `\ufeff${POWERSHELL_WORKER_SCRIPT}`, { encoding: 'utf8', mode: 0o600 });
+    workerScriptPath = file;
+    return file;
+  };
+
+  const cleanupWorkerScript = () => {
+    if (!workerScriptDir) return;
+    const dir = workerScriptDir;
+    workerScriptDir = null;
+    workerScriptPath = null;
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  };
+
+  const buildWorkerArgs = (scriptFile) => {
+    const args = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptFile];
+    const length = ['powershell.exe', ...args].join(' ').length;
+    if (length > MAX_WORKER_COMMAND_LINE) {
+      throw new Error(`The Windows input worker command line is too long (${length} characters)`);
+    }
+    return args;
+  };
 
   const rejectPending = (error) => {
     for (const request of pending.values()) {
@@ -931,10 +980,9 @@ function createWindowsInputAdapter({
     let settled = false;
     let startupTimer;
     try {
-      const encodedScript = Buffer.from(POWERSHELL_WORKER_SCRIPT, 'utf16le').toString('base64');
       child = spawnProcess(
         'powershell.exe',
-        ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedScript],
+        buildWorkerArgs(ensureWorkerScriptFile()),
         { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
       );
     } catch (error) {
@@ -1098,6 +1146,7 @@ function createWindowsInputAdapter({
       try { currentChild.kill(); } catch {}
     }
     await inputQueue.catch(() => undefined);
+    cleanupWorkerScript();
   };
 
   // Start the persistent PowerShell worker ahead of the first keystroke. Without

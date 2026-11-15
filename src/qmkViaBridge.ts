@@ -775,11 +775,16 @@ export class QmkViaBridge {
     try {
       const reportedLayers = await this.readLayerCount();
       const configuredLayers = request.config.layers.length;
-      const layersToWrite = Math.min(configuredLayers, reportedLayers, 8);
+      // A profile owns the entire device image. SAVE_PROFILE copies *every* layer
+      // and slot of the live keymap into the profile's EEPROM slot, so anything
+      // left over from the previously active profile would be captured into this
+      // one and then reappear on later switches. Write every device layer and
+      // clear slots this profile does not define (KC_NO) so switching is exact.
+      const layersToWrite = Math.min(reportedLayers, 8);
       if (configuredLayers > reportedLayers) {
         warnings.push(`Device supports ${reportedLayers} layers; extra profile layers were not synced`);
-      } else if (configuredLayers < reportedLayers) {
-        warnings.push(`Only the first ${configuredLayers} of ${reportedLayers} device layers are controlled by this profile; the rest were left unchanged`);
+      } else if (configuredLayers < layersToWrite) {
+        warnings.push(`This profile defines ${configuredLayers} of ${layersToWrite} device layers; the remaining layers were cleared so the previous profile cannot leak into it`);
       }
       if (configuredLayers > 8) {
         warnings.push('The configurator supports at most 8 profile layers; higher profile layers were not synced');
@@ -790,14 +795,21 @@ export class QmkViaBridge {
 
       for (let layer = 0; layer < layersToWrite; layer++) {
         const layerConfig = request.config.layers[layer];
-        if (!layerConfig || typeof layerConfig !== 'object') {
-          warnings.push(`Layer ${layer + 1} was invalid and left unchanged`);
-          continue;
+        const usable = !!layerConfig && typeof layerConfig === 'object';
+        if (layerConfig !== undefined && !usable) {
+          warnings.push(`Layer ${layer + 1} was invalid and was cleared`);
         }
+        // Layers past the end of the profile are written as empty rather than
+        // skipped, so the pad cannot keep firing the old profile's assignments.
+        const layerKeys = usable && layerConfig.keys && typeof layerConfig.keys === 'object'
+          ? layerConfig.keys
+          : {};
+        const layerEnc = usable && layerConfig.enc && typeof layerConfig.enc === 'object'
+          ? layerConfig.enc
+          : {};
 
         for (const [slot, row, col] of KEY_SLOTS) {
-          if (!layerConfig.keys || !Object.hasOwn(layerConfig.keys, slot)) continue;
-          const action = layerConfig.keys[slot];
+          const action = Object.hasOwn(layerKeys, slot) ? layerKeys[slot] : undefined;
           const keycode = keycodeForDevice(action, reportedLayers);
           if (keycode === null) {
             warnings.push(unsupportedActionWarning(layer + 1, slot.toUpperCase(), action, reportedLayers));
@@ -807,8 +819,8 @@ export class QmkViaBridge {
           if (current !== keycode) await this.setKeycode(layer, row, col, keycode);
         }
 
-        if (layerConfig.enc && Object.hasOwn(layerConfig.enc, 'press')) {
-          const pressAction = layerConfig.enc.press;
+        {
+          const pressAction = Object.hasOwn(layerEnc, 'press') ? layerEnc.press : undefined;
           const pressKeycode = keycodeForDevice(pressAction, reportedLayers);
           if (pressKeycode === null) {
             warnings.push(unsupportedActionWarning(layer + 1, 'encoder press', pressAction, reportedLayers));
@@ -822,8 +834,7 @@ export class QmkViaBridge {
           { name: 'ccw', clockwise: false },
           { name: 'cw', clockwise: true },
         ]) {
-          if (!layerConfig.enc || !Object.hasOwn(layerConfig.enc, direction.name)) continue;
-          const action = layerConfig.enc[direction.name];
+          const action = Object.hasOwn(layerEnc, direction.name) ? layerEnc[direction.name] : undefined;
           const keycode = keycodeForDevice(action, reportedLayers);
           if (keycode === null) {
             warnings.push(unsupportedActionWarning(

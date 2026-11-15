@@ -425,7 +425,7 @@ describe('QMK/VIA WebHID bridge', () => {
     expect(hid.device.reports.filter((report) => report[0] === 0x05 || report[0] === 0x15)).toHaveLength(0);
   });
 
-  it('clears only explicit blanks and leaves unsupported or unconfigured mappings intact', async () => {
+  it('clears blanks and unconfigured slots, but never overwrites an unsupported action', async () => {
     const hid = new FakeHidApi();
     hid.device.seedKeycode(0, 0, 0, 0x0004);
     hid.device.seedKeycode(0, 0, 1, 0x0005);
@@ -448,12 +448,19 @@ describe('QMK/VIA WebHID bridge', () => {
 
     expect(result.ok).toBe(true);
     expect(result.warnings).toContain('Layer 1 R1C2: unsupported action was not synced');
+    // Explicit blank is cleared.
     expect(hid.device.keycodes.get('0:0:0')).toBe(0);
+    // An unsupported action must NOT be wiped: the user's existing assignment is
+    // kept and a warning is surfaced, so a parse failure cannot erase a key.
     expect(hid.device.keycodes.get('0:0:1')).toBe(0x0005);
-    expect(hid.device.keycodes.get('1:0:0')).toBe(0x0006);
+    // A layer the profile does not define IS cleared. SAVE_PROFILE copies every
+    // layer into the profile's EEPROM slot, so leaving 0x0006 here would capture
+    // the previous profile's key into this profile and make switching leak.
+    expect(hid.device.keycodes.get('1:0:0')).toBe(0);
     const writes = hid.device.reports.filter((report) => report[0] === 0x05);
-    expect(writes).toHaveLength(1);
+    expect(writes).toHaveLength(2);
     expect(writes[0].slice(1, 6)).toEqual(new Uint8Array([0, 0, 0, 0, 0]));
+    expect(writes[1].slice(1, 6)).toEqual(new Uint8Array([1, 0, 0, 0, 0]));
   });
 
   it('recovers cleanly after a HID send failure instead of leaving a request stuck', async () => {
