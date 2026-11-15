@@ -1,8 +1,8 @@
 name: Publish step diagnostic
 
-# Temporary: reproduces the tagged Windows publish logic under PowerShell and
-# reports variable state through annotations, because raw Actions logs are not
-# readable from the development sandbox. Remove once the cause is confirmed.
+# Temporary: reproduces the tagged Windows publish logic on a Windows runner and
+# reports state through annotations, because raw Actions logs are not readable
+# from the development sandbox. Remove once the cause is confirmed.
 
 on:
   push:
@@ -16,50 +16,51 @@ permissions:
 
 jobs:
   diagnose:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reproduce publish logic
+
+      - name: Fabricate the build outputs with the real asset names
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist_electron | Out-Null
+          Set-Content -Path 'dist_electron/NODE.Grid.Macro.1.Studio-1.1.1-x64.exe' -Value 'stub'
+          Set-Content -Path 'dist_electron/NODE.Grid.Macro.1.Studio-1.1.1-x64.zip' -Value 'stub'
+          # electron-builder also leaves these behind; make sure they do not confuse
+          # the -Filter selection.
+          Set-Content -Path 'dist_electron/NODE.Grid.Macro.1.Studio-1.1.1-x64.exe.blockmap' -Value 'stub'
+          Set-Content -Path 'dist_electron/latest.yml' -Value 'stub'
+          New-Item -ItemType Directory -Force -Path 'dist_electron/win-unpacked' | Out-Null
+          Set-Content -Path 'dist_electron/win-unpacked/NODE Grid Macro 1 Studio.exe' -Value 'stub'
+          Write-Host "::error::FILES $((Get-ChildItem dist_electron -Filter '*.exe' -File | ForEach-Object { $_.Name }) -join ',')"
+
+      - name: Exact tagged publish block
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v1.1.1
         run: |
-          $tag = $env:TAG
-          $report = [System.Collections.Generic.List[string]]::new()
-          try {
-            $ErrorActionPreference = 'Stop'
-            $report.Add("pwsh=$($PSVersionTable.PSVersion)")
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v1.1.1'
+          $installer = Get-ChildItem -Path 'dist_electron' -Filter '*.exe' -File | Select-Object -First 1
+          $portableZip = Get-ChildItem -Path 'dist_electron' -Filter '*.zip' -File | Select-Object -First 1
+          if (-not $installer -or -not $portableZip) { throw 'Expected installer and ZIP assets before publishing' }
 
-            # Stand in for the two build outputs, using the real asset names.
-            $names = @(gh release view $tag --json assets --jq '.assets[].name')
-            $report.Add("assetCount=$($names.Count)")
-            foreach ($n in $names) { $report.Add("asset=$n") }
-            $installer = [pscustomobject]@{ Name = ($names | Where-Object { $_ -like '*.exe' } | Select-Object -First 1) }
-            $portableZip = [pscustomobject]@{ Name = ($names | Where-Object { $_ -like '*.zip' } | Select-Object -First 1) }
-            $report.Add("installerName=$($installer.Name)")
-            $report.Add("zipName=$($portableZip.Name)")
-
-            # ---- exact block from the tagged workflow ----
-            $existingNames = @()
-            $releaseJson = gh release view $tag --json assets 2>$null
-            $releaseExists = ($LASTEXITCODE -eq 0)
-            $report.Add("releaseExists=$releaseExists")
-            $report.Add("releaseJsonType=$($releaseJson.GetType().Name)")
-            if ($releaseExists -and $releaseJson) {
-              $existingNames = @((($releaseJson | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
-            }
-            $report.Add("existingNamesCount=$($existingNames.Count)")
-            $missing = @(@($installer, $portableZip) | Where-Object { $existingNames -notcontains $_.Name })
-            $report.Add("missingCount=$($missing.Count)")
-            # ---- end block ----
-
-            $report.Add("WOULD_SKIP=$($missing.Count -eq 0)")
-          } catch {
-            $report.Add("EXCEPTION_TYPE=$($_.GetType().FullName)")
-            $report.Add("EXCEPTION_MSG=$($_.Exception.Message)")
-            $report.Add("AT=$($_.InvocationInfo.PositionMessage -replace '\r?\n',' | ')")
+          $existingNames = @()
+          $releaseJson = gh release view $tag --json assets 2>$null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          if ($releaseExists -and $releaseJson) {
+            $existingNames = @((($releaseJson | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
           }
-          foreach ($line in $report) { Write-Host $line }
-          # Annotations are readable from the sandbox; raw logs are not.
-          Write-Host "::error::DIAGNOSTIC $([string]::Join(' ;; ', $report))"
+
+          $missing = @(@($installer, $portableZip) | Where-Object { $existingNames -notcontains $_.Name })
+          Write-Host "::error::STATE installer=$($installer.Name) zip=$($portableZip.Name) exists=$releaseExists existingCount=$($existingNames.Count) missing=$($missing.Count)"
+          if ($missing.Count -eq 0) {
+            Write-Host "Release $tag already carries both Windows assets; nothing to upload."
+            Write-Host "::error::REACHED_SKIP about to exit 0"
+            exit 0
+          }
+          Write-Host "::error::DID_NOT_SKIP would upload $($missing.Count) assets"
+
+      - name: Confirm the previous step exited cleanly
+        shell: pwsh
+        run: Write-Host "::error::PREVIOUS_STEP_SURVIVED"
