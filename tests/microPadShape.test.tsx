@@ -104,7 +104,9 @@ describe('home-screen Micro Pad shape in grey/white artwork', () => {
 
   it('uses the identical device markup in the header and welcome sidebar', () => {
     for (const name of ['installer-header.svg', 'installer-sidebar.svg']) {
-      const svg = readFileSync(path.join(rootDir, 'windows-installer', name), 'utf8');
+      // Git may check text sources out with CRLF on Windows; geometry, not line
+      // endings, is the contract shared by the renderer and the React screen.
+      const svg = readFileSync(path.join(rootDir, 'windows-installer', name), 'utf8').replace(/\r\n/g, '\n');
       expect(svg).toContain(homeMicroPadMarkup(geometry));
       expect(syncDeviceArtwork(svg, geometry)).toBe(svg);
       expect((svg.match(/data-part="key"/g) ?? [])).toHaveLength(9);
