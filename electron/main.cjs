@@ -245,6 +245,7 @@ async function captureVisualSmokeScreenshot() {
         .filter((slot) => /^r[1-3]c[1-3]$/.test(slot));
       const navText = root?.querySelector('nav')?.textContent || '';
       const centerPad = root?.querySelector('div.absolute.inset-0.flex.flex-col.items-center.justify-center.pointer-events-none.z-10');
+      const gate = root?.querySelector('[data-testid="device-connection-gate"]');
       return {
         title: document.title,
         appMounted: Boolean(root?.firstElementChild),
@@ -252,17 +253,37 @@ async function captureVisualSmokeScreenshot() {
         hasEncoder: Boolean(root?.querySelector('button[title^="Dial:"]')),
         hasNavigation: ['Keymap', 'Preset', 'Settings'].every((label) => navText.includes(label)),
         centerPadPosition: centerPad ? getComputedStyle(centerPad).position : null,
+        gateVisible: Boolean(gate),
+        gateHeadline: gate?.querySelector('h1')?.textContent?.trim() || '',
+        gateHasIllustration: Boolean(gate?.querySelector('[aria-label="Micro Pad illustration"]')),
+        gateHasRetry: Boolean(gate?.querySelector('[data-testid="device-gate-retry"]')),
         viewport: { width: window.innerWidth, height: window.innerHeight },
       };
     })()`);
 
-    if (
-      !renderedUi.appMounted ||
+    // The configurator is gated behind a verified device connection. A CI
+    // runner has no Micro Pad, so the gate IS the correct packaged screen here.
+    // Assert it rendered properly and that no editing surface leaked through.
+    if (!renderedUi.appMounted) {
+      throw new Error(`Packaged UI did not pass its visual smoke checks: ${JSON.stringify(renderedUi)}`);
+    }
+    if (renderedUi.gateVisible) {
+      if (
+        renderedUi.gateHeadline !== 'Connect your Micro Pad to continue.' ||
+        !renderedUi.gateHasIllustration ||
+        !renderedUi.gateHasRetry ||
+        renderedUi.keyCount !== 0 ||
+        renderedUi.hasNavigation
+      ) {
+        throw new Error(`Packaged connection gate is incomplete or leaked editing controls: ${JSON.stringify(renderedUi)}`);
+      }
+    } else if (
       renderedUi.keyCount !== 9 ||
       !renderedUi.hasEncoder ||
       !renderedUi.hasNavigation ||
       renderedUi.centerPadPosition !== 'relative'
     ) {
+      // A device was attached to the build machine: verify the full editor.
       throw new Error(`Packaged UI did not pass its visual smoke checks: ${JSON.stringify(renderedUi)}`);
     }
 
@@ -276,7 +297,10 @@ async function captureVisualSmokeScreenshot() {
     }
     fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
     fs.writeFileSync(screenshotPath, png);
-    console.log(`Packaged UI visual smoke test passed: ${screenshotPath} (${png.length} bytes)`);
+    console.log(
+      `Packaged UI visual smoke test passed (${renderedUi.gateVisible ? 'connection gate' : 'configurator'}): `
+      + `${screenshotPath} (${png.length} bytes)`
+    );
     app.exit(0);
   } catch (error) {
     const diagnostics = {
@@ -393,23 +417,37 @@ async function runPersistenceSmokeTest() {
         const expectedName = ${JSON.stringify(profileName)};
         const deadline = Date.now() + 30000;
         while (Date.now() < deadline) {
+          // The configurator is gated behind a device connection, and a build
+          // runner has no Micro Pad. Persistence is about stored data surviving,
+          // so assert that directly instead of requiring an editable screen.
+          const root = document.querySelector('#root');
+          const mounted = Boolean(root?.firstElementChild);
+          const gateVisible = Boolean(root?.querySelector('[data-testid="device-connection-gate"]'));
           const profileVisible = Array.from(document.querySelectorAll('[title]')).some((element) =>
             element.getAttribute('title') === expectedName && element.textContent?.trim() === expectedName
           );
-          if (profileVisible) {
+          if (mounted) {
             const native = await window.electronAPI?.getAppSettings();
             const rawState = window.localStorage.getItem('cm2.state.v2');
             const state = rawState ? JSON.parse(rawState) : null;
             const shortcut = state?.profiles?.[0]?.layers?.[0]?.r1c1?.execution;
             const custom = state?.customItems?.Action?.[0]?.execution;
             if (native?.ok && native.settings?.allowTerminalSmartActions === true &&
+                state?.profiles?.[0]?.name === expectedName &&
                 shortcut?.kind === 'shortcut' && shortcut?.value === 'Ctrl + Shift + S' &&
                 custom?.kind === 'sequence' && custom?.steps?.[0]?.key === 'Ctrl + S') {
+              // With no device the gate must be up AND the data must be intact:
+              // that is exactly the "never lose profiles on disconnect" rule.
+              if (!gateVisible && !profileVisible) {
+                throw new Error('The configurator rendered without the saved profile visible');
+              }
               return {
                 settingRestored: true,
                 profileLoaded: true,
                 structuredExecutionRestored: true,
                 profileName: expectedName,
+                connectionGateVisible: gateVisible,
+                profileVisibleInEditor: profileVisible,
               };
             }
           }
