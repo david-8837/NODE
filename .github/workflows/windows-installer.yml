@@ -238,15 +238,34 @@ jobs:
           $installer = Get-ChildItem -Path 'dist_electron' -Filter '*.exe' -File | Select-Object -First 1
           $portableZip = Get-ChildItem -Path 'dist_electron' -Filter '*.zip' -File | Select-Object -First 1
           if (-not $installer -or -not $portableZip) { throw 'Expected installer and ZIP assets before publishing' }
-          $assets = @($installer.FullName, $portableZip.FullName)
 
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag @assets --clobber
+          # This job runs on both `push: tags` and `release: published`, so publishing
+          # a release re-runs it for a tag that was already built and uploaded. GitHub
+          # refuses to replace assets on an already-published release, so blindly
+          # re-uploading with --clobber failed the whole job even though the release
+          # was correct. A tag pins one commit, so assets already attached to it are
+          # by definition the right ones: upload only what is genuinely missing and
+          # treat an already-complete release as success.
+          $existingNames = @()
+          $releaseJson = gh release view $tag --json assets 2>$null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          if ($releaseExists -and $releaseJson) {
+            $existingNames = @((($releaseJson | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
+          }
+
+          $missing = @(@($installer, $portableZip) | Where-Object { $existingNames -notcontains $_.Name })
+          if ($missing.Count -eq 0) {
+            Write-Host "Release $tag already carries both Windows assets; nothing to upload."
+            exit 0
+          }
+          $assets = @($missing | ForEach-Object { $_.FullName })
+
+          if ($releaseExists) {
+            gh release upload $tag @assets
           } else {
             gh release create $tag @assets --verify-tag --title "NØDE Grid Macro 1 Studio $tag" --generate-notes
             if ($LASTEXITCODE -ne 0) {
-              gh release upload $tag @assets --clobber
+              gh release upload $tag @assets
             }
           }
           if ($LASTEXITCODE -ne 0) { throw "Could not publish Windows release $tag" }

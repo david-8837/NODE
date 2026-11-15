@@ -153,11 +153,26 @@ jobs:
             "$artifact_dir/SHA256SUMS.txt"
             "$artifact_dir/BUILD-INFO.txt"
           )
+          # GitHub refuses to replace assets on an already-published release, so
+          # re-running this job for an existing tag must not try to clobber them.
+          # A tag pins one commit, so assets already attached are the correct ones.
+          existing="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' 2>/dev/null || true)"
+          missing=()
+          for asset in "${assets[@]}"; do
+            if ! printf '%s\n' "$existing" | grep -qxF "$(basename "$asset")"; then
+              missing+=("$asset")
+            fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "Release $tag already carries all firmware assets; nothing to upload."
+            exit 0
+          fi
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "${assets[@]}" --clobber
+            gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}"
           else
-            gh release create --repo "$GITHUB_REPOSITORY" "$tag" "${assets[@]}" --verify-tag --title "NØDE Grid Macro 1 Studio $tag" --generate-notes ||
-              gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "${assets[@]}" --clobber
+            gh release create --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}" --verify-tag --title "NØDE Grid Macro 1 Studio $tag" --generate-notes ||
+              gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}"
           fi
 
       - name: Upload the VIA UF2 and provenance files
