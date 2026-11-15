@@ -107,6 +107,37 @@ export function installConnectedDevice(options: FakeConnectedBridgeOptions = {})
   };
 }
 
+/**
+ * Wait for the app's initial background keymap sync to finish.
+ *
+ * The app debounces a device sync ~500ms after a connection is established and
+ * reports the outcome in a toast. A test that clicks something before that
+ * settles can have its own toast overwritten by the sync toast, which shows up
+ * as a timing-dependent failure on slower CI runners. Call this after rendering
+ * so the app is in a steady state before the test interacts with it.
+ */
+export async function settleInitialDeviceSync(
+  bridge: { request: { mock: { calls: unknown[][] } } },
+  timeoutMs = 3000
+) {
+  const { act } = await import('react');
+  const deadline = Date.now() + timeoutMs;
+  const synced = () => bridge.request.mock.calls.some(
+    ([payload]) => (payload as { cmd?: string } | undefined)?.cmd === 'set_config'
+  );
+  while (!synced() && Date.now() < deadline) {
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 25)));
+  }
+  if (!synced()) {
+    throw new Error(
+      'The app never completed its initial device sync; the fake bridge is not '
+      + 'behaving like connected firmware, so toast assertions would be racy.'
+    );
+  }
+  // Let the resulting toast render before the test triggers its own.
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 25)));
+}
+
 export function removeConnectedDevice() {
   delete (window as Window & { macropad?: unknown }).macropad;
 }

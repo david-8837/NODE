@@ -3,7 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
-import { installConnectedDevice, removeConnectedDevice } from './helpers/connectedDevice';
+import { installConnectedDevice, removeConnectedDevice, settleInitialDeviceSync } from './helpers/connectedDevice';
 import {
   createProfileExport,
   PROFILE_FILE_STORAGE_KEY,
@@ -14,13 +14,25 @@ import type { QmkViaBridge } from '../src/qmkViaBridge';
 let container: HTMLDivElement;
 let root: Root;
 
-async function renderApp() {
+/**
+ * `awaitsDeviceSync` is false for the notification test, whose bridge only
+ * emits connect/disconnect events and never runs the keymap handshake.
+ */
+async function renderApp(options: { awaitsDeviceSync?: boolean } = {}) {
   container = document.createElement('div');
   container.id = 'root';
   container.classList.add('is-ready');
   document.body.append(container);
   root = createRoot(container);
   await act(async () => root.render(createElement(App)));
+  // The app runs a debounced background keymap sync after connecting; let it
+  // finish so its toast cannot overwrite the one a test asserts on.
+  const bridge = (window as Window & {
+    macropad?: { request: { mock: { calls: unknown[][] } } };
+  }).macropad;
+  if (options.awaitsDeviceSync !== false && bridge?.request?.mock) {
+    await settleInitialDeviceSync(bridge);
+  }
 }
 
 async function clickButton(button: HTMLButtonElement) {
@@ -239,7 +251,9 @@ describe('React source app file operations', () => {
       }),
       connect: vi.fn(),
       disconnect: vi.fn(),
-      request: vi.fn(),
+      // This test only exercises event notifications, so its bridge does not
+      // implement the keymap sync handshake.
+      request: vi.fn(async () => ({ ok: false, error: 'not used by this test' })),
     };
     const shown: Array<{ title: string; options?: NotificationOptions }> = [];
     class MockNotification {
@@ -255,7 +269,7 @@ describe('React source app file operations', () => {
     Object.defineProperty(window, 'Notification', { configurable: true, value: MockNotification });
     Object.defineProperty(window, 'macropad', { configurable: true, value: bridge });
 
-    await renderApp();
+    await renderApp({ awaitsDeviceSync: false });
     await openSettings();
     const notificationsSwitch = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')][2];
     await clickButton(notificationsSwitch);
