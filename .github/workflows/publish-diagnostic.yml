@@ -5,12 +5,11 @@ name: Publish step diagnostic
 # readable from the development sandbox. Remove once the cause is confirmed.
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag to inspect
-        required: true
-        default: v1.1.1
+  push:
+    branches:
+      - 'arena/a312b951-node'
+    paths:
+      - '.github/workflows/publish-diagnostic.yml'
 
 permissions:
   contents: write
@@ -24,7 +23,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.inputs.tag }}
+          TAG: v1.1.1
         run: |
           $tag = $env:TAG
           $report = [System.Collections.Generic.List[string]]::new()
