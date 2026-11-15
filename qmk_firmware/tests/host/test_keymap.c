@@ -193,6 +193,84 @@ int main(void) {
     }
     printf("  RGB event payload matches GET_STATE byte-for-byte [2..26]  OK\n");
 
+    /* ---------- app -> device layer selection (MP_CMD_SELECT_LAYER 0x05) ---------- */
+    printf("== Bidirectional layer sync: MP_CMD_SELECT_LAYER ==\n");
+    layer_move(0);
+
+    /* The app asks for L2. The firmware must switch the real keymap, run the LED
+     * update, emit the layer event, and answer with the authoritative layer. */
+    uint8_t sel[32] = {0};
+    sel[0]=0xFD; sel[1]=0x05; sel[2]=1;
+    int moves_before = layer_move_calls;
+    int hid_before = hid_sends;
+    assert(via_command_kb(sel, 32));
+    assert(layer_move_calls == moves_before + 1 && "SELECT_LAYER must use layer_move");
+    assert(get_highest_layer(layer_state) == 1);
+    assert(sel[0] == 0xFD && sel[2] == 1 && "reply must carry the confirmed layer");
+    assert(sel[4] == 4 && sel[5] == 4 && "reply must be a full state report");
+    assert(last_hid[2] == 1);
+    /* One unsolicited layer event plus one command reply. */
+    assert(hid_sends == hid_before + 2);
+    printf("  app request switches keymap, LED and replies with confirmed layer  OK\n");
+
+    /* Selecting the layer already active must not re-run layer_move, but must
+     * still answer so the host is never left waiting. */
+    uint8_t same[32] = {0};
+    same[0]=0xFD; same[1]=0x05; same[2]=1;
+    moves_before = layer_move_calls;
+    hid_before = hid_sends;
+    assert(via_command_kb(same, 32));
+    assert(layer_move_calls == moves_before && "no redundant layer_move for the current layer");
+    assert(same[2] == 1);
+    assert(hid_sends == hid_before + 1 && "must still reply when already on that layer");
+    printf("  re-selecting the active layer replies without a redundant switch  OK\n");
+
+    /* Out-of-range targets are rejected, and the reply reports the real layer so
+     * the app can show the truth instead of the requested layer. */
+    for (uint8_t bad = 4; bad < 8; bad++) {
+        uint8_t rej[32] = {0};
+        rej[0]=0xFD; rej[1]=0x05; rej[2]=bad;
+        moves_before = layer_move_calls;
+        assert(via_command_kb(rej, 32));
+        assert(layer_move_calls == moves_before && "out-of-range layer must not switch");
+        assert(get_highest_layer(layer_state) == 1);
+        assert(rej[2] == 1 && "rejected request must report the actual layer");
+    }
+    printf("  out-of-range targets rejected; reply still reports the real layer  OK\n");
+
+    /* Rapid app-side switching must settle on the last requested layer, and the
+     * LED must follow each change (same path as a physical layer key). */
+    for (uint8_t target = 0; target < 4; target++) {
+        uint8_t rapid[32] = {0};
+        rapid[0]=0xFD; rapid[1]=0x05; rapid[2]=target;
+        assert(via_command_kb(rapid, 32));
+        assert(get_highest_layer(layer_state) == target);
+        assert(rapid[2] == target);
+    }
+    assert(get_highest_layer(layer_state) == 3);
+    printf("  rapid L1->L4 selection settles on the last requested layer  OK\n");
+
+    /* A physical layer key after an app selection keeps working: the command
+     * must not latch or block the hardware path. */
+    layer_move(0);
+    press(0x7E44);
+    assert(get_highest_layer(layer_state) == 1);
+    assert(last_hid[1] == 0x10 && last_hid[2] == 1);
+    printf("  physical layer key still reports EVT_LAYER_STATE after app control  OK\n");
+
+    /* The reply must agree with GET_STATE byte-for-byte, so the app cannot see
+     * one layer from the command and another from a state read. */
+    uint8_t final_sel[32] = {0};
+    final_sel[0]=0xFD; final_sel[1]=0x05; final_sel[2]=2;
+    assert(via_command_kb(final_sel, 32));
+    uint8_t final_get[32] = {0};
+    final_get[0]=0xFD; final_get[1]=0x01;
+    assert(via_command_kb(final_get, 32));
+    for (int i = 2; i < 27; i++) {
+        assert(final_sel[i] == final_get[i] && "SELECT_LAYER reply and GET_STATE must agree");
+    }
+    printf("  SELECT_LAYER reply matches GET_STATE byte-for-byte [2..26]  OK\n");
+
     /* ---------- collision safety ---------- */
     printf("== Keycode range isolation ==\n");
     assert(!(0x7E44 >= 0x7E00 && 0x7E44 <= 0x7E3F));

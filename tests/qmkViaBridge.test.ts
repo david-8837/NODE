@@ -36,6 +36,29 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
   public readonly encoderKeycodes = new Map<string, number>();
   public failNextReport = false;
   public customDeviceState?: Uint8Array;
+  /** Firmware-side active layer, so SELECT_LAYER can be modelled realistically. */
+  public activeLayer = 0;
+  public activeProfile = 0;
+  /** When set, the firmware refuses the switch and keeps its current layer. */
+  public refuseLayerSwitch = false;
+  /** When true, SELECT_LAYER is left unanswered so the host must time out. */
+  public swallowLayerSwitch = false;
+  public layerSwitchCount = 0;
+  private layerStateSeeded = false;
+
+  /** Unsolicited MP_EVT_LAYER_STATE, exactly as layer_state_set_user() sends it. */
+  public emitLayerStateEvent(layer = this.activeLayer) {
+    const report = new Uint8Array(VIA_RAW_REPORT_SIZE);
+    report[0] = 0xfd;
+    report[1] = 0x10;
+    report[2] = layer;
+    report[3] = this.activeProfile;
+    this.dispatchEvent(Object.assign(new Event('inputreport'), {
+      device: this,
+      reportId: 0,
+      data: new DataView(report.buffer),
+    }));
+  }
 
   public seedKeycode(layer: number, row: number, col: number, keycode: number) {
     this.keycodes.set(`${layer}:${row}:${col}`, keycode);
@@ -89,8 +112,40 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
       response[5] = value & 0xff;
     } else if (request[0] === 0x15) {
       this.encoderKeycodes.set(`${request[1]}:${request[3]}`, (request[4] << 8) | request[5]);
-    } else if (request[0] === 0xfd && request[1] === 0x01 && this.customDeviceState) {
-      response.set(this.customDeviceState.subarray(0, response.length));
+    } else if (request[0] === 0xfd && request[1] === 0x01) {
+      // MP_CMD_GET_STATE: real firmware always answers with the full state report.
+      if (this.customDeviceState) {
+        response.set(this.customDeviceState.subarray(0, response.length));
+        // A seeded packet defines the starting state; later switches move it.
+        if (!this.layerStateSeeded) {
+          this.activeLayer = response[2];
+          this.activeProfile = response[3];
+          this.layerStateSeeded = true;
+        }
+      } else {
+        response[1] = 0x01;
+        response[4] = 4; // MP_MAX_LAYERS
+        response[5] = 4; // MP_MAX_PROFILES
+        response[6] = 1; // rgb enabled
+      }
+      response[2] = this.activeLayer;
+      response[3] = this.activeProfile;
+    } else if (request[0] === 0xfd && request[1] === 0x05) {
+      // MP_CMD_SELECT_LAYER: mirror the firmware handler. Switch only when the
+      // target is valid and different, then always answer with the real layer.
+      this.layerSwitchCount += 1;
+      if (this.swallowLayerSwitch) return;
+      const target = request[2];
+      if (!this.refuseLayerSwitch && target < 4 && target !== this.activeLayer) {
+        this.activeLayer = target;
+        this.emitLayerStateEvent();
+      }
+      response[1] = 0x05;
+      response[2] = this.activeLayer;
+      response[3] = this.activeProfile;
+      response[4] = 4;
+      response[5] = 4;
+      response[6] = 1;
     }
 
     const event = Object.assign(new Event('inputreport'), {
@@ -512,6 +567,156 @@ describe('QMK/VIA WebHID bridge', () => {
     const rgbPacket = hid.device.reports.find((r) => r[0] === 0xfd && r[1] === 0x04);
     expect(rgbPacket).toBeDefined();
     expect(Array.from(rgbPacket!.slice(16, 24))).toEqual([2, 3, 1, 0, 80, 35, 50, 10]);
+  });
+
+  it('sends SELECT_LAYER and reports the firmware-confirmed layer, not the requested one', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+
+    const events: unknown[] = [];
+    const unsubscribe = bridge.onEvent((event) => events.push(event));
+
+    await expect(bridge.request({ cmd: 'select_layer', layer: 1 }))
+      .resolves.toMatchObject({ ok: true, deviceActiveLayer: 1, requestedLayer: 1, confirmed: true });
+
+    const packet = hid.device.reports.find((r) => r[0] === 0xfd && r[1] === 0x05);
+    expect(packet).toBeDefined();
+    expect(packet![2]).toBe(1);
+    expect(packet).toHaveLength(VIA_RAW_REPORT_SIZE);
+    // The firmware's own layer event and the command reply must agree.
+    expect(events).toContainEqual({ type: 'layer_state', deviceActiveLayer: 1, activeProfileSlot: 0 });
+    await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: 1 });
+
+    unsubscribe();
+    await bridge.disconnect();
+  });
+
+  it('reports confirmed:false and keeps the real layer when the firmware refuses the switch', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+    await bridge.request({ cmd: 'select_layer', layer: 2 });
+    hid.device.refuseLayerSwitch = true;
+
+    await expect(bridge.request({ cmd: 'select_layer', layer: 3 }))
+      .resolves.toMatchObject({ ok: true, deviceActiveLayer: 2, requestedLayer: 3, confirmed: false });
+    await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: 2 });
+
+    await bridge.disconnect();
+  });
+
+  it('rejects out-of-range layers without writing to the device', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+    const before = hid.device.reports.length;
+
+    for (const layer of [-1, 4, 99, 1.5, Number.NaN]) {
+      await expect(bridge.request({ cmd: 'select_layer', layer }))
+        .resolves.toMatchObject({ ok: false, error: 'Layer must be between 0 and 3' });
+    }
+    expect(hid.device.reports.length).toBe(before);
+    expect(hid.device.layerSwitchCount).toBe(0);
+
+    await bridge.disconnect();
+  });
+
+  it('fails the request on firmware timeout instead of claiming a layer switch', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    hid.device.swallowLayerSwitch = true;
+
+    const result = await bridge.request({ cmd: 'select_layer', layer: 3 });
+    expect(result.ok).toBe(false);
+    expect(result.deviceActiveLayer).toBeUndefined();
+    await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: 0 });
+
+    await bridge.disconnect();
+  });
+
+  it('refuses layer commands while disconnected so no report reaches an absent device', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await expect(bridge.request({ cmd: 'select_layer', layer: 1 }))
+      .resolves.toMatchObject({ ok: false, error: 'No QMK/VIA device is connected' });
+    expect(hid.device.layerSwitchCount).toBe(0);
+
+    await bridge.connect();
+    await bridge.disconnect();
+    const before = hid.device.reports.length;
+    await expect(bridge.request({ cmd: 'select_layer', layer: 1 }))
+      .resolves.toMatchObject({ ok: false, error: 'No QMK/VIA device is connected' });
+    expect(hid.device.reports.length).toBe(before);
+  });
+
+  it('adopts unsolicited physical layer events without sending any command back', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    const events: unknown[] = [];
+    const unsubscribe = bridge.onEvent((event) => events.push(event));
+    const reportsBefore = hid.device.reports.length;
+
+    // Physical L1 -> L2 -> L3 -> L4, as layer_state_set_user() reports them.
+    for (const layer of [1, 2, 3]) {
+      hid.device.activeLayer = layer;
+      hid.device.emitLayerStateEvent();
+      expect(events).toContainEqual({ type: 'layer_state', deviceActiveLayer: layer, activeProfileSlot: 0 });
+      await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: layer });
+    }
+    // Event-driven adoption must never echo a command: that is the sync loop.
+    expect(hid.device.reports.length).toBe(reportsBefore);
+    expect(hid.device.layerSwitchCount).toBe(0);
+
+    unsubscribe();
+    await bridge.disconnect();
+  });
+
+  it('does not mistake an unsolicited layer event for a pending command reply', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+    hid.device.swallowLayerSwitch = true;
+
+    const pending = bridge.request({ cmd: 'select_layer', layer: 3 });
+    // A physical press mid-flight must not resolve the outstanding command.
+    hid.device.activeLayer = 1;
+    hid.device.emitLayerStateEvent();
+
+    await expect(pending).resolves.toMatchObject({ ok: false });
+    // The physical layer is still adopted from the event.
+    await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: 1 });
+
+    await bridge.disconnect();
+  });
+
+  it('recovers a re-plugged authorised device from the HID connect event alone', async () => {
+    const hid = new FakeHidApi();
+    hid.deviceAvailableForSilentScan = true;
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+    await bridge.request({ cmd: 'select_layer', layer: 2 });
+
+    const states: string[] = [];
+    const unsubscribe = bridge.onStatus((status) => states.push(status.state));
+    hid.dispatchEvent(Object.assign(new Event('disconnect'), { device: hid.device }));
+    expect(states).toContain('disconnected');
+
+    // Re-plug: firmware boots on layer 0, and no requestDevice prompt is allowed.
+    hid.device.activeLayer = 0;
+    hid.device.opened = false;
+    const requestDevice = vi.spyOn(hid, 'requestDevice');
+    hid.dispatchEvent(Object.assign(new Event('connect'), { device: hid.device }));
+
+    await vi.waitFor(async () => {
+      await expect(bridge.getStatus()).resolves.toMatchObject({ state: 'connected', deviceActiveLayer: 0 });
+    });
+    expect(requestDevice).not.toHaveBeenCalled();
+
+    unsubscribe();
+    await bridge.disconnect();
   });
 
   it('adopts RGB changes made on the device so the editor cannot overwrite them', async () => {

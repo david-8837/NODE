@@ -30,6 +30,7 @@ export const MP_CMD_GET_STATE = 0x01;
 export const MP_CMD_SELECT_PROFILE = 0x02;
 export const MP_CMD_SAVE_PROFILE = 0x03;
 export const MP_CMD_SET_RGB = 0x04;
+export const MP_CMD_SELECT_LAYER = 0x05;
 export const MP_EVT_LAYER_STATE = 0x10;
 export const MP_EVT_HOST_TRIGGER = 0x11;
 export const MP_EVT_RGB_STATE = 0x12;
@@ -100,6 +101,10 @@ export interface QmkViaStatus {
   deviceActiveLayer?: number;
   activeProfileSlot?: number;
   rgbConfig?: DeviceRgbConfig;
+  /** Layer the host asked for, echoed back for diagnostics. */
+  requestedLayer?: number;
+  /** True only when the firmware settled on the requested layer. */
+  confirmed?: boolean;
 }
 
 export interface ViaAction {
@@ -185,6 +190,10 @@ export interface BridgeResult {
   deviceActiveLayer?: number;
   activeProfileSlot?: number;
   rgbConfig?: DeviceRgbConfig;
+  /** Layer the host asked for, echoed back for diagnostics. */
+  requestedLayer?: number;
+  /** True only when the firmware settled on the requested layer. */
+  confirmed?: boolean;
 }
 
 const KEY_SLOTS = [
@@ -479,7 +488,18 @@ export class QmkViaBridge {
     this.timeoutMs = options.timeoutMs ?? 1500;
     this.status = { state: hid ? 'disconnected' : 'unavailable' };
     this.hid?.addEventListener('disconnect', this.onHidDisconnect);
+    // Re-plugging a previously authorised device must recover without a restart
+    // or a fresh permission prompt. getStatus() only opens already-granted
+    // devices, so this cannot trigger a browser chooser on its own.
+    this.hid?.addEventListener('connect', this.onHidConnect);
   }
+
+  private readonly onHidConnect = (event: Event) => {
+    const device = (event as Event & { device?: HidDeviceLike }).device;
+    if (!device || !this.isTarget(device)) return;
+    if (this.device || this.status.state === 'connecting' || this.status.state === 'connected') return;
+    void this.getStatus();
+  };
 
   public onStatus(callback: (status: QmkViaStatus) => void): () => void {
     this.statusListeners.add(callback);
@@ -589,6 +609,8 @@ export class QmkViaBridge {
     profileSlot?: number;
     saveCurrentProfile?: boolean;
     rgbConfig?: DeviceRgbConfig;
+    /** Target layer for select_layer (0-based). */
+    layer?: number;
   }): Promise<BridgeResult> {
     if (
       ![
@@ -599,6 +621,7 @@ export class QmkViaBridge {
         'save_profile',
         'get_device_state',
         'set_rgb_config',
+        'select_layer',
       ].includes(request?.cmd ?? '')
     ) {
       return { ok: false, error: 'Unsupported QMK/VIA request' };
@@ -613,6 +636,28 @@ export class QmkViaBridge {
         const parsed = this.parseDeviceStateReport(res);
         this.setStatus({ ...this.status, ...parsed });
         return { ok: true, ...parsed };
+      } catch (error) {
+        return { ok: false, error: this.errorMessage(error) };
+      }
+    }
+
+    if (request.cmd === 'select_layer') {
+      const layer = Number(request.layer);
+      if (!Number.isInteger(layer) || layer < 0 || layer >= 4) {
+        return { ok: false, error: 'Layer must be between 0 and 3' };
+      }
+      try {
+        const res = await this.exchange(new Uint8Array([MP_HID_PREFIX, MP_CMD_SELECT_LAYER, layer]));
+        // The firmware answers with the layer it actually settled on. Callers must
+        // use this confirmed value rather than the requested one.
+        const parsed = this.parseDeviceStateReport(res);
+        this.setStatus({ ...this.status, ...parsed });
+        this.emit({
+          type: 'layer_state',
+          deviceActiveLayer: parsed.deviceActiveLayer,
+          activeProfileSlot: parsed.activeProfileSlot,
+        } satisfies DeviceLayerStateEvent);
+        return { ok: true, ...parsed, requestedLayer: layer, confirmed: parsed.deviceActiveLayer === layer };
       } catch (error) {
         return { ok: false, error: this.errorMessage(error) };
       }

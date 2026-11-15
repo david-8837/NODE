@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
+import DeviceConnectionGate from './DeviceConnectionGate';
 import {
   APP_READY_EVENT,
   getEntranceMotionProps,
@@ -1257,6 +1258,96 @@ export default function App() {
 
   const hydratedRgbConnectionRef = useRef<boolean>(false);
 
+  /**
+   * The firmware is the source of truth for the active layer. This is the only
+   * place that adopts a hardware layer into the editor, and it never sends a
+   * command back, which is what keeps the two directions from looping.
+   */
+  // Latest layer the user asked for. Only the newest intent is ever sent, so
+  // rapid clicking coalesces instead of queueing a burst of stale commands.
+  const layerIntentRef = useRef<number | null>(null);
+  const layerIntentSeqRef = useRef(0);
+  const layerDrainRef = useRef<Promise<void> | null>(null);
+  const deviceActiveLayerRef = useRef(0);
+  // Lets the rescan interval read the latest state without re-subscribing.
+  const deviceStatusRef = useRef<QmkViaStatus>(deviceStatus);
+  deviceStatusRef.current = deviceStatus;
+  const applyHardwareLayer = useCallback((layer: number) => {
+    const confirmed = Math.min(MAX_LAYER_COUNT - 1, Math.max(0, Math.round(layer)));
+    deviceActiveLayerRef.current = confirmed;
+    setDeviceActiveLayer(confirmed);
+    // The existing effect that mirrors activeLayerIndex into ledEditingLayerIdx
+    // keeps the lighting editor in step, so it is not set twice here.
+    setActiveLayerIndex(confirmed);
+  }, []);
+
+  /**
+   * Profile-level operations (switch, import, duplicate, reset) must not claim a
+   * layer the hardware is not on. They realign the editor to the confirmed
+   * hardware layer instead of forcing layer 1, and send no command: changing
+   * profile is not a request to change layer.
+   */
+  const alignEditorToHardwareLayer = useCallback((layerCount: number) => {
+    const available = Math.max(1, Math.min(MAX_LAYER_COUNT, layerCount));
+    setActiveLayerIndex(Math.min(deviceActiveLayerRef.current, available - 1));
+  }, []);
+
+  /**
+   * User picked a layer in the app. Ask the firmware to switch and wait for its
+   * confirmation instead of changing the UI optimistically, so the highlighted
+   * layer can never claim a state the hardware did not reach.
+   *
+   * Raw HID allows one report in flight, so requests are drained serially and
+   * coalesced to the newest intent. A reply is always adopted (it is the newest
+   * authoritative state), and if it disagrees with the outstanding intent the
+   * loop sends one more command rather than leaving UI and hardware split.
+   */
+  const requestHardwareLayer = useCallback(async (layer: number): Promise<boolean> => {
+    const bridge = window.macropad;
+    if (!bridge || deviceStatusRef.current.state !== 'connected') return false;
+    const target = Math.min(MAX_LAYER_COUNT - 1, Math.max(0, Math.round(layer)));
+    const seq = ++layerIntentSeqRef.current;
+    layerIntentRef.current = target;
+
+    let drain = layerDrainRef.current;
+    if (!drain) {
+      let finish!: () => void;
+      drain = new Promise<void>((resolve) => { finish = resolve; });
+      layerDrainRef.current = drain;
+      const activeDrain = drain;
+      void (async () => {
+        try {
+          while (layerIntentRef.current !== null) {
+            const next = layerIntentRef.current;
+            layerIntentRef.current = null;
+            // Never talk to a device that went away mid-request.
+            if (deviceStatusRef.current.state !== 'connected') return;
+            // Already there (e.g. a physical key just selected it): no command.
+            if (deviceActiveLayerRef.current === next) continue;
+            const result = await bridge.request({ cmd: 'select_layer', layer: next });
+            if (deviceStatusRef.current.state !== 'connected') return;
+            if (!result?.ok) return;
+            if (typeof result.deviceActiveLayer === 'number') {
+              applyHardwareLayer(result.deviceActiveLayer);
+            }
+          }
+        } catch {
+          // Transport failure: the status listener drives the gate, and the UI
+          // keeps the last confirmed layer rather than guessing.
+        } finally {
+          layerIntentRef.current = null;
+          if (layerDrainRef.current === activeDrain) layerDrainRef.current = null;
+          finish();
+        }
+      })();
+    }
+
+    await drain;
+    // A newer click superseded this one; its own caller reports the outcome.
+    if (layerIntentSeqRef.current !== seq) return true;
+    return deviceActiveLayerRef.current === target;
+  }, [applyHardwareLayer]);
+
   /** Adopt RGB values reported by the firmware into the editor. */
   const hydrateRgbFromDevice = useCallback((remoteRgb: DeviceRgbConfig) => {
     const modeMap = ['Off', 'Solid', 'Rainbow', 'Breath'] as const;
@@ -1317,9 +1408,16 @@ export default function App() {
   }, []);
 
   const applyConnectedStatus = useCallback((status: QmkViaStatus) => {
+    // Update the ref synchronously: a disconnect must block in-flight layer
+    // requests immediately, not only after React re-renders.
+    deviceStatusRef.current = status;
     setDeviceStatus(status);
+    if (status.state !== 'connected') {
+      // Drop any queued intent so reconnecting cannot replay a stale switch.
+      layerIntentRef.current = null;
+    }
     if (typeof status.deviceActiveLayer === 'number') {
-      setDeviceActiveLayer(Math.min(MAX_LAYER_COUNT - 1, Math.max(0, status.deviceActiveLayer)));
+      applyHardwareLayer(status.deviceActiveLayer);
     }
     if (status.state !== 'connected') {
       hydratedRgbConnectionRef.current = false;
@@ -1329,12 +1427,12 @@ export default function App() {
       hydratedRgbConnectionRef.current = true;
       hydrateRgbFromDevice(status.rgbConfig);
     }
-  }, [hydrateRgbFromDevice]);
+  }, [hydrateRgbFromDevice, applyHardwareLayer]);
 
   useEffect(() => {
     const bridge = window.macropad;
     if (!bridge) {
-      setDeviceStatus({ state: 'unavailable', error: 'QMK/VIA device bridge is unavailable' });
+      applyConnectedStatus({ state: 'unavailable', error: 'QMK/VIA device bridge is unavailable' });
       return;
     }
 
@@ -1348,8 +1446,22 @@ export default function App() {
       applyConnectedStatus(status);
     });
 
+    // Fallback re-detection while the gate is showing. The HID 'connect' event
+    // covers most replugs, but not every platform emits it reliably. getStatus()
+    // only opens already-authorised devices, so this never raises a permission
+    // prompt and stops as soon as the device is connected.
+    const rescan = setInterval(() => {
+      if (!active) return;
+      const state = deviceStatusRef.current.state;
+      if (state === 'connected' || state === 'connecting' || state === 'unavailable') return;
+      void bridge.getStatus().then((status) => {
+        if (active) applyConnectedStatus(status);
+      });
+    }, 2000);
+
     return () => {
       active = false;
+      clearInterval(rescan);
       unsubscribe();
     };
   }, [applyConnectedStatus]);
@@ -1606,7 +1718,7 @@ export default function App() {
             );
             setProfiles(nextProfiles);
             setActiveProfileIndex(saved.activeProfileIndex);
-            setActiveLayerIndex(0);
+            alignEditorToHardwareLayer((nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0])?.layers.length ?? 1);
             setCustomItemsByTab(normalizeCustomItemsForEditor(
               saved.customItems as unknown as CustomItemsByTab
             ));
@@ -1639,7 +1751,9 @@ export default function App() {
     const triggerController = createHardwareTriggerController(
       (targetLayer) => {
         if (targetLayer >= currentProfile.layers.length) return false;
-        setDeviceActiveLayer(targetLayer);
+        // Same single adoption point as firmware telemetry, so the preview and
+        // the highlighted layer can never disagree with the reported layer.
+        applyHardwareLayer(targetLayer);
       },
       showToast,
       window
@@ -1657,7 +1771,7 @@ export default function App() {
       if (rawEvent.type === 'layer_state') {
         const layerEvent = rawEvent as unknown as DeviceLayerStateEvent;
         if (typeof layerEvent.deviceActiveLayer === 'number') {
-          setDeviceActiveLayer(Math.min(MAX_LAYER_COUNT - 1, Math.max(0, layerEvent.deviceActiveLayer)));
+          applyHardwareLayer(layerEvent.deviceActiveLayer);
         }
         if (
           typeof layerEvent.activeProfileSlot === 'number' &&
@@ -1707,7 +1821,7 @@ export default function App() {
       unsubscribe();
       triggerController.cancelAll();
     };
-  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, presetOs, hydrateRgbFromDevice]);
+  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, presetOs, hydrateRgbFromDevice, applyHardwareLayer]);
 
   // Listen for native Electron menu hardware actions when running inside desktop shell
   useEffect(() => {
@@ -1919,13 +2033,13 @@ export default function App() {
 
     if (deviceStatus.state === 'connected') {
       await bridge.disconnect();
-      setDeviceStatus({ state: 'disconnected' });
+      applyConnectedStatus({ state: 'disconnected' });
       return;
     }
 
     try {
       const nextStatus = await bridge.connect();
-      setDeviceStatus(nextStatus);
+      applyConnectedStatus(nextStatus);
       if (nextStatus.state !== 'connected' && nextStatus.error) {
         showToast(nextStatus.error);
       }
@@ -1946,7 +2060,7 @@ export default function App() {
     }
     setProfiles(JSON.parse(JSON.stringify(INITIAL_PROFILES)) as ProfileData[]);
     setActiveProfileIndex(0);
-    setActiveLayerIndex(0);
+    alignEditorToHardwareLayer(INITIAL_PROFILES[0]?.layers.length ?? 1);
     setCustomItemsByTab({ Action: [], 'Multi-A': [], 'Smart-A': [] });
     setHistory([]);
     setRedoStack([]);
@@ -1982,7 +2096,8 @@ export default function App() {
         : p
     );
     pushState(nextProfiles);
-    setActiveLayerIndex(currentProfile.layers.length);
+    // Editing the new layer selects it on the device as well.
+    void requestHardwareLayer(currentProfile.layers.length);
     setLayerToolbarOpen(true);
     setLayerDeleteConfirm(false);
   };
@@ -2004,7 +2119,7 @@ export default function App() {
         : p
     );
     pushState(nextProfiles);
-    setActiveLayerIndex(Math.max(0, activeLayerIndex - 1));
+    void requestHardwareLayer(Math.max(0, activeLayerIndex - 1));
     setLayerDeleteConfirm(false);
   };
 
@@ -2863,7 +2978,9 @@ export default function App() {
           showToast(`Layer ${targetLayer + 1} is not available on this profile`);
           return false;
         }
-        setActiveLayerIndex(targetLayer);
+        // A simulated layer action must move the real device too; the confirmed
+        // reply is what updates the highlight and preview.
+        void requestHardwareLayer(targetLayer);
         setSelectedKey(null);
         setSelectedEncoderSub(null);
         setMappingDrawerOpen(false);
@@ -3315,7 +3432,7 @@ export default function App() {
       'Smart-A': mergePresetItems(current['Smart-A'], preset.actionItems['Smart-A']),
     }));
     pushState(nextProfiles);
-    setActiveLayerIndex(nextLayerIndex);
+    void requestHardwareLayer(nextLayerIndex);
     setPreviewPreset(null);
     setActiveNav('Keymap');
     const savedActionCount = preset.actionItems.Action.length + preset.actionItems['Multi-A'].length;
@@ -3498,7 +3615,7 @@ export default function App() {
     const next = [...profiles, duplicated];
     pushState(next);
     setActiveProfileIndex(next.length - 1);
-    setActiveLayerIndex(0);
+    alignEditorToHardwareLayer(duplicated.layers.length);
     showToast(`Duplicated "${source.name}"`);
   };
 
@@ -3532,7 +3649,7 @@ export default function App() {
     const next = [...profiles, nextProf];
     pushState(next);
     setActiveProfileIndex(next.length - 1);
-    setActiveLayerIndex(0);
+    alignEditorToHardwareLayer(nextProf.layers.length);
     setDeletingProfileId(null);
   };
 
@@ -3553,7 +3670,7 @@ export default function App() {
       };
       pushState([resetProf]);
       setActiveProfileIndex(0);
-      setActiveLayerIndex(0);
+      alignEditorToHardwareLayer(resetProf.layers.length);
       setDeletingProfileId(null);
       return;
     }
@@ -3562,7 +3679,9 @@ export default function App() {
     setActiveProfileIndex((prev) =>
       prev >= next.length ? Math.max(0, next.length - 1) : prev
     );
-    setActiveLayerIndex(0);
+    alignEditorToHardwareLayer(
+      (next[Math.min(activeProfileIndex, next.length - 1)] ?? next[0])?.layers.length ?? 1
+    );
     setDeletingProfileId(null);
   };
 
@@ -3638,7 +3757,10 @@ export default function App() {
         )
       );
       setActiveProfileIndex(merged.activeProfileIndex);
-      setActiveLayerIndex(0);
+      alignEditorToHardwareLayer(
+        ((merged.profiles as unknown as ProfileData[])[merged.activeProfileIndex]
+          ?? (merged.profiles as unknown as ProfileData[])[0])?.layers.length ?? 1
+      );
       setProfileMenuOpen(false);
       setDeletingProfileId(null);
       showToast(
@@ -3682,6 +3804,18 @@ export default function App() {
         sec.title.toLowerCase().includes(mappingSearch.toLowerCase())
     ),
   })).filter((sec) => sec.items.length > 0);
+
+  // Editing stays locked until the firmware has answered. Returning here means
+  // the configurator below is never mounted, so no control can reach a device
+  // that is absent. Profile state lives above this branch and is preserved.
+  if (deviceStatus.state !== 'connected') {
+    return (
+      <DeviceConnectionGate
+        status={deviceStatus}
+        onRetry={handleToggleDeviceConnection}
+      />
+    );
+  }
 
   return (
     <div className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
@@ -3796,7 +3930,6 @@ export default function App() {
         <button
           type="button"
           onClick={handleToggleDeviceConnection}
-          disabled={deviceStatus.state === 'connecting'}
           aria-label={
             deviceStatus.state === 'connected'
               ? 'Disconnect Grid Macro 1'
@@ -4091,7 +4224,7 @@ export default function App() {
                                   <div
                                     onClick={() => {
                                       setActiveProfileIndex(idx);
-                                      setActiveLayerIndex(0);
+                                      alignEditorToHardwareLayer(prof.layers.length);
                                       setDeletingProfileId(null);
                                     }}
                                     className={`flex-1 h-[27px] min-w-0 px-[10px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center gap-[6px] text-[11px] font-medium transition-all cursor-text ${
@@ -4122,7 +4255,7 @@ export default function App() {
                                       }
                                       onFocus={() => {
                                         setActiveProfileIndex(idx);
-                                        setActiveLayerIndex(0);
+                                        alignEditorToHardwareLayer(prof.layers.length);
                                         setDeletingProfileId(null);
                                       }}
                                       aria-label={`Rename profile ${prof.name || idx + 1}`}
@@ -4314,13 +4447,23 @@ export default function App() {
                               return !open;
                             });
                           } else {
-                            setActiveLayerIndex(idx);
-                            setLedEditingLayerIdx(idx);
                             setLayerToolbarOpen(true);
                             setLayerDeleteConfirm(false);
+                            // Ask the hardware to switch; the confirmed layer_state
+                            // event moves the highlight and the preview. Changing
+                            // them here would show a layer the device never reached.
+                            void requestHardwareLayer(idx).then((confirmed) => {
+                              if (!confirmed) {
+                                showToast(`Layer ${idx + 1} was not confirmed by the Micro Pad`);
+                              }
+                            });
                           }
                         }}
                         title={`Layer ${idx + 1}`}
+                        // The active layer is the one the firmware confirmed, so
+                        // expose it semantically instead of only through colour.
+                        aria-pressed={isActive}
+                        data-active-layer={isActive ? 'true' : 'false'}
                         className={`w-[26px] h-[26px] rounded-full border-[1.5px] text-[11.5px] font-medium flex items-center justify-center transition-colors duration-200 tabular-nums cursor-pointer ${
                           isActive
                             ? layerToolbarOpen
@@ -4570,7 +4713,14 @@ export default function App() {
                                     onClick={() => {
                                       setLedEditingLayerIdx(lIdx);
                                       if (lIdx < currentProfile.layers.length) {
-                                        setActiveLayerIndex(lIdx);
+                                        // Previewing a layer's lighting also selects
+                                        // it on the device, so the LED you see is the
+                                        // LED the hardware is actually showing.
+                                        void requestHardwareLayer(lIdx).then((confirmed) => {
+                                          if (!confirmed) {
+                                            showToast(`Layer ${lIdx + 1} was not confirmed by the Micro Pad`);
+                                          }
+                                        });
                                       }
                                     }}
                                     className={`h-[26px] rounded-full px-[6px] flex items-center justify-center gap-[4px] text-[10px] font-medium border-[1.5px] transition-all cursor-pointer ${

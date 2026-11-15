@@ -19,6 +19,7 @@ enum micro_pad_layers {
 #define MP_CMD_SELECT_PROFILE 0x02
 #define MP_CMD_SAVE_PROFILE 0x03
 #define MP_CMD_SET_RGB 0x04
+#define MP_CMD_SELECT_LAYER 0x05
 #define MP_EVT_LAYER_STATE 0x10
 #define MP_EVT_HOST_TRIGGER 0x11
 #define MP_EVT_RGB_STATE 0x12
@@ -436,6 +437,22 @@ bool via_command_kb(uint8_t *data, uint8_t length) {
 
     if (subcmd == MP_CMD_GET_STATE) {
         mp_fill_state_report(data, length, current_layer);
+        raw_hid_send(data, length);
+        return true;
+    }
+
+    if (subcmd == MP_CMD_SELECT_LAYER) {
+        uint8_t target_layer = data[2];
+        if (target_layer < MP_MAX_LAYERS && target_layer != current_layer) {
+            /* Same path as a physical layer key: switches the real keymap and
+             * runs layer_state_set_user(), which owns the LED and the event.
+             */
+            layer_move(target_layer);
+        }
+        /* Always answer with the authoritative layer, even when the request was
+         * rejected or already current, so the host never has to guess.
+         */
+        mp_fill_state_report(data, length, get_highest_layer(layer_state));
         raw_hid_send(data, length);
         return true;
     }

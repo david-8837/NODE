@@ -3,6 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
+import { installConnectedDevice, removeConnectedDevice } from './helpers/connectedDevice';
 import {
   createProfileExport,
   PROFILE_FILE_STORAGE_KEY,
@@ -46,12 +47,13 @@ beforeEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
   Object.defineProperty(window, 'confirm', { configurable: true, value: vi.fn(() => true) });
-  Object.defineProperty(window, 'macropad', { configurable: true, value: undefined });
+  installConnectedDevice();
   Object.defineProperty(window, 'electronAPI', { configurable: true, value: undefined });
   Object.defineProperty(window, 'Notification', { configurable: true, value: undefined });
 });
 
 afterEach(async () => {
+  removeConnectedDevice();
   if (root) await act(async () => root.unmount());
   container?.remove();
   delete (window as Window & { macropad?: QmkViaBridge }).macropad;
@@ -227,7 +229,9 @@ describe('React source app file operations', () => {
   it('requests notification permission and reports device connection events only after consent', async () => {
     const events = new Set<(event: unknown) => void>();
     const bridge = {
-      getStatus: vi.fn().mockResolvedValue({ state: 'disconnected' }),
+      // Settings is only reachable with a verified connection, so this bridge
+      // starts connected; the connect event below models a later reconnect.
+      getStatus: vi.fn().mockResolvedValue({ state: 'connected', device: 'Test Grid', deviceActiveLayer: 0 }),
       onStatus: vi.fn(() => () => undefined),
       onEvent: vi.fn((listener: (event: unknown) => void) => {
         events.add(listener);
