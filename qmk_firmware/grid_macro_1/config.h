@@ -24,6 +24,14 @@
 
 /* One onboard WS2812 indicator on GP16. */
 #define WS2812_DI_PIN GP16
+
+/* The indicator on this board latches data in R,G,B order. QMK defaults to
+ * WS2812_BYTE_ORDER_GRB, which transmits green first; on this part that swapped
+ * the red and green channels (#FF0000 lit green, #00FF00 lit red, blue was
+ * unaffected because it is the third byte in both layouts). Verified on hardware.
+ * If a future board revision uses a genuine GRB WS2812, remove this define.
+ */
+#define WS2812_BYTE_ORDER WS2812_BYTE_ORDER_RGB
 #define RGBLIGHT_LIMIT_VAL 220
 #define RGBLIGHT_VAL_STEP 10
 #define RGBLIGHT_EFFECT_BREATHING

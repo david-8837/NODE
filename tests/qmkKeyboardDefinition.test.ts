@@ -46,6 +46,9 @@ describe('Grid Macro 1 QMK definition preflight', () => {
     expect(keyboard.encoder.rotary[0]).toMatchObject({ pin_a: 'GP9', pin_b: 'GP10' });
     expect(keyboard.rgblight).toMatchObject({ pin: 'GP16', led_count: 1, driver: 'ws2812' });
     expect(config).toMatch(/#define WS2812_DI_PIN GP16\b/);
+    // Hardware-verified: this board's indicator latches R,G,B. QMK's GRB default
+    // transmitted green first and swapped red/green (#FF0000 lit green).
+    expect(config).toMatch(/#define WS2812_BYTE_ORDER\s+WS2812_BYTE_ORDER_RGB\b/);
     expect(config).toMatch(/#define DYNAMIC_KEYMAP_LAYER_COUNT 4\b/);
     expect(viaRules).toContain('VIA_ENABLE = yes');
     expect(viaRules).toContain('ENCODER_MAP_ENABLE = yes');
