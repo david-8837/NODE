@@ -35,7 +35,7 @@ export interface FakeConnectedBridgeOptions {
  */
 export function installConnectedDevice(options: FakeConnectedBridgeOptions = {}) {
   let layer = options.deviceActiveLayer ?? 0;
-  const slot = options.activeProfileSlot ?? 0;
+  let slot = options.activeProfileSlot ?? 0;
   const statusListeners = new Set<(status: Record<string, unknown>) => void>();
   const eventListeners = new Set<(event: unknown) => void>();
 
@@ -64,6 +64,15 @@ export function installConnectedDevice(options: FakeConnectedBridgeOptions = {})
       for (const listener of eventListeners) listener(event);
       emitStatus();
       return { ok: true, deviceActiveLayer: layer, activeProfileSlot: slot, requestedLayer: target, confirmed: true };
+    }
+    if (payload.cmd === 'select_profile') {
+      const target = Number(payload.profileSlot);
+      if (!Number.isInteger(target) || target < 0 || target > 3) {
+        return { ok: false, error: 'Profile slot must be between 0 and 3' };
+      }
+      slot = target;
+      emitStatus();
+      return { ok: true, activeProfileSlot: slot, deviceActiveLayer: layer };
     }
     if (payload.cmd === 'get_device_state') {
       return { ok: true, deviceActiveLayer: layer, activeProfileSlot: slot };

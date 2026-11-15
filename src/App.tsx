@@ -1253,6 +1253,7 @@ export default function App() {
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
   const [deviceActiveLayer, setDeviceActiveLayer] = useState<number>(0);
+  const [deviceActiveProfileSlot, setDeviceActiveProfileSlot] = useState<number>(0);
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
   const lastSyncedConfigKeyRef = useRef('');
 
@@ -1269,11 +1270,22 @@ export default function App() {
   const layerIntentSeqRef = useRef(0);
   const layerDrainRef = useRef<Promise<void> | null>(null);
   const deviceActiveLayerRef = useRef(0);
+  // Layers in the profile being edited. Firmware can report a layer this profile
+  // does not have; the editor clamps to a real layer so an assignment can never
+  // target a nonexistent index while the preview silently falls back to layer 1.
+  const profileLayerCountRef = useRef(1);
+  // Profile-slot mirror of the layer intent queue. While a user-selected profile
+  // switch is in flight, stale firmware reports must not bounce the UI back.
+  const profileIntentRef = useRef<number | null>(null);
+  const profileIntentSeqRef = useRef(0);
+  const profileDrainRef = useRef<Promise<void> | null>(null);
+  const deviceActiveProfileSlotRef = useRef(0);
   // Lets the rescan interval read the latest state without re-subscribing.
   const deviceStatusRef = useRef<QmkViaStatus>(deviceStatus);
   deviceStatusRef.current = deviceStatus;
   const applyHardwareLayer = useCallback((layer: number) => {
-    const confirmed = Math.min(MAX_LAYER_COUNT - 1, Math.max(0, Math.round(layer)));
+    const available = Math.max(1, Math.min(MAX_LAYER_COUNT, profileLayerCountRef.current));
+    const confirmed = Math.min(available - 1, Math.max(0, Math.round(layer)));
     deviceActiveLayerRef.current = confirmed;
     setDeviceActiveLayer(confirmed);
     // The existing effect that mirrors activeLayerIndex into ledEditingLayerIdx
@@ -1282,10 +1294,10 @@ export default function App() {
   }, []);
 
   /**
-   * Profile-level operations (switch, import, duplicate, reset) must not claim a
-   * layer the hardware is not on. They realign the editor to the confirmed
-   * hardware layer instead of forcing layer 1, and send no command: changing
-   * profile is not a request to change layer.
+   * Profile-level operations realign the editor to the confirmed hardware layer,
+   * clamped to the layers this profile actually has, instead of forcing layer 1.
+   * Activating the profile on the firmware is handled by requestHardwareProfile;
+   * changing profile is not itself a request to change layer.
    */
   const alignEditorToHardwareLayer = useCallback((layerCount: number) => {
     const available = Math.max(1, Math.min(MAX_LAYER_COUNT, layerCount));
@@ -1347,6 +1359,74 @@ export default function App() {
     if (layerIntentSeqRef.current !== seq) return true;
     return deviceActiveLayerRef.current === target;
   }, [applyHardwareLayer]);
+
+  /**
+   * User picked a profile in the app. Tell the firmware to activate that EEPROM
+   * slot so physical keys, layer reports and the editor agree. Without this the
+   * device stayed on the old slot: the next layer report bounced the editor back
+   * and other profiles could not be edited reliably. Requests drain serially and
+   * coalesce to the newest intent, exactly like the layer queue.
+   */
+  const requestHardwareProfile = useCallback(async (slot: number): Promise<boolean> => {
+    const bridge = window.macropad;
+    if (!bridge || deviceStatusRef.current.state !== 'connected') return false;
+    const target = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, Math.round(slot)));
+    const seq = ++profileIntentSeqRef.current;
+    profileIntentRef.current = target;
+
+    let drain = profileDrainRef.current;
+    if (!drain) {
+      let finish!: () => void;
+      drain = new Promise<void>((resolve) => { finish = resolve; });
+      profileDrainRef.current = drain;
+      const activeDrain = drain;
+      void (async () => {
+        try {
+          while (profileIntentRef.current !== null) {
+            const next = profileIntentRef.current;
+            if (deviceStatusRef.current.state !== 'connected') return;
+            if (deviceActiveProfileSlotRef.current === next) {
+              profileIntentRef.current = null;
+              continue;
+            }
+            const result = await bridge.request({
+              cmd: 'select_profile',
+              profileSlot: next,
+              saveCurrentProfile: true,
+            });
+            if (deviceStatusRef.current.state !== 'connected') return;
+            if (!result?.ok) return;
+            if (typeof result.activeProfileSlot === 'number') {
+              const confirmedSlot = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, result.activeProfileSlot));
+              deviceActiveProfileSlotRef.current = confirmedSlot;
+              setDeviceActiveProfileSlot(confirmedSlot);
+            }
+            if (typeof result.deviceActiveLayer === 'number') {
+              applyHardwareLayer(result.deviceActiveLayer);
+            }
+            if (profileIntentRef.current === next) profileIntentRef.current = null;
+          }
+        } catch {
+          // Transport failure: the status listener drives the gate.
+        } finally {
+          profileIntentRef.current = null;
+          if (profileDrainRef.current === activeDrain) profileDrainRef.current = null;
+          finish();
+        }
+      })();
+    }
+
+    await drain;
+    if (profileIntentSeqRef.current !== seq) return true;
+    return deviceActiveProfileSlotRef.current === target;
+  }, [applyHardwareLayer]);
+
+  /** Switch the editor to a profile and ask the firmware to activate that slot. */
+  const selectProfileInApp = useCallback((idx: number, layerCount: number) => {
+    setActiveProfileIndex(idx);
+    alignEditorToHardwareLayer(layerCount);
+    void requestHardwareProfile(idx);
+  }, [alignEditorToHardwareLayer, requestHardwareProfile]);
 
   /** Adopt RGB values reported by the firmware into the editor. */
   const hydrateRgbFromDevice = useCallback((remoteRgb: DeviceRgbConfig) => {
@@ -1418,6 +1498,11 @@ export default function App() {
     }
     if (typeof status.deviceActiveLayer === 'number') {
       applyHardwareLayer(status.deviceActiveLayer);
+    }
+    if (typeof status.activeProfileSlot === 'number') {
+      const slot = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, status.activeProfileSlot));
+      deviceActiveProfileSlotRef.current = slot;
+      setDeviceActiveProfileSlot(slot);
     }
     if (status.state !== 'connected') {
       hydratedRgbConnectionRef.current = false;
@@ -1657,9 +1742,13 @@ export default function App() {
   };
 
   const currentProfile = profiles[activeProfileIndex] || profiles[0];
+  profileLayerCountRef.current = currentProfile.layers.length;
+  // Never edit a layer index the profile does not have, even if a stale hardware
+  // report lands between renders. The preview and mutations use the same index.
+  const effectiveLayerIndex = Math.min(activeLayerIndex, currentProfile.layers.length - 1);
   const currentLayer =
-    currentProfile.layers[activeLayerIndex] || currentProfile.layers[0];
-  const currentLayerNameKey = `${currentProfile.id}-${activeLayerIndex}`;
+    currentProfile.layers[effectiveLayerIndex] || currentProfile.layers[0];
+  const currentLayerNameKey = `${currentProfile.id}-${effectiveLayerIndex}`;
   const currentLayerName = layerNames[currentLayerNameKey] ?? '';
 
   const showToast = (msg: string) => {
@@ -1718,6 +1807,8 @@ export default function App() {
             );
             setProfiles(nextProfiles);
             setActiveProfileIndex(saved.activeProfileIndex);
+            deviceActiveProfileSlotRef.current = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, saved.activeProfileIndex));
+            setDeviceActiveProfileSlot(deviceActiveProfileSlotRef.current);
             alignEditorToHardwareLayer((nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0])?.layers.length ?? 1);
             setCustomItemsByTab(normalizeCustomItemsForEditor(
               saved.customItems as unknown as CustomItemsByTab
@@ -1773,7 +1864,13 @@ export default function App() {
         if (typeof layerEvent.deviceActiveLayer === 'number') {
           applyHardwareLayer(layerEvent.deviceActiveLayer);
         }
+        if (typeof layerEvent.activeProfileSlot === 'number') {
+          const reportedSlot = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, layerEvent.activeProfileSlot));
+          deviceActiveProfileSlotRef.current = reportedSlot;
+          setDeviceActiveProfileSlot(reportedSlot);
+        }
         if (
+          profileIntentRef.current === null &&
           typeof layerEvent.activeProfileSlot === 'number' &&
           layerEvent.activeProfileSlot >= 0 &&
           layerEvent.activeProfileSlot < profiles.length &&
@@ -1822,6 +1919,16 @@ export default function App() {
       triggerController.cancelAll();
     };
   }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, presetOs, hydrateRgbFromDevice, applyHardwareLayer]);
+
+  // Keep the firmware's active EEPROM slot aligned with the profile being edited.
+  // This covers initial connect (the saved profile may differ from the device's
+  // current slot) and any drift, without fighting an in-flight user selection.
+  useEffect(() => {
+    if (deviceStatus.state !== 'connected' || !deviceSyncReady) return;
+    if (profileIntentRef.current !== null) return;
+    if (deviceActiveProfileSlotRef.current === activeProfileIndex) return;
+    void requestHardwareProfile(activeProfileIndex);
+  }, [deviceStatus.state, deviceSyncReady, activeProfileIndex, deviceActiveProfileSlot, requestHardwareProfile]);
 
   // Listen for native Electron menu hardware actions when running inside desktop shell
   useEffect(() => {
@@ -2059,8 +2166,7 @@ export default function App() {
       return;
     }
     setProfiles(JSON.parse(JSON.stringify(INITIAL_PROFILES)) as ProfileData[]);
-    setActiveProfileIndex(0);
-    alignEditorToHardwareLayer(INITIAL_PROFILES[0]?.layers.length ?? 1);
+    selectProfileInApp(0, INITIAL_PROFILES[0]?.layers.length ?? 1);
     setCustomItemsByTab({ Action: [], 'Multi-A': [], 'Smart-A': [] });
     setHistory([]);
     setRedoStack([]);
@@ -2130,7 +2236,7 @@ export default function App() {
     const nextProfiles = profiles.map((p, pIdx) => {
       if (pIdx !== activeProfileIndex) return p;
       const nextLayers = p.layers.map((layer, lIdx) => {
-        if (lIdx !== activeLayerIndex) return layer;
+        if (lIdx !== effectiveLayerIndex) return layer;
         return {
           ...layer,
           [slotId]: {
@@ -2202,7 +2308,7 @@ export default function App() {
     const nextProfiles = profiles.map((p, pIdx) => {
       if (pIdx !== activeProfileIndex) return p;
       const nextLayers = p.layers.map((layer, lIdx) => {
-        if (lIdx !== activeLayerIndex) return layer;
+        if (lIdx !== effectiveLayerIndex) return layer;
         const copy: LayerKeymap = JSON.parse(JSON.stringify(layer));
 
         if (subA && subB) {
@@ -3614,8 +3720,7 @@ export default function App() {
     };
     const next = [...profiles, duplicated];
     pushState(next);
-    setActiveProfileIndex(next.length - 1);
-    alignEditorToHardwareLayer(duplicated.layers.length);
+    selectProfileInApp(next.length - 1, duplicated.layers.length);
     showToast(`Duplicated "${source.name}"`);
   };
 
@@ -3648,8 +3753,7 @@ export default function App() {
     };
     const next = [...profiles, nextProf];
     pushState(next);
-    setActiveProfileIndex(next.length - 1);
-    alignEditorToHardwareLayer(nextProf.layers.length);
+    selectProfileInApp(next.length - 1, nextProf.layers.length);
     setDeletingProfileId(null);
   };
 
@@ -3669,19 +3773,14 @@ export default function App() {
         layers: [JSON.parse(JSON.stringify(INITIAL_LAYER_1))],
       };
       pushState([resetProf]);
-      setActiveProfileIndex(0);
-      alignEditorToHardwareLayer(resetProf.layers.length);
+      selectProfileInApp(0, resetProf.layers.length);
       setDeletingProfileId(null);
       return;
     }
     const next = profiles.filter((_, i) => i !== idx);
     pushState(next);
-    setActiveProfileIndex((prev) =>
-      prev >= next.length ? Math.max(0, next.length - 1) : prev
-    );
-    alignEditorToHardwareLayer(
-      (next[Math.min(activeProfileIndex, next.length - 1)] ?? next[0])?.layers.length ?? 1
-    );
+    const nextIdx = activeProfileIndex >= next.length ? Math.max(0, next.length - 1) : activeProfileIndex;
+    selectProfileInApp(nextIdx, (next[nextIdx] ?? next[0])?.layers.length ?? 1);
     setDeletingProfileId(null);
   };
 
@@ -3756,8 +3855,8 @@ export default function App() {
           merged.customItems as unknown as CustomItemsByTab
         )
       );
-      setActiveProfileIndex(merged.activeProfileIndex);
-      alignEditorToHardwareLayer(
+      selectProfileInApp(
+        merged.activeProfileIndex,
         ((merged.profiles as unknown as ProfileData[])[merged.activeProfileIndex]
           ?? (merged.profiles as unknown as ProfileData[])[0])?.layers.length ?? 1
       );
@@ -4223,8 +4322,7 @@ export default function App() {
                                   {/* Profile Pill (Blue in our theme when active, White when inactive) */}
                                   <div
                                     onClick={() => {
-                                      setActiveProfileIndex(idx);
-                                      alignEditorToHardwareLayer(prof.layers.length);
+                                      selectProfileInApp(idx, prof.layers.length);
                                       setDeletingProfileId(null);
                                     }}
                                     className={`flex-1 h-[27px] min-w-0 px-[10px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center gap-[6px] text-[11px] font-medium transition-all cursor-text ${
@@ -4254,8 +4352,7 @@ export default function App() {
                                         handleUpdateProfileName(idx, event.target.value)
                                       }
                                       onFocus={() => {
-                                        setActiveProfileIndex(idx);
-                                        alignEditorToHardwareLayer(prof.layers.length);
+                                        selectProfileInApp(idx, prof.layers.length);
                                         setDeletingProfileId(null);
                                       }}
                                       aria-label={`Rename profile ${prof.name || idx + 1}`}

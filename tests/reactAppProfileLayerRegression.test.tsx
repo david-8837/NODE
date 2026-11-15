@@ -96,6 +96,24 @@ afterEach(async () => {
   container.remove();
 });
 
+async function clickElement(element: Element | null) {
+  expect(element).not.toBeNull();
+  await act(async () => {
+    (element as HTMLElement).click();
+    await new Promise((resolve) => window.setTimeout(resolve, 400));
+  });
+}
+
+async function assignBasicLetter(letter: string) {
+  await clickElement(container.querySelector('[data-drop-slot="r1c1"]'));
+  const tile = [...container.querySelectorAll('aside button')].find((button) => button.textContent?.trim() === letter);
+  await clickElement(tile ?? null);
+}
+
+function storedProfiles() {
+  return JSON.parse(window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) || 'null').profiles;
+}
+
 describe('profile management × hardware layer regression', () => {
   it('shows the hardware layer and that layer\'s assignments after a physical switch', async () => {
     const device = installConnectedDevice();
@@ -171,4 +189,101 @@ describe('profile management × hardware layer regression', () => {
     expect(activeLayerNumber()).toBe(2);
     expect(firstKeyLabel()).toContain('A2');
   });
+  it('keeps a new empty profile editable when firmware is on a higher layer (reported blank-key bug)', async () => {
+    const device = installConnectedDevice({ deviceActiveLayer: 1, activeProfileSlot: 2 });
+    await renderApp();
+    await openProfileList();
+    const addProfile = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Add Profile');
+    await clickElement(addProfile ?? null);
+    // A later hardware report must not move the editor to nonexistent layer 2
+    // of the new one-layer profile while the preview falls back to layer 1.
+    await act(async () => {
+      device.emitHardwareLayer(1);
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+    });
+    await assignBasicLetter('A');
+
+    expect(container.textContent).toContain('Assigned "A" to R1C1');
+    expect(firstKeyLabel()).toBe('A');
+    expect(activeLayerNumber()).toBe(1);
+    expect(storedProfiles()[2].layers[0].r1c1).toMatchObject({ label: 'A', binding: 'A' });
+    expect(storedProfiles()[0].layers[0].r1c1.label).toBe('A1');
+    expect(storedProfiles()[1].layers[0].r1c1.label).toBe('B1');
+  });
+
+  it('clamps a higher hardware layer into a short profile so the assignment still lands', async () => {
+    installConnectedDevice({ deviceActiveLayer: 3 });
+    await renderApp();
+    await openProfileList();
+    await selectProfile('Beta');
+    await clickElement(container.querySelector('[data-drop-slot="r1c1"]'));
+    await assignBasicLetter('B');
+    expect(firstKeyLabel()).toBe('B');
+    expect(storedProfiles()[1].layers[0].r1c1.binding).toBe('B');
+  });
+
+  it('activates the selected profile on the device and keeps assignments isolated per profile', async () => {
+    const device = installConnectedDevice();
+    await renderApp();
+    await openProfileList();
+    await selectProfile('Beta');
+
+    const selectCalls = device.bridge.request.mock.calls
+      .map(([payload]) => payload as { cmd?: string; profileSlot?: number })
+      .filter((payload) => payload.cmd === 'select_profile');
+    expect(selectCalls).toContainEqual(expect.objectContaining({ cmd: 'select_profile', profileSlot: 1 }));
+
+    // A later hardware report now carries the selected slot, so the editor stays on Beta.
+    await act(async () => {
+      device.emitHardwareLayer(0);
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+    });
+    await assignBasicLetter('D');
+
+    expect(firstKeyLabel()).toBe('D');
+    const stored = storedProfiles();
+    expect(stored[1].layers[0].r1c1).toMatchObject({ label: 'D', binding: 'D' });
+    expect(stored[0].layers[0].r1c1.label).toBe('A1');
+    expect(JSON.parse(window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) || '{}').activeProfileIndex).toBe(1);
+  });
+
+  it('does not bounce back to the old profile when a stale layer report arrives mid-switch', async () => {
+    let release: (() => void) | undefined;
+    const device = installConnectedDevice({
+      request: async (payload) => {
+        if (payload.cmd === 'select_profile') {
+          await new Promise<void>((resolve) => { release = resolve; });
+          return { ok: true, activeProfileSlot: Number(payload.profileSlot), deviceActiveLayer: 0 };
+        }
+        if (payload.cmd === 'get_config') {
+          const { emptyKeymapSnapshot } = await import('./helpers/connectedDevice');
+          return { ok: true, snapshot: emptyKeymapSnapshot(), warnings: [] };
+        }
+        return { ok: true, warnings: [] };
+      },
+    });
+    await renderApp();
+    await openProfileList();
+    await selectProfile('Beta');
+
+    // Firmware has not confirmed the switch yet and still reports the old slot.
+    const listeners = device.bridge.onEvent.mock.calls.map(([listener]) => listener);
+    await act(async () => {
+      for (const listener of listeners) {
+        listener({ type: 'layer_state', deviceActiveLayer: 0, activeProfileSlot: 0 });
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+    });
+    expect(JSON.parse(window.localStorage.getItem(PROFILE_FILE_STORAGE_KEY) || '{}').activeProfileIndex).toBe(1);
+
+    await act(async () => {
+      release?.();
+      await new Promise((resolve) => window.setTimeout(resolve, 40));
+    });
+    await assignBasicLetter('E');
+    expect(firstKeyLabel()).toBe('E');
+    expect(storedProfiles()[1].layers[0].r1c1.binding).toBe('E');
+    expect(storedProfiles()[0].layers[0].r1c1.label).toBe('A1');
+  });
+
 });
