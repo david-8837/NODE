@@ -17,7 +17,8 @@ function isCaseInsensitivePlatform(platform) {
 }
 
 function normalizeComparisonPath(targetPath, platform) {
-  const resolved = path.resolve(targetPath);
+  const pathApi = platform === 'win32' ? path.win32 : path.posix;
+  const resolved = pathApi.resolve(targetPath);
   return isCaseInsensitivePlatform(platform) ? resolved.toLowerCase() : resolved;
 }
 
@@ -50,6 +51,34 @@ function hasPopulatedLocalStorage(dirPath, fsImpl = fs) {
     return fsImpl.readdirSync(localStorageDir).length > 0;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Recursively copies directory contents using libuv wide-char file primitives
+ * (`mkdirSync`, `readdirSync`, `copyFileSync`) rather than `fs.cpSync`, which has
+ * UTF-8/ANSI path conversion bugs on Windows when paths contain non-ASCII characters
+ * such as `Ø` in `NØDE Grid Macro 1 Studio`.
+ */
+function copyDirectoryIfMissing(sourceDir, targetDir, fsImpl = fs) {
+  fsImpl.mkdirSync(targetDir, { recursive: true });
+  const entries = fsImpl.readdirSync(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectoryIfMissing(sourcePath, targetPath, fsImpl);
+    } else if (entry.isFile() && !fsImpl.existsSync(targetPath)) {
+      try {
+        fsImpl.copyFileSync(sourcePath, targetPath);
+      } catch (error) {
+        // LevelDB recreates its LOCK file on open; ignore an active OS lock on LOCK
+        // if an older instance is still shutting down, while rethrowing real data errors.
+        if (entry.name !== 'LOCK') {
+          throw error;
+        }
+      }
+    }
   }
 }
 
@@ -110,10 +139,10 @@ function migrateLegacyUserData({
       }
 
       if (copyLocalStorage) {
-        fsImpl.cpSync(
+        copyDirectoryIfMissing(
           path.join(candidateDir, 'Local Storage'),
           path.join(currentUserDataDir, 'Local Storage'),
-          { recursive: true, force: false, errorOnExist: false }
+          fsImpl
         );
         copied.push('Local Storage');
       }

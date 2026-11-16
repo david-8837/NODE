@@ -47,7 +47,7 @@ jobs:
         run: npm run lint
 
       - name: Run tests
-        run: npm test
+        run: npx vitest run --reporter=default --reporter=github-actions
 
       - name: Build installer and ZIP
         run: npm run build:win
