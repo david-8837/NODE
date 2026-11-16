@@ -86,9 +86,27 @@ describe('Cheat-Sheet hardware path', () => {
       { r1c1: { binding: 'Ctrl + C' }, r1c3: { binding: 'blank' }, r2c2: { binding: 'volume +', label: 'vol+' } },
       { r1c1: { binding: 'launch', execution: { kind: 'smart', actionType: 'App', value: 'Notepad' } }, r3c3: { binding: 'Text: secret', label: 'Greeting', execution: { kind: 'smart', actionType: 'Text', value: 'secret' } } },
     ] };
-    expect(cheatSheetSnapshot(profile, 0)).toEqual({ layer: 1, available: true, keys: ['Ctrl + C', '', '', '', 'volume +', '', '', '', ''] });
-    expect(cheatSheetSnapshot(profile, 1)).toEqual({ layer: 2, available: true, keys: ['Notepad', '', '', '', '', '', '', '', 'Greeting'] });
+    expect(cheatSheetSnapshot(profile, 0)).toMatchObject({ layer: 1, available: true, keys: ['Ctrl + C', '', '', '', 'volume +', '', '', '', ''] });
+    expect(cheatSheetSnapshot(profile, 1)).toMatchObject({ layer: 2, available: true, keys: ['Notepad', '', '', '', '', '', '', '', 'Greeting'] });
     expect(cheatSheetSnapshot(profile, 3).keys).toEqual(Array(9).fill(''));
+  });
+  it('reads dial left, press and right bindings from each active layer', () => {
+    const profile = { layers: [
+      { 'dial-tl': { encoderActions: {
+        ccw: { binding: 'volume -', label: 'vol-' },
+        press: { binding: 'mute' },
+        cw: { binding: 'volume +' },
+      } } },
+      { 'dial-tl': { encoderActions: {
+        ccw: { binding: 'Ctrl + Z', execution: { kind: 'shortcut', value: 'Ctrl + Z' } },
+        press: { binding: 'blank' },
+        cw: { binding: 'next track' },
+      } } },
+    ] };
+    expect(cheatSheetSnapshot(profile, 0).encoder).toEqual({ ccw: 'volume -', press: 'mute', cw: 'volume +' });
+    expect(cheatSheetSnapshot(profile, 1).encoder).toEqual({ ccw: 'Ctrl + Z', press: '', cw: 'next track' });
+    expect(cheatSheetSnapshot(profile, 2).encoder).toEqual({ ccw: '', press: '', cw: '' });
+    expect(cheatSheetSnapshot(undefined, 0).encoder).toEqual({ ccw: '', press: '', cw: '' });
   });
   it('routes simulation to HUD rather than native key injection', () => {
     const commandCheatSheet = vi.fn().mockResolvedValue(true);
@@ -126,11 +144,15 @@ describe('HUD document', () => {
     const html = readFileSync('electron/cheatSheet.html', 'utf8');
     const script = readFileSync('electron/cheatSheetRenderer.js', 'utf8');
     const dom = new JSDOM(html, { runScripts: 'outside-only' });
-    let update!: (data: { layer: number; keys: string[] }) => void;
+    let update!: (data: { layer: number; keys: string[]; encoder?: { ccw: string; press: string; cw: string } }) => void;
     (dom.window as unknown as { cheatSheet: unknown }).cheatSheet = { onData: (fn: typeof update) => { update = fn; } };
     dom.window.eval(script);
     const labels = ['<img src=x onerror=alert(1)>', ...Array.from({ length: 8 }, (_, i) => `Key ${i + 2}`)];
-    update({ layer: 3, keys: labels });
+    update({ layer: 3, keys: labels, encoder: { ccw: '<img>', press: 'Mute', cw: 'Volume Up' } });
+    expect(dom.window.document.querySelector('#dial-ccw')?.textContent).toBe('<img>');
+    expect(dom.window.document.querySelector('#dial-ccw')?.children.length).toBe(0);
+    expect(dom.window.document.querySelector('#dial-press')?.textContent).toBe('Mute');
+    expect(dom.window.document.querySelector('#dial-cw')?.textContent).toBe('Volume Up');
     const cells = [...dom.window.document.querySelectorAll('.key')];
     expect(cells.map((cell) => cell.textContent)).toEqual(labels);
     expect(cells[0].children.length).toBe(0);
@@ -148,7 +170,7 @@ describe('native HUD controller (mock Electron)', () => {
     expect(win.loadOptions).toEqual({ query: { material: 'acrylic' } });
     expect(win.shape).toHaveLength(41);
     expect(win.shape[0].x).toBeGreaterThan(0);
-    expect(win.shape.at(-1)).toEqual({ x: 0, y: 20, width: 270, height: 210 });
+    expect(win.shape.at(-1)).toEqual({ x: 0, y: 20, width: 270, height: 280 });
     expect(win.ignored).toBe(true);
     hud.destroy();
   });
@@ -170,9 +192,9 @@ describe('native HUD controller (mock Electron)', () => {
     hud.command('show'); expect(win.showing).toBe(false);
     win.webContents.emit('did-finish-load');
     expect(win.showing).toBe(true);
-    expect(win.webContents.sent.at(-1)).toEqual(['cheat-sheet-data', { layer: 2, available: true, keys: ['<script>', ...Array(8).fill('')] }]);
+    expect(win.webContents.sent.at(-1)).toEqual(['cheat-sheet-data', { layer: 2, available: true, keys: ['<script>', ...Array(8).fill('')], encoder: { ccw: '', press: '', cw: '' } }]);
     hud.update({ layer: 3, keys: Array(9).fill('Layer 3') });
-    expect(win.webContents.sent.at(-1)).toEqual(['cheat-sheet-data', { layer: 3, available: true, keys: Array(9).fill('Layer 3') }]);
+    expect(win.webContents.sent.at(-1)).toEqual(['cheat-sheet-data', { layer: 3, available: true, keys: Array(9).fill('Layer 3'), encoder: { ccw: '', press: '', cw: '' } }]);
     hud.destroy(); expect(win.destroyed).toBe(true);
   });
   it('drives the HUD from simulated firmware presses, releases and layer/profile snapshots', () => {
@@ -208,6 +230,7 @@ describe('native HUD controller (mock Electron)', () => {
     hud.command('hold-start', 'a'); hud.command('cancel-holds'); expect(win.showing).toBe(false);
     expect(hud.command('bogus')).toBe(false);
     expect(hud.update({ layer: 1, keys: ['oops'] })).toBe(false);
+    expect(hud.update({ layer: 1, keys: Array(9).fill(''), encoder: { ccw: 7, press: '', cw: '' } })).toBe(false);
     hud.destroy();
   });
 });

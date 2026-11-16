@@ -55,12 +55,88 @@ header {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.5);
 }
 
+.device-top {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 47px;
+  align-items: center;
+  gap: 7px;
+  height: 68px;
+  padding: 4px 1px 7px;
+}
+
+.indicator {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 42px;
+}
+
+.indicator span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 7px rgba(255, 255, 255, 0.7);
+}
+
+.dial-actions {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  color: white;
+  font-size: 10px;
+  line-height: 1.25;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.5);
+}
+
+.dial-actions > div {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+}
+
+.direction {
+  width: 13px;
+  flex: none;
+  text-align: center;
+  font-size: 11px;
+}
+
+.dial-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dial {
+  position: relative;
+  width: 45px;
+  height: 45px;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.24), rgba(0, 0, 0, 0.28) 55%, rgba(255, 255, 255, 0.14));
+  box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.45), inset 0 -2px 4px rgba(0, 0, 0, 0.28), 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.dial-mark {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 3px;
+  height: 8px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
 .keys {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   gap: 6px;
-  height: calc(100% - 24px);
+  height: calc(100% - 92px);
 }
 
 .key {

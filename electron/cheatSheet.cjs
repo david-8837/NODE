@@ -29,7 +29,7 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
   let ready = false;
   let visible = false;
   const holds = new Set();
-  let snapshot = { layer: 1, available: false, keys: Array(9).fill('') };
+  let snapshot = { layer: 1, available: false, keys: Array(9).fill(''), encoder: { ccw: '', press: '', cw: '' } };
 
   function deliver() {
     if (window && !window.isDestroyed() && ready) window.webContents.send('cheat-sheet-data', snapshot);
@@ -43,7 +43,7 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
     if (window && !window.isDestroyed()) return;
     const area = screen.getPrimaryDisplay().workArea;
     window = new BrowserWindow({
-      x: area.x + area.width - 294, y: area.y + 24, width: 270, height: 250,
+      x: area.x + area.width - 294, y: area.y + 24, width: 270, height: 320,
       frame: false, transparent: true, resizable: false, movable: false,
       ...(acrylic ? { backgroundMaterial: 'acrylic' } : {}),
       show: false, focusable: false, skipTaskbar: true, alwaysOnTop: true,
@@ -53,7 +53,7 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
       },
     });
     if (acrylic && typeof window.setShape === 'function') {
-      try { window.setShape(roundedWindowShape(270, 250, 20)); } catch {
+      try { window.setShape(roundedWindowShape(270, 320, 20)); } catch {
         // Keep the HUD functional if the native shape is unavailable.
       }
     }
@@ -69,7 +69,15 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
     update(data) {
       if (!data || !Number.isInteger(data.layer) || data.layer < 1 || data.layer > 64 ||
           !Array.isArray(data.keys) || data.keys.length !== 9 || data.keys.some((key) => typeof key !== 'string')) return false;
-      snapshot = { layer: data.layer, available: data.available !== false, keys: data.keys.map((key) => key.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 80)) };
+      const encoder = data.encoder ?? { ccw: '', press: '', cw: '' };
+      if (!encoder || typeof encoder !== 'object' || ['ccw', 'press', 'cw'].some((key) => typeof encoder[key] !== 'string')) return false;
+      const clean = (value) => value.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 80);
+      snapshot = {
+        layer: data.layer,
+        available: data.available !== false,
+        keys: data.keys.map(clean),
+        encoder: { ccw: clean(encoder.ccw), press: clean(encoder.press), cw: clean(encoder.cw) },
+      };
       ensure();
       deliver();
       return true;

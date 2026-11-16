@@ -315,7 +315,7 @@ async function captureVisualSmokeScreenshot() {
     // application or claiming a physical-device test. The main window is the
     // sole trusted caller, exactly as in normal use.
     const hudSent = await mainWindow.webContents.executeJavaScript(`(async () => {
-      const updated = await window.electronAPI.updateCheatSheet({ layer: 2, available: true, keys: ['Ctrl + C', 'Volume Up', '', '', '', '', '', '', ''] });
+      const updated = await window.electronAPI.updateCheatSheet({ layer: 2, available: true, keys: ['Ctrl + C', 'Volume Up', '', '', '', '', '', '', ''], encoder: { ccw: 'Volume Down', press: 'Mute', cw: 'Volume Up' } });
       const shown = await window.electronAPI.commandCheatSheet('show');
       return updated && shown;
     })()`);
@@ -328,11 +328,12 @@ async function captureVisualSmokeScreenshot() {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Cheat-Sheet failed to load')), 15000)),
       ]);
     }
-    const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, acrylic: document.documentElement.classList.contains('native-acrylic'), keys: Array.from(document.querySelectorAll('.key'), node => node.textContent) })`);
+    const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, acrylic: document.documentElement.classList.contains('native-acrylic'), keys: Array.from(document.querySelectorAll('.key'), node => node.textContent), encoder: ['ccw', 'press', 'cw'].map(direction => document.getElementById('dial-' + direction)?.textContent), hasDial: !!document.querySelector('.dial') })`);
     const shouldUseAcrylic = process.platform === 'win32' && Number(require('node:os').release().split('.')[2]) >= 22621;
     if (!hud.isVisible() || !hud.isAlwaysOnTop() || hud.isFocusable() ||
         hudContent.acrylic !== shouldUseAcrylic ||
-        hudContent.layer !== 'LAYER 2' || hudContent.keys.length !== 9 ||
+        hudContent.layer !== 'LAYER 2' || hudContent.keys.length !== 9 || !hudContent.hasDial ||
+        hudContent.encoder.join('|') !== 'Volume Down|Mute|Volume Up' ||
         hudContent.keys[0] !== 'Ctrl + C' || hudContent.keys[1] !== 'Volume Up') {
       throw new Error(`Packaged Cheat-Sheet smoke failed: ${JSON.stringify(hudContent)}`);
     }
