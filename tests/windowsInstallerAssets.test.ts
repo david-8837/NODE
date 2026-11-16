@@ -15,9 +15,11 @@ function readBitmapDimensions(fileName: string) {
 }
 
 describe('Windows installer artwork', () => {
-  it('keeps the reference-inspired welcome sidebar branded for NØDE', () => {
+  it('keeps the reference-inspired welcome sidebar branded for NODE studio', () => {
     const sidebarSvg = readFileSync(join(installerDirectory, 'installer-sidebar.svg'), 'utf8');
-    expect(sidebarSvg).toContain('NØDE');
+    expect(sidebarSvg).toContain('NODE');
+    expect(sidebarSvg).toContain('studio');
+    expect(sidebarSvg).not.toContain('GRID MACRO 1');
     expect(sidebarSvg).toContain('MAKE IT');
     expect(sidebarSvg).toContain('YOUR OWN.');
     expect(sidebarSvg).toContain('Your keys. Your flow.');

@@ -171,7 +171,7 @@ jobs:
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}"
           else
-            gh release create --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}" --verify-tag --prerelease --title "NØDE Grid Macro 1 Studio $tag" --generate-notes ||
+            gh release create --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}" --verify-tag --prerelease --title "NODE studio $tag" --generate-notes ||
               gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}"
           fi
           # Physical hardware verification is still pending, so tagged builds must

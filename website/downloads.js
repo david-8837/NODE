@@ -81,7 +81,7 @@ async function loadLatestRelease() {
     installerDetail.textContent = 'NSIS setup · open release page';
     zipDetail.textContent = 'Portable package · open release page';
     setStatus('Could not load direct links. Browse GitHub releases instead.', 'pending');
-    console.warn('Unable to resolve the latest NØDE Studio download:', error);
+    console.warn('Unable to resolve the latest NODE studio download:', error);
   }
 }
 

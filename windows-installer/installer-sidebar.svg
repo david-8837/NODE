@@ -3,8 +3,8 @@
   <rect width="164" height="314" fill="#f4f4f4"/>
   <rect x="0" y="0" width="2" height="314" fill="#aaaaaa"/>
 
-  <text x="18" y="31" fill="#333333" font-family="DejaVu Sans" font-size="16" font-weight="700" letter-spacing="0.8">NØDE</text>
-  <text x="18" y="45" fill="#777777" font-family="DejaVu Sans" font-size="5.4" font-weight="700" letter-spacing="1.2">GRID MACRO 1 STUDIO</text>
+  <text x="18" y="31" fill="#333333" font-family="DejaVu Sans" font-size="16" font-weight="700" letter-spacing="0.8">NODE</text>
+  <text x="18" y="45" fill="#777777" font-family="DejaVu Sans" font-size="7.4" font-weight="700" letter-spacing="1.2">studio</text>
   <path d="M18 60H146" fill="none" stroke="#cccccc"/>
 
   <text x="18" y="86" fill="#333333" font-family="DejaVu Sans" font-size="10.5" font-weight="700" letter-spacing="0.6">MAKE IT</text>

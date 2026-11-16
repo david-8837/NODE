@@ -1,12 +1,12 @@
-# NØDE Grid Macro 1 Studio
+# NODE studio
 
 [![Quality and test pipeline](https://github.com/david-8837/NODE/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/david-8837/NODE/actions/workflows/ci.yml)
 
-**A desktop studio for configuring the NØDE Grid Macro 1 macropad:** nine keys, one rotary encoder, profiles, presets, and custom actions.
+**A desktop studio for configuring the Grid Macro 1 macropad:** nine keys, one rotary encoder, profiles, presets, and custom actions.
 
 [Download the latest Windows release](https://github.com/david-8837/NODE/releases/latest) · [Open the download site](https://david-8837.github.io/NODE/) · [Read the hardware checklist](HARDWARE_PREPARATION_CHECKLIST.md)
 
-![NØDE Grid Macro 1 Studio keymap screen](website/assets/grid-macro-studio-current.png)
+![NODE studio keymap screen](website/assets/grid-macro-studio-current.png)
 
 ## What it does
 

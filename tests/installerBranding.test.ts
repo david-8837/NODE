@@ -46,6 +46,12 @@ function readPixels(file: string): Array<[number, number, number]> {
 }
 
 describe('Windows installer artwork', () => {
+  it('uses NODE studio as the product and shortcut name', () => {
+    expect(pkg.build.productName).toBe('NODE studio');
+    expect(nsis.shortcutName).toBe('NODE studio');
+    expect(pkg.author).toBe('NODE studio');
+  });
+
   it('sidebar is exactly 164x314, 24-bit and uncompressed', () => {
     const info = readBmpHeader(path.join(root, nsis.installerSidebar));
     expect(info.width).toBe(164);
@@ -91,9 +97,13 @@ describe('Windows installer artwork', () => {
     expect(lightPixels / levels.length).toBeGreaterThan(0.7);
   });
 
-  it('keeps the editable SVG sources monochrome too', () => {
+  it('keeps the editable SVG sources monochrome and branded NODE studio only', () => {
     for (const name of ['installer-sidebar.svg', 'installer-header.svg']) {
       const svg = readFileSync(path.join(root, 'windows-installer', name), 'utf8');
+      expect(svg).toContain('>NODE<');
+      expect(svg).toContain('>studio<');
+      expect(svg).not.toMatch(/grid macro/i);
+      expect(svg).not.toContain('NØDE');
       const hexes = svg.match(/#[0-9a-fA-F]{6}\b/g) ?? [];
       expect(hexes.length, `${name} declares colours`).toBeGreaterThan(0);
       for (const hex of hexes) {
@@ -117,8 +127,11 @@ describe('custom NSIS welcome page', () => {
     expect(script).toMatch(/!macroend/);
   });
 
-  it('sets a branded title and body text', () => {
-    expect(script).toMatch(/!define\s+MUI_WELCOMEPAGE_TITLE\s+"Welcome to NØDE Grid Macro 1 Studio"/);
+  it('sets a branded title and body text for NODE studio only', () => {
+    expect(script).toMatch(/!define\s+MUI_WELCOMEPAGE_TITLE\s+"Welcome to NODE studio"/);
+    expect(script).toContain('This will install NODE studio on your computer.');
+    expect(script).not.toMatch(/grid macro/i);
+    expect(script).not.toContain('NØDE');
     expect(script).toMatch(/!define\s+MUI_WELCOMEPAGE_TEXT\s+"/);
   });
 

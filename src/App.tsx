@@ -3939,10 +3939,10 @@ export default function App() {
               setMappingStackExpanded(false);
             }}
             className="flex items-center gap-[3px] text-white hover:opacity-90 transition-opacity focus:outline-none cursor-pointer px-[10px]"
-            title="NØDE Studio"
+            title="NODE studio"
           >
             <span className="font-bold text-[13px] tracking-[0.16em] text-white select-none leading-none">
-              NØDE
+              NODE
             </span>
           </button>
 
@@ -8141,7 +8141,7 @@ export default function App() {
           </div>
 
           <footer className="pb-[18px] text-[9.5px] text-[#555555] text-center">
-            © 2026 NØDE Studio
+            © 2026 NODE studio
           </footer>
         </motion.main>
       )}

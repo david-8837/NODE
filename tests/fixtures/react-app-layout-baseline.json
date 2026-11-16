@@ -25,7 +25,7 @@
                 "tag": "button",
                 "attributes": {
                   "class": "flex items-center gap-[3px] text-white hover:opacity-90 transition-opacity focus:outline-none cursor-pointer px-[10px]",
-                  "title": "NØDE Studio"
+                  "title": "NODE studio"
                 },
                 "text": "",
                 "children": [
@@ -34,7 +34,7 @@
                     "attributes": {
                       "class": "font-bold text-[13px] tracking-[0.16em] text-white select-none leading-none"
                     },
-                    "text": "NØDE",
+                    "text": "NODE",
                     "children": []
                   }
                 ]

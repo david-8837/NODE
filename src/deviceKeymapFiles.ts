@@ -153,7 +153,7 @@ export function parseDeviceKeymapBackup(text: string): DeviceKeymapBackup {
     parsed.format !== DEVICE_KEYMAP_BACKUP_FORMAT ||
     parsed.version !== DEVICE_KEYMAP_BACKUP_VERSION
   ) {
-    throw fail('This is not a supported Node Studio VIA keymap backup');
+    throw fail('This is not a supported NODE studio VIA keymap backup');
   }
   if (typeof parsed.createdAt !== 'string' || Number.isNaN(Date.parse(parsed.createdAt))) {
     throw fail('Backup timestamp is invalid');

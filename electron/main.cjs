@@ -1,4 +1,4 @@
-// electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
+// electron/main.cjs - NODE studio Desktop Application Entry Point for Windows
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -6,6 +6,7 @@ const { fileURLToPath, pathToFileURL } = require('url');
 const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
 const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 const { listInstalledApplications } = require('./installedApplications.cjs');
+const { migrateLegacyUserData } = require('./userDataMigration.cjs');
 
 const desktopActionExecutor = createDesktopActionExecutor({
   openExternal: (url) => shell.openExternal(url),
@@ -43,6 +44,16 @@ if (isPersistenceSmokeTest() && process.env.APPDATA && path.isAbsolute(process.e
   const userDataDirectoryName = path.basename(app.getPath('userData'));
   app.setPath('appData', process.env.APPDATA);
   app.setPath('userData', path.join(process.env.APPDATA, userDataDirectoryName));
+}
+
+// Preserve profiles, key assignments, and native settings for users upgrading
+// from earlier `NØDE Grid Macro 1 Studio` installations into `NODE studio`.
+if (app.isPackaged) {
+  const currentUserDataDir = app.getPath('userData');
+  migrateLegacyUserData({
+    currentUserDataDir,
+    appDataDir: path.dirname(currentUserDataDir),
+  });
 }
 
 function getDevServerUrl() {
@@ -494,7 +505,7 @@ function createWindow() {
     ...bounds,
     center: true,
     backgroundColor: '#0a0a0a',
-    title: 'NØDE — Grid Macro 1 Studio',
+    title: 'NODE studio',
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: '#0e0e0e',
@@ -847,10 +858,10 @@ function createSystemTray() {
     const trayIcon = nativeImage.createFromPath(iconPath);
     if (trayIcon.isEmpty()) return;
     appTray = new Tray(trayIcon);
-    appTray.setToolTip('NØDE — Grid Macro 1 Studio (Background Agent Active)');
+    appTray.setToolTip('NODE studio (Background Agent Active)');
     const trayMenu = Menu.buildFromTemplate([
       {
-        label: 'Open NØDE Studio',
+        label: 'Open NODE studio',
         click: () => {
           if (mainWindow) {
             mainWindow.show();
@@ -874,7 +885,7 @@ function createSystemTray() {
       },
       { type: 'separator' },
       {
-        label: 'Quit NØDE Studio',
+        label: 'Quit NODE studio',
         click: () => {
           app.quit();
         },
@@ -905,7 +916,7 @@ app.whenReady().then(() => {
 
   const template = [
     {
-      label: 'NØDE Studio',
+      label: 'NODE studio',
       submenu: [
         {
           label: 'Reload Configurator',
@@ -925,7 +936,7 @@ app.whenReady().then(() => {
         },
         { type: 'separator' },
         {
-          label: 'Quit NØDE Studio',
+          label: 'Quit NODE studio',
           accelerator: 'CmdOrCtrl+Q',
           click: () => app.quit(),
         },

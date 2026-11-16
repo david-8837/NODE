@@ -263,7 +263,7 @@ jobs:
           if ($releaseExists) {
             gh release upload $tag @assets
           } else {
-            gh release create $tag @assets --verify-tag --prerelease --title "NØDE Grid Macro 1 Studio $tag" --generate-notes
+            gh release create $tag @assets --verify-tag --prerelease --title "NODE studio $tag" --generate-notes
             if ($LASTEXITCODE -ne 0) {
               gh release upload $tag @assets
             }
