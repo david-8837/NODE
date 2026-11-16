@@ -96,6 +96,19 @@ describe('Cheat-Sheet hardware path', () => {
 });
 
 describe('HUD document', () => {
+  it('keeps the glass styling neutral, translucent and arranged in a 3×3 grid', () => {
+    const css = readFileSync('electron/cheatSheet.css', 'utf8');
+    expect(css).toMatch(/background:\s*transparent/);
+    expect(css).toContain('grid-template-columns: repeat(3, 1fr)');
+    expect(css).toContain('grid-template-rows: repeat(3, 1fr)');
+    expect(css).toContain('border-radius: 20px');
+    expect(css).toContain('border-radius: 11px');
+    expect(css).toContain('linear-gradient');
+    for (const [, r, g, b] of css.matchAll(/rgba\(\s*(\d+),\s*(\d+),\s*(\d+),/g)) {
+      expect(r).toBe(g);
+      expect(g).toBe(b);
+    }
+  });
   it('renders nine cells in source order and treats labels as plain text', () => {
     const html = readFileSync('electron/cheatSheet.html', 'utf8');
     const script = readFileSync('electron/cheatSheetRenderer.js', 'utf8');
