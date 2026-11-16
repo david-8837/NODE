@@ -7,6 +7,8 @@ const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
 const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 const { listInstalledApplications } = require('./installedApplications.cjs');
 const { migrateLegacyUserData } = require('./userDataMigration.cjs');
+const { createCheatSheetController } = require('./cheatSheet.cjs');
+const cheatSheet = createCheatSheetController({ BrowserWindow, screen });
 
 const desktopActionExecutor = createDesktopActionExecutor({
   openExternal: (url) => shell.openExternal(url),
@@ -308,6 +310,33 @@ async function captureVisualSmokeScreenshot() {
     }
     fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
     fs.writeFileSync(screenshotPath, png);
+
+    // Exercise the actual packaged HUD and trusted IPC without opening another
+    // application or claiming a physical-device test. The main window is the
+    // sole trusted caller, exactly as in normal use.
+    const hudSent = await mainWindow.webContents.executeJavaScript(`(async () => {
+      const updated = await window.electronAPI.updateCheatSheet({ layer: 2, available: true, keys: ['Ctrl + C', 'Volume Up', '', '', '', '', '', '', ''] });
+      const shown = await window.electronAPI.commandCheatSheet('show');
+      return updated && shown;
+    })()`);
+    if (!hudSent) throw new Error('Packaged Cheat-Sheet IPC rejected the smoke test');
+    const hud = BrowserWindow.getAllWindows().find((candidate) => candidate !== mainWindow);
+    if (!hud) throw new Error('Packaged Cheat-Sheet window was not created');
+    if (hud.webContents.isLoadingMainFrame()) {
+      await Promise.race([
+        new Promise((resolve) => hud.webContents.once('did-finish-load', resolve)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Cheat-Sheet failed to load')), 15000)),
+      ]);
+    }
+    const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, keys: Array.from(document.querySelectorAll('.key'), node => node.textContent) })`);
+    if (!hud.isVisible() || !hud.isAlwaysOnTop() || hud.isFocusable() ||
+        hudContent.layer !== 'LAYER 2' || hudContent.keys.length !== 9 ||
+        hudContent.keys[0] !== 'Ctrl + C' || hudContent.keys[1] !== 'Volume Up') {
+      throw new Error(`Packaged Cheat-Sheet smoke failed: ${JSON.stringify(hudContent)}`);
+    }
+    await mainWindow.webContents.executeJavaScript(`window.electronAPI.commandCheatSheet('hide')`);
+    if (hud.isVisible()) throw new Error('Packaged Cheat-Sheet did not hide');
+    console.log('Packaged Cheat-Sheet IPC, rendering, visibility, always-on-top and non-focusable checks passed');
     console.log(
       `Packaged UI visual smoke test passed (${renderedUi.gateVisible ? 'connection gate' : 'configurator'}): `
       + `${screenshotPath} (${png.length} bytes)`
@@ -644,10 +673,17 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    cheatSheet.destroy();
     mainWindow = null;
     void desktopActionExecutor.setSimulationEnabled(false);
   });
 }
+
+// Only the trusted studio renderer can control the HUD; the HUD has no control IPC.
+ipcMain.handle('cheat-sheet-update', (event, snapshot) =>
+  isTrustedRenderer(event) && cheatSheet.update(snapshot));
+ipcMain.handle('cheat-sheet-command', (event, command, token) =>
+  isTrustedRenderer(event) && cheatSheet.command(command, token));
 
 // IPC Handlers for Native Windows Control
 ipcMain.handle('window-minimize', (event) => {

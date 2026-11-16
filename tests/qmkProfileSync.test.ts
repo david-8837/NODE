@@ -189,6 +189,8 @@ describe('QMK profile-to-VIA configuration', () => {
       },
     });
 
+    // The hold target must exist in this profile.
+    profile.layers.push(oneLayer().layers[0]);
     const { config, warnings } = buildViaConfiguration(profile, 'win', { enableHostTriggers: true });
     expect(warnings).toEqual([]);
     expect(config.layers[0]?.keys?.r1c1).toEqual({ t: 'mod_tap', mod: 'SHIFT', key: 'SPACEBAR' });

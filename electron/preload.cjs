@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setSimulationEnabled: (enabled) => ipcRenderer.invoke('set-simulation-enabled', enabled),
   flashFirmware: () => ipcRenderer.invoke('flash-uf2'),
   executeSmartAction: (payload) => ipcRenderer.invoke('execute-smart-action', payload),
+  updateCheatSheet: (snapshot) => ipcRenderer.invoke('cheat-sheet-update', snapshot),
+  commandCheatSheet: (command, token) => ipcRenderer.invoke('cheat-sheet-command', command, token),
   onHardwareSync: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('trigger-hardware-sync', listener);

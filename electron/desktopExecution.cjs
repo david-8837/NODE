@@ -84,6 +84,10 @@ const KEY_ALIASES = Object.freeze({
   right: 0x27,
   arrowright: 0x27,
   'arrow right': 0x27,
+  'right arrow': 0x27,
+  'left arrow': 0x25,
+  'up arrow': 0x26,
+  'down arrow': 0x28,
   tilde: 0xc0,
   backtick: 0xc0,
   '`': 0xc0,
@@ -111,6 +115,7 @@ const KEY_ALIASES = Object.freeze({
   comma: 0xbc,
   '.': 0xbe,
   period: 0xbe,
+  lock: 0x14,
   capslock: 0x14,
   'caps lock': 0x14,
   numlock: 0x90,
@@ -155,6 +160,7 @@ const KEY_ALIASES = Object.freeze({
   stop: 0xb2,
   'media stop': 0xb2,
   power: 0x5e,
+  'power down': 0x5e,
   sleep: 0x5f,
   wake: 0x63,
   'browser back': 0xa6,
@@ -277,7 +283,7 @@ function parseKeyCombo(rawValue) {
     }
     if (Object.prototype.hasOwnProperty.call(KEY_ALIASES, name)) {
       const vk = KEY_ALIASES[name];
-      output.push({ vk, name, extended: EXTENDED_KEYS.has(vk) });
+      output.push({ vk, name, extended: name === 'num enter' || EXTENDED_KEYS.has(vk) });
       return { ok: true };
     }
     if (/^f(?:[1-9]|1[0-2])$/.test(name)) {
@@ -359,7 +365,10 @@ function parseKeyCombo(rawValue) {
       const result = appendPrintable(directName, parsed);
       if (!result.ok) return result;
     } else {
-      const groups = (plusChord ? plusChord[1] : expression).split('+');
+      const groups = (plusChord ? plusChord[1] : expression)
+        .replace(/num\s*\+/gi, 'num __plus__')
+        .split('+')
+        .map((group) => group.replace(/__plus__/gi, '+'));
       for (const group of groups) {
         if (!group.trim()) return { ok: false, error: `Unsupported key: ${group}` };
         const result = appendGroup(group, parsed);

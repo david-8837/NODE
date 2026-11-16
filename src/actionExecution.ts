@@ -1,4 +1,5 @@
 import { readAppSettings, type NativeActionResult, type SimulationToggleResult } from './appSettings';
+import { cheatSheetCommand } from './cheatSheet';
 import {
   MultiActionGestureEngine,
   type MultiActionGestureBindings,
@@ -249,7 +250,7 @@ export function triggerSimulationAction(
   onLayerChange: (index: number) => boolean | void,
   showToast: (message: string) => void,
   host: SimulationActionHost,
-  options?: { hardwareTrigger?: boolean }
+  options?: { hardwareTrigger?: boolean; onProfileChange?: (index: number) => boolean | void }
 ): void {
   if (!action) return;
   const binding = action.binding || '';
@@ -260,10 +261,17 @@ export function triggerSimulationAction(
   // the whole summary let an `onHold: Layer 2` entry hijack `onTap: Ctrl + C`.
   const resolvedGestureBinding = resolvedBindingFor(action);
   const layerSourceBinding = resolvedGestureBinding === null ? binding : resolvedGestureBinding;
+  const cheatCommand = cheatSheetCommand(layerSourceBinding);
+  if (cheatCommand) {
+    if (!host.electronAPI?.commandCheatSheet) showToast('Cheat-Sheet requires NODE studio desktop');
+    else if (cheatCommand === 'hold-start') showToast('Hold a key to show the Cheat-Sheet');
+    else void host.electronAPI.commandCheatSheet(cheatCommand);
+    return;
+  }
   const isResolvedGesture = resolvedGestureBinding !== null;
   const layerMatch =
-    (isResolvedGesture ? null : id.match(/lyr-(\d+)/)) ||
-    layerSourceBinding.match(/Layer\s*(\d+)/i) ||
+    (isResolvedGesture ? null : id.match(/^(?:t?lyr)-(\d+)$/)) ||
+    layerSourceBinding.trim().match(/^(?:temp\s+)?layer\s*(\d+)$/i) ||
     (isResolvedGesture ? null : label.match(/^L(\d+)$/i)) ||
     (isResolvedGesture ? null : label.match(/^TL(\d+)$/i));
   if (layerMatch) {
@@ -274,6 +282,17 @@ export function triggerSimulationAction(
       }
       return;
     }
+  }
+
+  const profileMatch = layerSourceBinding.trim().match(/^profile\s+(\d+)$/i);
+  if (profileMatch) {
+    const target = Number(profileMatch[1]) - 1;
+    if (target >= 0 && options?.onProfileChange) {
+      if (options.onProfileChange(target) !== false) showToast(`Switched to Profile ${target + 1}`);
+    } else {
+      showToast('Profile switching is unavailable');
+    }
+    return;
   }
 
   let actionToRun = executePayloadFor(action);
@@ -352,7 +371,8 @@ export function createHardwareTriggerController(
   onLayerChange: (index: number) => boolean | void,
   showToast: (message: string) => void,
   host: SimulationActionHost,
-  timerHost?: MultiActionTimerHost
+  timerHost?: MultiActionTimerHost,
+  onProfileChange?: (index: number) => boolean | void
 ): HardwareTriggerController {
   const pendingActions = new Map<string, SimulationAction>();
   const gestureEngine = new MultiActionGestureEngine((resolved) => {
@@ -369,7 +389,7 @@ export function createHardwareTriggerController(
       onLayerChange,
       showToast,
       host,
-      { hardwareTrigger: true }
+      { hardwareTrigger: true, onProfileChange }
     );
   }, timerHost);
 
@@ -390,7 +410,7 @@ export function createHardwareTriggerController(
         return;
       }
       if (pressed) {
-        triggerSimulationAction(action, onLayerChange, showToast, host, { hardwareTrigger: true });
+        triggerSimulationAction(action, onLayerChange, showToast, host, { hardwareTrigger: true, onProfileChange });
       }
     },
     cancelAll() {

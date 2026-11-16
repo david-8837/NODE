@@ -66,6 +66,25 @@ static void press(uint16_t kc) {
 int main(void) {
     keyboard_post_init_user();
 
+    /* Real firmware emits a distinct press and release for every host slot. */
+    printf("== Host trigger press and release ==\n");
+    for (uint8_t layer = 0; layer < 4; layer++) {
+        for (uint8_t slot = 0; slot < 12; slot++) {
+            uint16_t keycode = (uint16_t)(0x7E00 | (layer << 4) | slot);
+            keyrecord_t event = {{0,0,true,0}};
+            assert(process_record_user(keycode, &event) == false);
+            assert(last_hid[0] == 0xFD && last_hid[1] == 0x11);
+            assert(last_hid[4] == layer && last_hid[5] == slot && last_hid[6] == 1);
+            assert(last_hid[7] == (uint8_t)(last_hid[0] ^ last_hid[1] ^ last_hid[2] ^ last_hid[3] ^ last_hid[4] ^ last_hid[5] ^ last_hid[6]));
+            uint8_t seq = last_hid[2];
+            event.event.pressed = false;
+            assert(process_record_user(keycode, &event) == false);
+            assert(last_hid[4] == layer && last_hid[5] == slot && last_hid[6] == 0);
+            assert(last_hid[2] == (uint8_t)(seq + 1));
+        }
+    }
+    printf("  all 48 layer/slot pairs report validated down/up events OK\n");
+
     /* ---------- Bug 1: Layer Cycle ---------- */
     printf("== Bug 1: MP_LAYER_CYCLE (0x7E44) ==\n");
     layer_state = 1 << 0;

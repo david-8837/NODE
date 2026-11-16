@@ -1,3 +1,5 @@
+import { referencesAtOrAfter } from './referenceSafety';
+import { cheatSheetCommand, cheatSheetSnapshot, createCheatSheetTriggerHandler } from './cheatSheet';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
 import DeviceConnectionGate from './DeviceConnectionGate';
@@ -296,18 +298,14 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
       { id: 'lbracket', top: '{', main: '[', listLabel: '[', macropadLabel: '[' },
       { id: 'rbracket', top: '}', main: ']', listLabel: ']', macropadLabel: ']' },
       { id: 'backslash', top: '|', main: '\\', listLabel: '\\', macropadLabel: '\\' },
-      { id: 'nuhs', main: 'NUHS', listLabel: 'NUHS', macropadLabel: '#' },
       { id: 'semicolon', top: ':', main: ';', listLabel: ';', macropadLabel: ';' },
       { id: 'quote', top: '"', main: "'", listLabel: "'", macropadLabel: "'" },
       { id: 'grave', top: '~', main: '`', listLabel: '`', macropadLabel: '`' },
       { id: 'comma', top: '<', main: ',', listLabel: ',', macropadLabel: ',' },
       { id: 'plus-glyph', main: '+', listLabel: '+', macropadLabel: '+' },
-      { id: 'hyphen-glyph', main: '-', listLabel: '-', macropadLabel: '-' },
-      { id: 'eq-glyph', main: '=', listLabel: '=', macropadLabel: '=' },
       { id: 'ast-glyph', main: '*', listLabel: '*', macropadLabel: '*' },
       { id: 'period', top: '>', main: '.', listLabel: '.', macropadLabel: '.' },
       { id: 'slash', top: '?', main: '/', listLabel: '/', macropadLabel: '/' },
-      { id: 'pipe2', top: '|', main: '\\', listLabel: '\\', macropadLabel: '\\' },
     ],
   },
   {
@@ -330,12 +328,6 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
       { id: 'lock', main: 'lock', macropadLabel: 'lock' },
       { id: 'scrolllock', main: 'scroll lock', macropadLabel: 'scrl' },
       { id: 'numlock', main: 'num lock', macropadLabel: 'num' },
-      {
-        id: 'lscrolllock',
-        main: 'locking\nscroll lock',
-        listLabel: 'locking scroll lock',
-        macropadLabel: 'lscr',
-      },
       { id: 'prtsc', main: 'print\nscreen', listLabel: 'print screen', macropadLabel: 'prts' },
       { id: 'pause', main: 'pause', macropadLabel: 'paus' },
       { id: 'insert', main: 'insert', macropadLabel: 'ins' },
@@ -363,24 +355,24 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
     title: 'Number pad',
     listPreview: '[ /, *, -, +, num enter, 1... ]',
     items: [
-      { id: 'num-div', main: '/', macropadLabel: '/' },
-      { id: 'num-mul', main: '*', macropadLabel: '*' },
-      { id: 'num-sub', main: '-', macropadLabel: '-' },
-      { id: 'num-add', main: '+', macropadLabel: '+' },
+      { id: 'num-div', main: '/', listLabel: 'num /', macropadLabel: '/' },
+      { id: 'num-mul', main: '*', listLabel: 'num *', macropadLabel: '*' },
+      { id: 'num-sub', main: '-', listLabel: 'num -', macropadLabel: '-' },
+      { id: 'num-add', main: '+', listLabel: 'num +', macropadLabel: '+' },
       { id: 'num-ent', main: 'num enter', macropadLabel: 'nent' },
-      { id: 'num-1', main: '1', macropadLabel: '1' },
-      { id: 'num-2', main: '2', macropadLabel: '2' },
-      { id: 'num-3', main: '3', macropadLabel: '3' },
-      { id: 'num-4', main: '4', macropadLabel: '4' },
-      { id: 'num-5', main: '5', macropadLabel: '5' },
-      { id: 'num-6', main: '6', macropadLabel: '6' },
-      { id: 'num-7', main: '7', macropadLabel: '7' },
-      { id: 'num-8', main: '8', macropadLabel: '8' },
-      { id: 'num-9', main: '9', macropadLabel: '9' },
-      { id: 'num-0', main: '0', macropadLabel: '0' },
-      { id: 'num-dot', main: '.', macropadLabel: '.' },
-      { id: 'num-eq', main: '=', macropadLabel: '=' },
-      { id: 'num-comma', main: ',', macropadLabel: ',' },
+      { id: 'num-1', main: '1', listLabel: 'num 1', macropadLabel: '1' },
+      { id: 'num-2', main: '2', listLabel: 'num 2', macropadLabel: '2' },
+      { id: 'num-3', main: '3', listLabel: 'num 3', macropadLabel: '3' },
+      { id: 'num-4', main: '4', listLabel: 'num 4', macropadLabel: '4' },
+      { id: 'num-5', main: '5', listLabel: 'num 5', macropadLabel: '5' },
+      { id: 'num-6', main: '6', listLabel: 'num 6', macropadLabel: '6' },
+      { id: 'num-7', main: '7', listLabel: 'num 7', macropadLabel: '7' },
+      { id: 'num-8', main: '8', listLabel: 'num 8', macropadLabel: '8' },
+      { id: 'num-9', main: '9', listLabel: 'num 9', macropadLabel: '9' },
+      { id: 'num-0', main: '0', listLabel: 'num 0', macropadLabel: '0' },
+      { id: 'num-dot', main: '.', listLabel: 'num .', macropadLabel: '.' },
+      { id: 'num-eq', main: '=', listLabel: 'num =', macropadLabel: '=' },
+      { id: 'num-comma', main: ',', listLabel: 'num ,', macropadLabel: ',' },
     ],
   },
   {
@@ -419,7 +411,6 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
         macropadLabel: 'pwr',
       },
       { id: 'slp', main: 'sleep', macropadLabel: 'slp' },
-      { id: 'stop-ex', main: 'stop', macropadLabel: 'stop' },
       { id: 'brt-up', main: 'bright up', macropadLabel: 'brt+' },
       {
         id: 'brt-dn',
@@ -429,96 +420,7 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
       },
     ],
   },
-  {
-    title: 'Layer Keys',
-    listPreview: '[ Layer 1, Layer 2, Layer 3, Layer 4, La...',
-    items: [
-      { id: 'lyr-1', main: 'Layer 1', macropadLabel: 'L1' },
-      { id: 'lyr-2', main: 'Layer 2', macropadLabel: 'L2' },
-      { id: 'lyr-3', main: 'Layer 3', macropadLabel: 'L3' },
-      { id: 'lyr-4', main: 'Layer 4', macropadLabel: 'L4' },
-      { id: 'lyr-5', main: 'Layer 5', macropadLabel: 'L5' },
-      { id: 'lyr-6', main: 'Layer 6', macropadLabel: 'L6' },
-      {
-        id: 'tlyr-1',
-        main: 'Temp Layer\n1',
-        listLabel: 'Temp Layer 1',
-        macropadLabel: 'TL1',
-      },
-      {
-        id: 'tlyr-2',
-        main: 'Temp Layer\n2',
-        listLabel: 'Temp Layer 2',
-        macropadLabel: 'TL2',
-      },
-      {
-        id: 'tlyr-3',
-        main: 'Temp Layer\n3',
-        listLabel: 'Temp Layer 3',
-        macropadLabel: 'TL3',
-      },
-      {
-        id: 'tlyr-4',
-        main: 'Temp Layer\n4',
-        listLabel: 'Temp Layer 4',
-        macropadLabel: 'TL4',
-      },
-      {
-        id: 'tlyr-5',
-        main: 'Temp Layer\n5',
-        listLabel: 'Temp Layer 5',
-        macropadLabel: 'TL5',
-      },
-      {
-        id: 'tlyr-6',
-        main: 'Temp Layer\n6',
-        listLabel: 'Temp Layer 6',
-        macropadLabel: 'TL6',
-      },
-    ],
-  },
-  {
-    title: 'Profile Keys',
-    listPreview: '[ Profile 1, Profile 2, Profile 3, Profile ...',
-    items: [
-      { id: 'prf-1', main: 'Profile 1', macropadLabel: 'P1' },
-      { id: 'prf-2', main: 'Profile 2', macropadLabel: 'P2' },
-      { id: 'prf-3', main: 'Profile 3', macropadLabel: 'P3' },
-      { id: 'prf-4', main: 'Profile 4', macropadLabel: 'P4' },
-      { id: 'prf-5', main: 'Profile 5', macropadLabel: 'P5' },
-      { id: 'prf-6', main: 'Profile 6', macropadLabel: 'P6' },
-    ],
-  },
-  {
-    title: 'Internal',
-    listPreview: '[ Show Cheat-Sheet, Show Cheat-Sheet ...',
-    items: [
-      {
-        id: 'cs-show',
-        main: 'Show\nCheat-\nSheet',
-        listLabel: 'Show Cheat-Sheet',
-        macropadLabel: 'CS',
-      },
-      {
-        id: 'cs-hold',
-        main: 'Show\nCheat-\nSheet Hold',
-        listLabel: 'Show Cheat-Sheet Hold',
-        macropadLabel: 'CSH',
-      },
-      {
-        id: 'cs-hide',
-        main: 'Hide\nCheat-\nSheet',
-        listLabel: 'Hide Cheat-Sheet',
-        macropadLabel: 'HCS',
-      },
-      {
-        id: 'cs-tog',
-        main: 'Toggle\nCheat-\nSheet',
-        listLabel: 'Toggle Cheat-Sheet',
-        macropadLabel: 'TCS',
-      },
-    ],
-  },
+
 ];
 
 export const INITIAL_LAYER_1: LayerKeymap = {
@@ -1256,6 +1158,18 @@ export default function App() {
   const [deviceActiveProfileSlot, setDeviceActiveProfileSlot] = useState<number>(0);
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
   const lastSyncedConfigKeyRef = useRef('');
+  // Physical HUD labels and trigger lookup must describe the last successfully
+  // synced keymap, not unsaved edits currently in the editor.
+  const syncedCheatProfilesRef = useRef<Record<number, ProfileData>>({});
+  const [cheatSyncRevision, setCheatSyncRevision] = useState(0);
+  // Kept outside the event subscription so profile/layer changes do not lose
+  // the release corresponding to a held physical key.
+  const cheatSheetTriggersRef = useRef<ReturnType<typeof createCheatSheetTriggerHandler> | null>(null);
+  if (!cheatSheetTriggersRef.current) {
+    cheatSheetTriggersRef.current = createCheatSheetTriggerHandler((command, token) => {
+      void window.electronAPI?.commandCheatSheet?.(command, token);
+    });
+  }
 
   const hydratedRgbConnectionRef = useRef<boolean>(false);
 
@@ -1285,12 +1199,11 @@ export default function App() {
   deviceStatusRef.current = deviceStatus;
   const applyHardwareLayer = useCallback((layer: number) => {
     const available = Math.max(1, Math.min(MAX_LAYER_COUNT, profileLayerCountRef.current));
-    const confirmed = Math.min(available - 1, Math.max(0, Math.round(layer)));
-    deviceActiveLayerRef.current = confirmed;
-    setDeviceActiveLayer(confirmed);
-    // The existing effect that mirrors activeLayerIndex into ledEditingLayerIdx
-    // keeps the lighting editor in step, so it is not set twice here.
-    setActiveLayerIndex(confirmed);
+    const reported = Math.min(MAX_LAYER_COUNT - 1, Math.max(0, Math.round(layer)));
+    deviceActiveLayerRef.current = reported;
+    setDeviceActiveLayer(reported);
+    // Retain the real firmware state for the HUD, but never edit a missing layer.
+    setActiveLayerIndex(Math.min(available - 1, reported));
   }, []);
 
   /**
@@ -1501,6 +1414,7 @@ export default function App() {
     }
     if (typeof status.activeProfileSlot === 'number') {
       const slot = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, status.activeProfileSlot));
+      if (slot !== deviceActiveProfileSlotRef.current) cheatSheetTriggersRef.current?.cancel();
       deviceActiveProfileSlotRef.current = slot;
       setDeviceActiveProfileSlot(slot);
     }
@@ -1784,6 +1698,7 @@ export default function App() {
     const bridge = window.macropad;
     if (!bridge || deviceStatus.state !== 'connected') {
       lastSyncedConfigKeyRef.current = '';
+      syncedCheatProfilesRef.current = {};
       setDeviceSyncReady(false);
       return;
     }
@@ -1814,8 +1729,10 @@ export default function App() {
               saved.customItems as unknown as CustomItemsByTab
             ));
             const selected = nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0];
+            syncedCheatProfilesRef.current[saved.activeProfileIndex] = selected;
+            setCheatSyncRevision((revision) => revision + 1);
             lastSyncedConfigKeyRef.current = `slot:${saved.activeProfileIndex}:${JSON.stringify(
-              buildViaConfiguration(selected, presetOs, { enableHostTriggers: true }).config
+              buildViaConfiguration(selected, presetOs, { enableHostTriggers: true, profileCount: saved.profiles.length }).config
             )}`;
             showToast('Loaded keymap profile from Grid Macro 1');
           } catch {
@@ -1834,6 +1751,20 @@ export default function App() {
     };
   }, [deviceStatus.state, deviceStatus.device, deviceStatus.fw]);
 
+  useEffect(() => {
+    const connected = deviceStatus.state === 'connected';
+    const slot = connected ? deviceActiveProfileSlot : activeProfileIndex;
+    const layer = connected ? deviceActiveLayer : effectiveLayerIndex;
+    const profile = connected ? syncedCheatProfilesRef.current[slot] : profiles[slot];
+    void window.electronAPI?.updateCheatSheet?.(cheatSheetSnapshot(profile, layer));
+  }, [profiles, deviceStatus.state, deviceActiveProfileSlot, deviceActiveLayer, activeProfileIndex, effectiveLayerIndex, cheatSyncRevision]);
+
+  useEffect(() => {
+    if (deviceStatus.state !== 'connected') {
+      cheatSheetTriggersRef.current?.cancel();
+    }
+  }, [deviceStatus.state]);
+
   // Listen for physical device layer changes and hardware host-action triggers
   useEffect(() => {
     const bridge = window.macropad;
@@ -1844,10 +1775,15 @@ export default function App() {
         if (targetLayer >= currentProfile.layers.length) return false;
         // Same single adoption point as firmware telemetry, so the preview and
         // the highlighted layer can never disagree with the reported layer.
-        applyHardwareLayer(targetLayer);
+        void requestHardwareLayer(targetLayer);
       },
       showToast,
-      window
+      window,
+      undefined,
+      (targetProfile) => {
+        if (!profiles[targetProfile]) return false;
+        selectProfileInApp(targetProfile, profiles[targetProfile].layers.length);
+      }
     );
 
     const unsubscribe = bridge.onEvent((rawEvent) => {
@@ -1861,11 +1797,15 @@ export default function App() {
       }
       if (rawEvent.type === 'layer_state') {
         const layerEvent = rawEvent as unknown as DeviceLayerStateEvent;
+        if (typeof layerEvent.activeProfileSlot === 'number' && profiles[layerEvent.activeProfileSlot]) {
+          profileLayerCountRef.current = profiles[layerEvent.activeProfileSlot].layers.length;
+        }
         if (typeof layerEvent.deviceActiveLayer === 'number') {
           applyHardwareLayer(layerEvent.deviceActiveLayer);
         }
         if (typeof layerEvent.activeProfileSlot === 'number') {
           const reportedSlot = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, layerEvent.activeProfileSlot));
+          if (reportedSlot !== deviceActiveProfileSlotRef.current) cheatSheetTriggersRef.current?.cancel();
           deviceActiveProfileSlotRef.current = reportedSlot;
           setDeviceActiveProfileSlot(reportedSlot);
         }
@@ -1877,13 +1817,6 @@ export default function App() {
           layerEvent.activeProfileSlot !== activeProfileIndex
         ) {
           const targetSlot = layerEvent.activeProfileSlot;
-          const targetProfile = profiles[targetSlot];
-          if (targetProfile) {
-            const { config: targetConfig } = buildViaConfiguration(targetProfile, presetOs, {
-              enableHostTriggers: true,
-            });
-            lastSyncedConfigKeyRef.current = `slot:${targetSlot}:${JSON.stringify(targetConfig)}`;
-          }
           setActiveProfileIndex(targetSlot);
           showToast(
             `Switched to ${profiles[targetSlot]?.name || `Profile ${targetSlot + 1}`} from device`
@@ -1893,7 +1826,10 @@ export default function App() {
       }
       if (rawEvent.type === 'hardware_trigger') {
         const trig = rawEvent as unknown as HardwareTriggerEvent;
-        const activeProf = profiles[activeProfileIndex] ?? profiles[0];
+        // A release belongs to the original press, even if profile/layer changed.
+        if (!trig.pressed && cheatSheetTriggersRef.current?.handle(trig.slotId, false)) return;
+        const syncedProfile = syncedCheatProfilesRef.current[trig.profileSlot];
+        const activeProf = syncedProfile ?? profiles[trig.profileSlot];
         if (!activeProf) return;
         const targetLayer =
           activeProf.layers[trig.layer] ??
@@ -1910,6 +1846,15 @@ export default function App() {
             assignment = { ...keyEntry, id: keyEntry.actionId };
           }
         }
+        if (cheatSheetCommand(assignment?.binding)) {
+          // Do not guess a HUD assignment while a keymap is being written.
+          if (!syncedProfile) return;
+          if (trig.pressed) {
+            // Send the confirmed device profile/layer before making the window visible.
+            void window.electronAPI?.updateCheatSheet?.(cheatSheetSnapshot(syncedProfile, deviceActiveLayerRef.current));
+          }
+        }
+        if (cheatSheetTriggersRef.current?.handle(trig.slotId, trig.pressed, assignment?.binding)) return;
         triggerController.handleSlotEvent(trig.slotId, trig.pressed, assignment);
       }
     });
@@ -1918,7 +1863,7 @@ export default function App() {
       unsubscribe();
       triggerController.cancelAll();
     };
-  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, presetOs, hydrateRgbFromDevice, applyHardwareLayer]);
+  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, hydrateRgbFromDevice, applyHardwareLayer, requestHardwareLayer, selectProfileInApp]);
 
   // Keep the firmware's active EEPROM slot aligned with the profile being edited.
   // This covers initial connect (the saved profile may differ from the device's
@@ -1958,10 +1903,20 @@ export default function App() {
 
     const { config, warnings: configWarnings } = buildViaConfiguration(currentProfile, presetOs, {
       enableHostTriggers: true,
+      profileCount: profiles.length,
     });
     if (config.layers.length === 0) return;
     const configKey = `slot:${activeProfileIndex}:${JSON.stringify(config)}`;
-    if (configKey === lastSyncedConfigKeyRef.current) return;
+    if (configKey === lastSyncedConfigKeyRef.current) {
+      // Host-trigger keycodes can stay identical when their desktop action or
+      // display label changes. Refresh the verified slot's metadata without a
+      // redundant device write, so execution and the HUD do not use stale data.
+      if (syncedCheatProfilesRef.current[activeProfileIndex] !== currentProfile) {
+        syncedCheatProfilesRef.current[activeProfileIndex] = currentProfile;
+        setCheatSyncRevision((revision) => revision + 1);
+      }
+      return;
+    }
 
     let cancelled = false;
     const syncTimer = window.setTimeout(() => {
@@ -1997,6 +1952,12 @@ export default function App() {
           }
           if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
 
+          // A live keymap rewrite can change the keycode before a held key's
+          // release is reported. Fail closed rather than leaving a stuck HUD.
+          cheatSheetTriggersRef.current?.cancel();
+          // During a multi-key write, neither the old nor new image is guaranteed.
+          delete syncedCheatProfilesRef.current[activeProfileIndex];
+          setCheatSyncRevision((revision) => revision + 1);
           const synced = await bridge.request({
             cmd: 'set_config',
             config,
@@ -2011,6 +1972,8 @@ export default function App() {
           }
 
           lastSyncedConfigKeyRef.current = configKey;
+          syncedCheatProfilesRef.current[activeProfileIndex] = currentProfile;
+          setCheatSyncRevision((revision) => revision + 1);
           const state = JSON.stringify({
             v: 1,
             profiles,
@@ -2219,6 +2182,12 @@ export default function App() {
       setLayerToolbarOpen(false);
       return;
     }
+    const retainedLayers = currentProfile.layers.filter((_, i) => i !== layerIdx);
+    if (referencesAtOrAfter(retainedLayers, 'layer', layerIdx) || referencesAtOrAfter(customItemsByTab, 'layer', layerIdx)) {
+      showToast('Clear layer references to this and later layers before deleting, to avoid retargeting assignments');
+      setLayerDeleteConfirm(false);
+      return;
+    }
     const nextProfiles = profiles.map((p, idx) =>
       idx === activeProfileIndex
         ? { ...p, layers: p.layers.filter((_, i) => i !== layerIdx) }
@@ -2257,6 +2226,15 @@ export default function App() {
     tabOverride?: MappingTabId
   ) => {
     const effectiveTab = tabOverride || mappingTab;
+    if (effectiveTab === 'Basic') {
+      const layerTarget = item.id.match(/^(?:t?lyr)-(\d+)$/);
+      const profileTarget = item.id.match(/^prf-(\d+)$/);
+      if ((layerTarget && Number(layerTarget[1]) > currentProfile.layers.length) ||
+          (profileTarget && Number(profileTarget[1]) > profiles.length)) {
+        showToast('This layer or profile no longer exists');
+        return;
+      }
+    }
     const actionTypeMap: Record<MappingTabId, KeyAssignment['actionType']> = {
       Basic: 'Basic input',
       Action: 'Shortcut',
@@ -3022,6 +3000,23 @@ export default function App() {
     subAction?: EncoderSubActionId
   ) => {
     if (e.button !== 0) return;
+    if (simulationMode && !subAction && slotId !== GRID_MACRO_ENCODER_SLOT &&
+        cheatSheetCommand(currentLayer[slotId]?.binding) === 'hold-start') {
+      const command = window.electronAPI?.commandCheatSheet;
+      if (!command) return;
+      void window.electronAPI?.updateCheatSheet?.(cheatSheetSnapshot(currentProfile, effectiveLayerIndex));
+      void command('hold-start', 'simulation');
+      const pointerId = e.pointerId;
+      const release = (event: PointerEvent) => {
+        if (event.pointerId !== pointerId) return;
+        window.removeEventListener('pointerup', release);
+        window.removeEventListener('pointercancel', release);
+        void command('hold-end', 'simulation');
+      };
+      window.addEventListener('pointerup', release);
+      window.addEventListener('pointercancel', release);
+      return;
+    }
     // Drag encoder bindings from their CW / Press / CCW capsule, not the knob body.
     if (slotId === GRID_MACRO_ENCODER_SLOT && !subAction) return;
 
@@ -3086,13 +3081,24 @@ export default function App() {
         }
         // A simulated layer action must move the real device too; the confirmed
         // reply is what updates the highlight and preview.
-        void requestHardwareLayer(targetLayer);
+        if (deviceStatusRef.current.state === 'connected') {
+          void requestHardwareLayer(targetLayer);
+        } else {
+          setActiveLayerIndex(targetLayer);
+        }
         setSelectedKey(null);
         setSelectedEncoderSub(null);
         setMappingDrawerOpen(false);
       },
       showToast,
-      window
+      window,
+      { onProfileChange: (targetProfile) => {
+        if (!profiles[targetProfile]) {
+          showToast(`Profile ${targetProfile + 1} is not available`);
+          return false;
+        }
+        selectProfileInApp(targetProfile, profiles[targetProfile].layers.length);
+      } }
     );
   };
 
@@ -3102,7 +3108,7 @@ export default function App() {
       if (slotId === GRID_MACRO_ENCODER_SLOT) {
         setEncoderAngle((angle) => (angle + 30) % 360);
         runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
-      } else {
+      } else if (cheatSheetCommand(currentLayer[slotId]?.binding) !== 'hold-start') {
         runSimulationAction(currentLayer[slotId]);
       }
       return;
@@ -3778,8 +3784,14 @@ export default function App() {
       return;
     }
     const next = profiles.filter((_, i) => i !== idx);
+    if (referencesAtOrAfter(next, 'profile', idx) || referencesAtOrAfter(customItemsByTab, 'profile', idx)) {
+      showToast('Clear references to this and later profiles before deleting, to avoid retargeting assignments');
+      setDeletingProfileId(null);
+      return;
+    }
     pushState(next);
-    const nextIdx = activeProfileIndex >= next.length ? Math.max(0, next.length - 1) : activeProfileIndex;
+    lastSyncedConfigKeyRef.current = '';
+    const nextIdx = activeProfileIndex > idx ? activeProfileIndex - 1 : Math.min(activeProfileIndex, next.length - 1);
     selectProfileInApp(nextIdx, (next[nextIdx] ?? next[0])?.layers.length ?? 1);
     setDeletingProfileId(null);
   };
@@ -3891,7 +3903,33 @@ export default function App() {
     ? isPresetInstalledInProfile(currentProfile, previewPreset.id)
     : false;
 
-  const filteredBasicSections = BASIC_KEY_SECTIONS.map((sec) => ({
+  const basicKeySections: BasicSection[] = [
+    ...BASIC_KEY_SECTIONS,
+    {
+      title: 'Layer Keys',
+      listPreview: '[ ' + currentProfile.layers.map((_, i) => `Layer ${i + 1}`).join(', ') + ' ]',
+      items: currentProfile.layers.flatMap((_, i) => [
+        { id: `lyr-${i + 1}`, main: `Layer ${i + 1}`, macropadLabel: `L${i + 1}` },
+        { id: `tlyr-${i + 1}`, main: `Temp Layer\n${i + 1}`, listLabel: `Temp Layer ${i + 1}`, macropadLabel: `TL${i + 1}` },
+      ]),
+    },
+    {
+      title: 'Profile Keys',
+      listPreview: '[ ' + profiles.map((_, i) => `Profile ${i + 1}`).join(', ') + ' ]',
+      items: profiles.map((_, i) => ({ id: `prf-${i + 1}`, main: `Profile ${i + 1}`, macropadLabel: `P${i + 1}` })),
+    },
+    ...(window.electronAPI?.commandCheatSheet ? [{
+      title: 'Internal',
+      listPreview: '[ Show, Hold, Hide, Toggle Cheat-Sheet ]',
+      items: [
+        { id: 'cs-show', main: 'Show\nCheat-Sheet', listLabel: 'Show Cheat-Sheet', macropadLabel: 'CS' },
+        { id: 'cs-hold', main: 'Hold\nCheat-Sheet', listLabel: 'Show Cheat-Sheet Hold', macropadLabel: 'CSH' },
+        { id: 'cs-hide', main: 'Hide\nCheat-Sheet', listLabel: 'Hide Cheat-Sheet', macropadLabel: 'HCS' },
+        { id: 'cs-tog', main: 'Toggle\nCheat-Sheet', listLabel: 'Toggle Cheat-Sheet', macropadLabel: 'TCS' },
+      ],
+    }] : []),
+  ];
+  const filteredBasicSections = basicKeySections.map((sec) => ({
     ...sec,
     items: sec.items.filter(
       (item) =>
@@ -6025,7 +6063,7 @@ export default function App() {
 
                                         {/* Accordion Categories with Blue Hover & Active */}
                                         <div className="max-h-[268px] overflow-y-auto list-accordion-scroll divide-y divide-[#eeeeee]">
-                                          {BASIC_KEY_SECTIONS.map((sec) => {
+                                          {basicKeySections.filter((sec) => sec.title !== 'Internal').map((sec) => {
                                             const matchingItems = sec.items.filter(
                                               (it) => {
                                                 if (!gestureKeySearch.trim())
@@ -6803,7 +6841,7 @@ export default function App() {
                                               </div>
 
                                               <div className="max-h-[220px] overflow-y-auto list-accordion-scroll divide-y divide-[#eeeeee]">
-                                                {BASIC_KEY_SECTIONS.map((sec) => {
+                                                {basicKeySections.filter((sec) => sec.title !== 'Internal').map((sec) => {
                                                   const matchingItems =
                                                     sec.items.filter((it) => {
                                                       if (
