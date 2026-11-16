@@ -328,8 +328,10 @@ async function captureVisualSmokeScreenshot() {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Cheat-Sheet failed to load')), 15000)),
       ]);
     }
-    const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, keys: Array.from(document.querySelectorAll('.key'), node => node.textContent) })`);
+    const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, acrylic: document.documentElement.classList.contains('native-acrylic'), keys: Array.from(document.querySelectorAll('.key'), node => node.textContent) })`);
+    const shouldUseAcrylic = process.platform === 'win32' && Number(require('node:os').release().split('.')[2]) >= 22621;
     if (!hud.isVisible() || !hud.isAlwaysOnTop() || hud.isFocusable() ||
+        hudContent.acrylic !== shouldUseAcrylic ||
         hudContent.layer !== 'LAYER 2' || hudContent.keys.length !== 9 ||
         hudContent.keys[0] !== 'Ctrl + C' || hudContent.keys[1] !== 'Volume Up') {
       throw new Error(`Packaged Cheat-Sheet smoke failed: ${JSON.stringify(hudContent)}`);

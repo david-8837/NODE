@@ -22,17 +22,20 @@ class FakeWindow extends EventEmitter {
   destroyed = false;
   ignored = false;
   top: unknown[] = [];
+  shape: Array<{x: number; y: number; width: number; height: number}> = [];
+  loadOptions: unknown;
   constructor(options: Record<string, unknown>) { super(); this.options = options; FakeWindow.instance = this; }
   isDestroyed() { return this.destroyed; }
   setAlwaysOnTop(...args: unknown[]) { this.top = args; }
   setIgnoreMouseEvents(value: boolean) { this.ignored = value; }
+  setShape(shape: Array<{x: number; y: number; width: number; height: number}>) { this.shape = shape; }
   showInactive() { this.showing = true; }
   hide() { this.showing = false; }
-  loadFile(_path: string) { return Promise.resolve(); }
+  loadFile(_path: string, options: unknown) { this.loadOptions = options; return Promise.resolve(); }
   destroy() { this.destroyed = true; this.emit('closed'); }
 }
-function harness() {
-  return createCheatSheetController({ BrowserWindow: FakeWindow, screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) } });
+function harness(platform = 'linux', release = '0.0.0') {
+  return createCheatSheetController({ BrowserWindow: FakeWindow, platform, release, screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) } });
 }
 const bindings = ['Show Cheat-Sheet', 'Show Cheat-Sheet Hold', 'Hide Cheat-Sheet', 'Toggle Cheat-Sheet'];
 
@@ -109,6 +112,16 @@ describe('HUD document', () => {
       expect(g).toBe(b);
     }
   });
+  it('selects the native acrylic styling without changing the grid or labels', () => {
+    const html = readFileSync('electron/cheatSheet.html', 'utf8');
+    const script = readFileSync('electron/cheatSheetRenderer.js', 'utf8');
+    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/?material=acrylic' });
+    (dom.window as unknown as { cheatSheet: unknown }).cheatSheet = { onData() {} };
+    dom.window.eval(script);
+    expect(dom.window.document.documentElement.classList.contains('native-acrylic')).toBe(true);
+    expect(dom.window.document.querySelectorAll('.key')).toHaveLength(9);
+    dom.window.close();
+  });
   it('renders nine cells in source order and treats labels as plain text', () => {
     const html = readFileSync('electron/cheatSheet.html', 'utf8');
     const script = readFileSync('electron/cheatSheetRenderer.js', 'utf8');
@@ -127,6 +140,27 @@ describe('HUD document', () => {
 });
 
 describe('native HUD controller (mock Electron)', () => {
+  it('uses acrylic on Windows 11 22H2+ with a rounded native shape', () => {
+    const hud = harness('win32', '10.0.22621');
+    hud.update({ layer: 1, keys: Array(9).fill('') });
+    const win = FakeWindow.instance;
+    expect(win.options).toMatchObject({ backgroundMaterial: 'acrylic', transparent: true, focusable: false });
+    expect(win.loadOptions).toEqual({ query: { material: 'acrylic' } });
+    expect(win.shape).toHaveLength(41);
+    expect(win.shape[0].x).toBeGreaterThan(0);
+    expect(win.shape.at(-1)).toEqual({ x: 0, y: 20, width: 270, height: 210 });
+    expect(win.ignored).toBe(true);
+    hud.destroy();
+  });
+  it('uses a translucent fallback on older Windows without requesting acrylic', () => {
+    const hud = harness('win32', '10.0.19045');
+    hud.update({ layer: 1, keys: Array(9).fill('') });
+    const win = FakeWindow.instance;
+    expect(win.options).not.toHaveProperty('backgroundMaterial');
+    expect(win.loadOptions).toEqual({ query: { material: 'fallback' } });
+    expect(win.shape).toEqual([]);
+    hud.destroy();
+  });
   it('creates a non-focusable click-through always-on-top window and updates it after load', () => {
     const hud = harness();
     expect(hud.update({ layer: 2, keys: ['<script>', ...Array(8).fill('')] })).toBe(true);

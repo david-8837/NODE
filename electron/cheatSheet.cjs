@@ -1,9 +1,30 @@
 'use strict';
 const path = require('node:path');
+const os = require('node:os');
+
+// Windows exposes the native translucent acrylic backdrop on 11 22H2+ only.
+function supportsAcrylic(platform, release) {
+  const parts = String(release).split('.').map(Number);
+  return platform === 'win32' && Number.isInteger(parts[2]) && parts[2] >= 22621;
+}
+
+// Clip the native backdrop as well as the web content to the glass outline.
+function roundedWindowShape(width, height, radius) {
+  const rows = [];
+  for (let y = 0; y < radius; y++) {
+    const dy = radius - y - 0.5;
+    const inset = Math.ceil(radius - Math.sqrt(radius * radius - dy * dy));
+    rows.push({ x: inset, y, width: width - 2 * inset, height: 1 });
+    rows.push({ x: inset, y: height - 1 - y, width: width - 2 * inset, height: 1 });
+  }
+  rows.push({ x: 0, y: radius, width, height: height - 2 * radius });
+  return rows;
+}
 
 /** Native, non-focusable and click-through HUD. All renderer-provided text is
  * rendered using textContent in the isolated overlay, never as HTML. */
-function createCheatSheetController({ BrowserWindow, screen }) {
+function createCheatSheetController({ BrowserWindow, screen, platform = process.platform, release = os.release() }) {
+  const acrylic = supportsAcrylic(platform, release);
   let window = null;
   let ready = false;
   let visible = false;
@@ -24,19 +45,25 @@ function createCheatSheetController({ BrowserWindow, screen }) {
     window = new BrowserWindow({
       x: area.x + area.width - 294, y: area.y + 24, width: 270, height: 250,
       frame: false, transparent: true, resizable: false, movable: false,
+      ...(acrylic ? { backgroundMaterial: 'acrylic' } : {}),
       show: false, focusable: false, skipTaskbar: true, alwaysOnTop: true,
       hasShadow: false, webPreferences: {
         preload: path.join(__dirname, 'cheatSheetPreload.cjs'),
         contextIsolation: true, nodeIntegration: false, sandbox: true,
       },
     });
+    if (acrylic && typeof window.setShape === 'function') {
+      try { window.setShape(roundedWindowShape(270, 250, 20)); } catch {
+        // Keep the HUD functional if the native shape is unavailable.
+      }
+    }
     window.setAlwaysOnTop(true, 'floating');
     window.setIgnoreMouseEvents(true);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event) => event.preventDefault());
     window.webContents.once('did-finish-load', () => { ready = true; deliver(); syncVisibility(); });
     window.on('closed', () => { window = null; ready = false; visible = false; holds.clear(); });
-    void window.loadFile(path.join(__dirname, 'cheatSheet.html'));
+    void window.loadFile(path.join(__dirname, 'cheatSheet.html'), { query: { material: acrylic ? 'acrylic' : 'fallback' } });
   }
   return {
     update(data) {

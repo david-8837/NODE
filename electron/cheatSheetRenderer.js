@@ -1,4 +1,7 @@
 'use strict';
+if (new URLSearchParams(window.location.search).get('material') === 'acrylic') {
+  document.documentElement.classList.add('native-acrylic');
+}
 const container = document.getElementById('keys');
 const cells = Array.from({ length: 9 }, () => {
   const element = document.createElement('div');

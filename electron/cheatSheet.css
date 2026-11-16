@@ -12,8 +12,8 @@ body {
   font-family: system-ui, sans-serif;
 }
 
-/* Neutral smoked glass: translucent window tint with soft reflected light.
-   It remains readable on bright or busy desktops without tinting the design. */
+/* The real Windows acrylic backdrop shows through on supported systems.
+   Elsewhere a slightly deeper translucent tint retains contrast. */
 main {
   position: relative;
   isolation: isolate;
@@ -21,17 +21,25 @@ main {
   height: 100%;
   overflow: hidden;
   padding: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.65);
   border-radius: 20px;
   color: #fff;
   background:
-    radial-gradient(ellipse 90% 45% at 12% 0%, rgba(255, 255, 255, 0.19), transparent 72%),
-    radial-gradient(ellipse 80% 50% at 100% 100%, rgba(255, 255, 255, 0.10), transparent 70%),
-    linear-gradient(150deg, rgba(50, 50, 50, 0.72), rgba(15, 15, 15, 0.80) 60%, rgba(36, 36, 36, 0.72));
+    radial-gradient(ellipse 85% 45% at 12% -8%, rgba(255, 255, 255, 0.34), transparent 75%),
+    radial-gradient(ellipse 60% 38% at 100% 100%, rgba(255, 255, 255, 0.18), transparent 76%),
+    linear-gradient(145deg, rgba(45, 45, 45, 0.50), rgba(15, 15, 15, 0.56) 65%, rgba(40, 40, 40, 0.45));
   box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.36),
-    inset 0 -1px 2px rgba(255, 255, 255, 0.12),
-    inset 1px 0 3px rgba(255, 255, 255, 0.10);
+    inset 0 1px 2px rgba(255, 255, 255, 0.58),
+    inset 0 -1px 3px rgba(255, 255, 255, 0.22),
+    inset 1px 0 4px rgba(255, 255, 255, 0.25),
+    inset -1px 0 4px rgba(255, 255, 255, 0.16);
+}
+
+.native-acrylic main {
+  background:
+    radial-gradient(ellipse 85% 45% at 12% -8%, rgba(255, 255, 255, 0.28), transparent 75%),
+    radial-gradient(ellipse 60% 38% at 100% 100%, rgba(255, 255, 255, 0.15), transparent 76%),
+    linear-gradient(145deg, rgba(35, 35, 35, 0.20), rgba(15, 15, 15, 0.28) 65%, rgba(35, 35, 35, 0.20));
 }
 
 header {
@@ -40,15 +48,11 @@ header {
   align-items: center;
   height: 22px;
   padding: 0 2px;
-  color: rgba(255, 255, 255, 0.94);
+  color: #fff;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.035em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-}
-
-#layer {
-  color: rgba(255, 255, 255, 0.94);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.5);
 }
 
 .keys {
@@ -65,18 +69,18 @@ header {
   align-items: center;
   overflow: hidden;
   padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.52);
   border-radius: 11px;
   color: #fff;
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.045) 46%, rgba(255, 255, 255, 0.10));
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.18) 50%, rgba(255, 255, 255, 0.09));
   box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.17),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.26),
+    inset 0 1px 2px rgba(255, 255, 255, 0.32),
+    inset 0 -1px 3px rgba(255, 255, 255, 0.12),
     0 1px 3px rgba(0, 0, 0, 0.20);
   font-size: 11px;
   font-weight: 500;
   line-height: 1.2;
   text-align: center;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.5);
   overflow-wrap: anywhere;
 }
