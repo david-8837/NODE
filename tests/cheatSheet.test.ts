@@ -117,28 +117,29 @@ describe('Cheat-Sheet hardware path', () => {
 });
 
 describe('HUD document', () => {
-  it('keeps the glass styling neutral, translucent and arranged in a 3×3 grid', () => {
+  it('uses white outlines with transparent interiors and a 3×3 grid', () => {
     const css = readFileSync('electron/cheatSheet.css', 'utf8');
-    expect(css).toMatch(/background:\s*transparent/);
-    expect(css).toContain('grid-template-columns: repeat(3, 1fr)');
-    expect(css).toContain('grid-template-rows: repeat(3, 1fr)');
-    expect(css).toContain('border-radius: 36px');
-    expect(css).toContain('border-radius: 22px');
-    expect(css).toContain('.dial-action, .key');
-    expect(css).toContain('linear-gradient');
-    for (const [, r, g, b] of css.matchAll(/rgba\(\s*(\d+),\s*(\d+),\s*(\d+),/g)) {
-      expect(r).toBe(g);
-      expect(g).toBe(b);
-    }
-  });
-  it('selects the native acrylic styling without changing the grid or labels', () => {
     const html = readFileSync('electron/cheatSheet.html', 'utf8');
     const script = readFileSync('electron/cheatSheetRenderer.js', 'utf8');
-    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://example.test/?material=acrylic' });
+    const dom = new JSDOM(html, { runScripts: 'outside-only' });
     (dom.window as unknown as { cheatSheet: unknown }).cheatSheet = { onData() {} };
     dom.window.eval(script);
-    expect(dom.window.document.documentElement.classList.contains('native-acrylic')).toBe(true);
+    const style = dom.window.document.createElement('style');
+    style.textContent = css;
+    dom.window.document.head.appendChild(style);
+    for (const selector of ['html', 'body', 'main', '.dial-action', '.key', '.dial']) {
+      const element = dom.window.document.querySelector(selector)!;
+      const computed = dom.window.getComputedStyle(element);
+      expect(['transparent', 'rgba(0, 0, 0, 0)']).toContain(computed.backgroundColor);
+      expect(computed.backgroundImage === '' || computed.backgroundImage === 'none').toBe(true);
+    }
+    expect(css).toContain('grid-template-columns: repeat(3, 1fr)');
+    expect(css).toContain('grid-template-rows: repeat(3, 1fr)');
+    expect(css).toContain('border: 1px solid white');
+    expect(css).toContain('border-radius: 22px');
+    expect(css).not.toMatch(/gradient|box-shadow|backdrop-filter/);
     expect(dom.window.document.querySelectorAll('.key')).toHaveLength(9);
+    expect(dom.window.document.querySelectorAll('.dial-action')).toHaveLength(3);
     dom.window.close();
   });
   it('renders nine cells in source order and treats labels as plain text', () => {
@@ -173,26 +174,15 @@ describe('HUD document', () => {
 });
 
 describe('native HUD controller (mock Electron)', () => {
-  it('uses acrylic on Windows 11 22H2+ with a rounded native shape', () => {
-    const hud = harness('win32', '10.0.22621');
+  it.each(['10.0.22621', '10.0.19045'])('uses a small transparent window without a native backdrop on Windows %s', (release) => {
+    const hud = harness('win32', release);
     hud.update({ layer: 1, keys: Array(9).fill('') });
     const win = FakeWindow.instance;
-    expect(win.options).toMatchObject({ backgroundMaterial: 'acrylic', transparent: true, focusable: false });
-    expect(win.loadOptions).toEqual({ query: { material: 'acrylic' } });
-    expect(win.options).toMatchObject({ width: 320, height: 412 });
-    expect(win.shape).toHaveLength(73);
-    expect(win.shape[0].x).toBeGreaterThan(0);
-    expect(win.shape.at(-1)).toEqual({ x: 0, y: 36, width: 320, height: 340 });
-    expect(win.ignored).toBe(true);
-    hud.destroy();
-  });
-  it('uses a translucent fallback on older Windows without requesting acrylic', () => {
-    const hud = harness('win32', '10.0.19045');
-    hud.update({ layer: 1, keys: Array(9).fill('') });
-    const win = FakeWindow.instance;
+    expect(win.options).toMatchObject({ width: 240, height: 300, transparent: true, backgroundColor: '#00000000', focusable: false });
     expect(win.options).not.toHaveProperty('backgroundMaterial');
-    expect(win.loadOptions).toEqual({ query: { material: 'fallback' } });
+    expect(win.loadOptions).toBeUndefined();
     expect(win.shape).toEqual([]);
+    expect(win.ignored).toBe(true);
     hud.destroy();
   });
   it('creates a non-focusable click-through always-on-top window and updates it after load', () => {

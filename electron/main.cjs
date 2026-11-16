@@ -328,10 +328,9 @@ async function captureVisualSmokeScreenshot() {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Cheat-Sheet failed to load')), 15000)),
       ]);
     }
-    const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, acrylic: document.documentElement.classList.contains('native-acrylic'), keys: Array.from(document.querySelectorAll('.key'), node => node.textContent), encoder: ['ccw', 'press', 'cw'].map(direction => document.getElementById('dial-' + direction)?.textContent), hasDial: !!document.querySelector('.dial'), actionPanels: document.querySelectorAll('.dial-action').length, hasCopyIcon: !!document.querySelector('.key svg') })`);
-    const shouldUseAcrylic = process.platform === 'win32' && Number(require('node:os').release().split('.')[2]) >= 22621;
+    const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, keys: Array.from(document.querySelectorAll('.key'), node => node.textContent), encoder: ['ccw', 'press', 'cw'].map(direction => document.getElementById('dial-' + direction)?.textContent), hasDial: !!document.querySelector('.dial'), actionPanels: document.querySelectorAll('.dial-action').length, hasCopyIcon: !!document.querySelector('.key svg'), transparent: ['html', 'body', 'main', '.key', '.dial-action', '.dial'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none'; }) })`);
     if (!hud.isVisible() || !hud.isAlwaysOnTop() || hud.isFocusable() ||
-        hudContent.acrylic !== shouldUseAcrylic ||
+        !hudContent.transparent ||
         hudContent.layer !== 'LAYER 2' || hudContent.keys.length !== 9 || !hudContent.hasDial || hudContent.actionPanels !== 3 || !hudContent.hasCopyIcon ||
         hudContent.encoder.join('|') !== 'Volume Down|Mute|Volume Up' ||
         hudContent.keys[0] !== 'Ctrl + C' || hudContent.keys[1] !== 'Volume Up') {
