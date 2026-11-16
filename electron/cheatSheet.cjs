@@ -1,10 +1,24 @@
 'use strict';
 const path = require('node:path');
+const { makeWindowsBlur } = require('./cheatSheetBlur.cjs');
+
+function roundedWindowShape(width, height, radius) {
+  const rows = [];
+  for (let y = 0; y < radius; y++) {
+    const dy = radius - y - 0.5;
+    const inset = Math.ceil(radius - Math.sqrt(radius * radius - dy * dy));
+    rows.push({ x: inset, y, width: width - 2 * inset, height: 1 });
+    rows.push({ x: inset, y: height - 1 - y, width: width - 2 * inset, height: 1 });
+  }
+  rows.push({ x: 0, y: radius, width, height: height - 2 * radius });
+  return rows;
+}
 
 /** Native, non-focusable and click-through HUD. All renderer-provided text is
  * rendered using textContent in the isolated overlay, never as HTML. */
-function createCheatSheetController({ BrowserWindow, screen }) {
+function createCheatSheetController({ BrowserWindow, screen, platform = process.platform, createBlur = makeWindowsBlur }) {
   let window = null;
+  let blurEnabled = false;
   let ready = false;
   let visible = false;
   const holds = new Set();
@@ -30,15 +44,35 @@ function createCheatSheetController({ BrowserWindow, screen }) {
         contextIsolation: true, nodeIntegration: false, sandbox: true,
       },
     });
+    // If Windows accepts blur, clip its backdrop to the same rounded outline.
+    // If either API is unavailable, leave the earlier transparent HUD intact.
+    if (platform === 'win32' && typeof window.setShape === 'function' && typeof window.getNativeWindowHandle === 'function') {
+      try {
+        const blur = createBlur({ platform });
+        const handle = window.getNativeWindowHandle();
+        if (blur(handle)) {
+          try {
+            window.setShape(roundedWindowShape(240, 300, 22));
+            blurEnabled = true;
+          } catch (error) {
+            blur(handle, false);
+            console.warn('Cheat-Sheet rounded blur unavailable:', error.message);
+          }
+        }
+      } catch (error) {
+        console.warn('Cheat-Sheet native blur unavailable:', error.message);
+      }
+    }
     window.setAlwaysOnTop(true, 'floating');
     window.setIgnoreMouseEvents(true);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event) => event.preventDefault());
     window.webContents.once('did-finish-load', () => { ready = true; deliver(); syncVisibility(); });
-    window.on('closed', () => { window = null; ready = false; visible = false; holds.clear(); });
+    window.on('closed', () => { window = null; ready = false; blurEnabled = false; visible = false; holds.clear(); });
     void window.loadFile(path.join(__dirname, 'cheatSheet.html'));
   }
   return {
+    isBlurEnabled() { return blurEnabled; },
     update(data) {
       if (!data || !Number.isInteger(data.layer) || data.layer < 1 || data.layer > 64 ||
           !Array.isArray(data.keys) || data.keys.length !== 9 || data.keys.some((key) => typeof key !== 'string')) return false;

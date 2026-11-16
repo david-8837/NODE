@@ -29,13 +29,14 @@ class FakeWindow extends EventEmitter {
   setAlwaysOnTop(...args: unknown[]) { this.top = args; }
   setIgnoreMouseEvents(value: boolean) { this.ignored = value; }
   setShape(shape: Array<{x: number; y: number; width: number; height: number}>) { this.shape = shape; }
+  getNativeWindowHandle() { return Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]); }
   showInactive() { this.showing = true; }
   hide() { this.showing = false; }
   loadFile(_path: string, options: unknown) { this.loadOptions = options; return Promise.resolve(); }
   destroy() { this.destroyed = true; this.emit('closed'); }
 }
-function harness(platform = 'linux', release = '0.0.0') {
-  return createCheatSheetController({ BrowserWindow: FakeWindow, platform, release, screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) } });
+function harness(platform = 'linux', release = '0.0.0', blur: (handle: Buffer, enabled?: boolean) => boolean = () => false) {
+  return createCheatSheetController({ BrowserWindow: FakeWindow, platform, release, createBlur: () => blur, screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) } });
 }
 const bindings = ['Show Cheat-Sheet', 'Show Cheat-Sheet Hold', 'Hide Cheat-Sheet', 'Toggle Cheat-Sheet'];
 
@@ -184,6 +185,32 @@ describe('native HUD controller (mock Electron)', () => {
     expect(win.shape).toEqual([]);
     expect(win.ignored).toBe(true);
     hud.destroy();
+  });
+  it('clips accepted Windows blur to rounded corners without changing click-through', () => {
+    const blur = vi.fn(() => true);
+    const hud = harness('win32', '10.0.22621', blur);
+    hud.update({ layer: 1, keys: Array(9).fill('') });
+    const win = FakeWindow.instance;
+    expect(blur).toHaveBeenCalledOnce();
+    expect(hud.isBlurEnabled()).toBe(true);
+    expect(win.shape).toHaveLength(45);
+    expect(win.shape[0].x).toBeGreaterThan(0);
+    expect(win.shape.at(-1)).toEqual({ x: 0, y: 22, width: 240, height: 256 });
+    expect(win.ignored).toBe(true);
+    hud.destroy();
+    expect(hud.isBlurEnabled()).toBe(false);
+  });
+  it('disables blur if rounded clipping fails', () => {
+    const blur = vi.fn((_handle: Buffer, _enabled?: boolean) => true);
+    const shape = vi.spyOn(FakeWindow.prototype, 'setShape').mockImplementation(() => { throw new Error('unsupported'); });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const hud = harness('win32', '10.0.22621', blur);
+    hud.update({ layer: 1, keys: Array(9).fill('') });
+    expect(blur).toHaveBeenCalledTimes(2);
+    expect(blur.mock.calls[1][1]).toBe(false);
+    expect(hud.isBlurEnabled()).toBe(false);
+    expect(FakeWindow.instance.ignored).toBe(true);
+    hud.destroy(); shape.mockRestore(); warning.mockRestore();
   });
   it('creates a non-focusable click-through always-on-top window and updates it after load', () => {
     const hud = harness();

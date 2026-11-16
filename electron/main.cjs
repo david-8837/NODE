@@ -330,7 +330,7 @@ async function captureVisualSmokeScreenshot() {
     }
     const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, keys: Array.from(document.querySelectorAll('.key'), node => node.textContent), encoder: ['ccw', 'press', 'cw'].map(direction => document.getElementById('dial-' + direction)?.textContent), hasDial: !!document.querySelector('.dial'), actionPanels: document.querySelectorAll('.dial-action').length, hasCopyIcon: !!document.querySelector('.key svg'), transparent: ['html', 'body', 'main', '.key', '.dial-action', '.dial'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none'; }) })`);
     if (!hud.isVisible() || !hud.isAlwaysOnTop() || hud.isFocusable() ||
-        !hudContent.transparent ||
+        (process.platform === 'win32' && !cheatSheet.isBlurEnabled()) || !hudContent.transparent ||
         hudContent.layer !== 'LAYER 2' || hudContent.keys.length !== 9 || !hudContent.hasDial || hudContent.actionPanels !== 3 || !hudContent.hasCopyIcon ||
         hudContent.encoder.join('|') !== 'Volume Down|Mute|Volume Up' ||
         hudContent.keys[0] !== 'Ctrl + C' || hudContent.keys[1] !== 'Volume Up') {
