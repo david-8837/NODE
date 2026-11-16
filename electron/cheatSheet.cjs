@@ -43,7 +43,7 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
     if (window && !window.isDestroyed()) return;
     const area = screen.getPrimaryDisplay().workArea;
     window = new BrowserWindow({
-      x: area.x + area.width - 294, y: area.y + 24, width: 270, height: 320,
+      x: area.x + area.width - 344, y: area.y + 24, width: 320, height: 412,
       frame: false, transparent: true, resizable: false, movable: false,
       ...(acrylic ? { backgroundMaterial: 'acrylic' } : {}),
       show: false, focusable: false, skipTaskbar: true, alwaysOnTop: true,
@@ -53,7 +53,7 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
       },
     });
     if (acrylic && typeof window.setShape === 'function') {
-      try { window.setShape(roundedWindowShape(270, 320, 20)); } catch {
+      try { window.setShape(roundedWindowShape(320, 412, 36)); } catch {
         // Keep the HUD functional if the native shape is unavailable.
       }
     }

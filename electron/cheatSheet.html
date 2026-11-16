@@ -9,15 +9,14 @@
 </head>
 <body>
   <main>
-    <header>MICRO PAD <span id="layer">LAYER 1</span></header>
-    <div class="device-top" aria-label="Micro Pad indicator and dial">
-      <div class="indicator" aria-hidden="true"><span></span></div>
-      <div class="dial-actions" aria-label="Dial assignments">
-        <div><span class="direction">↶</span><span id="dial-ccw" class="dial-label" aria-label="Turn left">—</span></div>
-        <div><span class="direction">●</span><span id="dial-press" class="dial-label" aria-label="Press dial">—</span></div>
-        <div><span class="direction">↷</span><span id="dial-cw" class="dial-label" aria-label="Turn right">—</span></div>
-      </div>
-      <div class="dial" aria-label="Dial"><span class="dial-mark"></span></div>
+    <header>
+      <span class="title"><span class="indicator" aria-hidden="true"></span>MICRO PAD</span>
+      <span class="status"><span id="layer">LAYER 1</span><span class="dial" aria-label="Dial"><span class="dial-mark"></span></span></span>
+    </header>
+    <div class="dial-actions" aria-label="Dial assignments">
+      <div class="dial-action"><span class="direction" aria-hidden="true">↶</span><span id="dial-ccw" class="dial-label" aria-label="Turn left">—</span></div>
+      <div class="dial-action"><span class="direction" aria-hidden="true">●</span><span id="dial-press" class="dial-label" aria-label="Press dial">—</span></div>
+      <div class="dial-action"><span class="direction" aria-hidden="true">↷</span><span id="dial-cw" class="dial-label" aria-label="Turn right">—</span></div>
     </div>
     <div id="keys" class="keys"></div>
   </main>

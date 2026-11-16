@@ -122,8 +122,9 @@ describe('HUD document', () => {
     expect(css).toMatch(/background:\s*transparent/);
     expect(css).toContain('grid-template-columns: repeat(3, 1fr)');
     expect(css).toContain('grid-template-rows: repeat(3, 1fr)');
-    expect(css).toContain('border-radius: 20px');
-    expect(css).toContain('border-radius: 11px');
+    expect(css).toContain('border-radius: 36px');
+    expect(css).toContain('border-radius: 22px');
+    expect(css).toContain('.dial-action, .key');
     expect(css).toContain('linear-gradient');
     for (const [, r, g, b] of css.matchAll(/rgba\(\s*(\d+),\s*(\d+),\s*(\d+),/g)) {
       expect(r).toBe(g);
@@ -155,8 +156,18 @@ describe('HUD document', () => {
     expect(dom.window.document.querySelector('#dial-cw')?.textContent).toBe('Volume Up');
     const cells = [...dom.window.document.querySelectorAll('.key')];
     expect(cells.map((cell) => cell.textContent)).toEqual(labels);
-    expect(cells[0].children.length).toBe(0);
+    expect(cells[0].querySelector('img')).toBeNull();
+    expect(cells[0].querySelector('.key-label')?.textContent).toBe(labels[0]);
     expect(dom.window.document.querySelector('#layer')?.textContent).toBe('LAYER 3');
+    update({ layer: 4, keys: ['Ctrl + C', 'constructor', '', ...Array(6).fill('')], encoder: { ccw: '', press: 'A', cw: '' } });
+    expect(cells[0].querySelector('svg')).not.toBeNull();
+    expect(cells[0].textContent).toBe('Ctrl + C');
+    expect(cells[1].textContent).toBe('constructor');
+    expect(cells[1].querySelector('svg')).toBeNull();
+    expect(cells[2].children).toHaveLength(0);
+    update({ layer: 1, keys: Array(9).fill('') });
+    expect(cells[0].children).toHaveLength(0);
+    expect(dom.window.document.querySelector('#dial-press')?.textContent).toBe('—');
     dom.window.close();
   });
 });
@@ -168,9 +179,10 @@ describe('native HUD controller (mock Electron)', () => {
     const win = FakeWindow.instance;
     expect(win.options).toMatchObject({ backgroundMaterial: 'acrylic', transparent: true, focusable: false });
     expect(win.loadOptions).toEqual({ query: { material: 'acrylic' } });
-    expect(win.shape).toHaveLength(41);
+    expect(win.options).toMatchObject({ width: 320, height: 412 });
+    expect(win.shape).toHaveLength(73);
     expect(win.shape[0].x).toBeGreaterThan(0);
-    expect(win.shape.at(-1)).toEqual({ x: 0, y: 20, width: 270, height: 280 });
+    expect(win.shape.at(-1)).toEqual({ x: 0, y: 36, width: 320, height: 340 });
     expect(win.ignored).toBe(true);
     hud.destroy();
   });

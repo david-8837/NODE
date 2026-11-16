@@ -1,9 +1,6 @@
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body {
+html, body {
   width: 100%;
   height: 100%;
   margin: 0;
@@ -12,151 +9,121 @@ body {
   font-family: system-ui, sans-serif;
 }
 
-/* The real Windows acrylic backdrop shows through on supported systems.
-   Elsewhere a slightly deeper translucent tint retains contrast. */
+/* Native acrylic blurs the real desktop on supported Windows versions.
+   These neutral highlights suggest the reference's refractive edges; CSS
+   does not sample or refract the desktop behind a transparent window. */
 main {
-  position: relative;
   isolation: isolate;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  padding: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  border-radius: 20px;
+  padding: 17px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 36px;
   color: #fff;
   background:
-    radial-gradient(ellipse 85% 45% at 12% -8%, rgba(255, 255, 255, 0.34), transparent 75%),
-    radial-gradient(ellipse 60% 38% at 100% 100%, rgba(255, 255, 255, 0.18), transparent 76%),
-    linear-gradient(145deg, rgba(45, 45, 45, 0.50), rgba(15, 15, 15, 0.56) 65%, rgba(40, 40, 40, 0.45));
-  box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.58),
-    inset 0 -1px 3px rgba(255, 255, 255, 0.22),
-    inset 1px 0 4px rgba(255, 255, 255, 0.25),
-    inset -1px 0 4px rgba(255, 255, 255, 0.16);
+    radial-gradient(ellipse 90% 45% at 10% -12%, rgba(255, 255, 255, 0.34), transparent 75%),
+    radial-gradient(ellipse 60% 45% at 100% 100%, rgba(255, 255, 255, 0.18), transparent 75%),
+    linear-gradient(145deg, rgba(45, 45, 45, 0.49), rgba(15, 15, 15, 0.56) 65%, rgba(40, 40, 40, 0.45));
+  box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.55), inset 1px 0 5px rgba(255, 255, 255, 0.25), inset -1px -2px 5px rgba(255, 255, 255, 0.2);
 }
 
 .native-acrylic main {
   background:
-    radial-gradient(ellipse 85% 45% at 12% -8%, rgba(255, 255, 255, 0.28), transparent 75%),
-    radial-gradient(ellipse 60% 38% at 100% 100%, rgba(255, 255, 255, 0.15), transparent 76%),
-    linear-gradient(145deg, rgba(35, 35, 35, 0.20), rgba(15, 15, 15, 0.28) 65%, rgba(35, 35, 35, 0.20));
+    radial-gradient(ellipse 90% 45% at 10% -12%, rgba(255, 255, 255, 0.24), transparent 75%),
+    radial-gradient(ellipse 60% 45% at 100% 100%, rgba(255, 255, 255, 0.14), transparent 75%),
+    linear-gradient(145deg, rgba(35, 35, 35, 0.18), rgba(15, 15, 15, 0.25) 65%, rgba(35, 35, 35, 0.18));
 }
 
 header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 22px;
-  padding: 0 2px;
-  color: #fff;
+  height: 24px;
+  padding: 0 4px;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.035em;
+  letter-spacing: 0.12em;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.5);
 }
-
-.device-top {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 47px;
-  align-items: center;
-  gap: 7px;
-  height: 68px;
-  padding: 4px 1px 7px;
-}
-
+.title, .status { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .indicator {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 42px;
-}
-
-.indicator span {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 7px rgba(255, 255, 255, 0.7);
 }
-
-.dial-actions {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-  color: white;
-  font-size: 10px;
-  line-height: 1.25;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.5);
-}
-
-.dial-actions > div {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 5px;
-}
-
-.direction {
-  width: 13px;
-  flex: none;
-  text-align: center;
-  font-size: 11px;
-}
-
-.dial-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .dial {
   position: relative;
-  width: 45px;
-  height: 45px;
-  border: 1px solid rgba(255, 255, 255, 0.68);
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 1px solid rgba(255, 255, 255, 0.75);
   border-radius: 50%;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.24), rgba(0, 0, 0, 0.28) 55%, rgba(255, 255, 255, 0.14));
-  box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.45), inset 0 -2px 4px rgba(0, 0, 0, 0.28), 0 1px 4px rgba(0, 0, 0, 0.25);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.25), rgba(0, 0, 0, 0.25));
+  box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
-
 .dial-mark {
   position: absolute;
-  top: 5px;
+  top: 2px;
   left: 50%;
-  width: 3px;
-  height: 8px;
+  width: 2px;
+  height: 4px;
   transform: translateX(-50%);
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
-
+.dial-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  height: 56px;
+  padding: 2px 0 10px;
+}
+.dial-action, .key {
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.04) 45%, rgba(0, 0, 0, 0.16) 75%, rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.42), inset 1px 0 3px rgba(255, 255, 255, 0.18), inset 0 -1px 3px rgba(255, 255, 255, 0.14), 0 1px 3px rgba(0, 0, 0, 0.20);
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.5);
+}
+.dial-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 17px;
+  font-size: 10px;
+  line-height: 1.2;
+}
+.direction { flex: none; font-size: 13px; }
+.dial-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .keys {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: 6px;
-  height: calc(100% - 92px);
+  gap: 10px;
+  height: calc(100% - 80px);
 }
-
 .key {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
-  padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.52);
-  border-radius: 11px;
-  color: #fff;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.18) 50%, rgba(255, 255, 255, 0.09));
-  box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.32),
-    inset 0 -1px 3px rgba(255, 255, 255, 0.12),
-    0 1px 3px rgba(0, 0, 0, 0.20);
+  padding: 5px;
+  border-radius: 22px;
   font-size: 11px;
   font-weight: 500;
   line-height: 1.2;
   text-align: center;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 5px rgba(0, 0, 0, 0.5);
   overflow-wrap: anywhere;
 }
+.key svg { width: 22px; height: 22px; flex: none; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6)); }
+.key-label { min-width: 0; max-width: 100%; overflow: hidden; }
