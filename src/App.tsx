@@ -84,6 +84,9 @@ import { PresetGrid } from './components/PresetGrid';
 import { PresetDetailPreview } from './components/PresetDetailPreview';
 import { ActionLibrarySidebar } from './components/ActionLibrarySidebar';
 import { ActionCreatorDrawer, type ActionAdvanceStep } from './components/ActionCreatorDrawer';
+import { MappingDrawer } from './components/MappingDrawer';
+import { DraggedTilePreview } from './components/DraggedTilePreview';
+import { FeedbackToast } from './components/FeedbackToast';
 import { EncoderPopupCapsule } from './components/EncoderPopupCapsule';
 import { ProfileSelectorCapsule } from './components/ProfileSelectorCapsule';
 import { LayersControlBar } from './components/LayersControlBar';
@@ -3701,137 +3704,125 @@ export default function App() {
           {/* =============================================================== */}
           <AnimatePresence>
             {mappingDrawerOpen && (
-              <motion.aside
-                key="key-mapping-drawer"
-                initial={{ x: '100%', opacity: 0.6 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: '100%', opacity: 0 }}
-                transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
-                className="absolute top-0 bottom-0 right-0 w-[332px] bg-[#efefef] rounded-l-[20px] rounded-r-none shadow-[-8px_0_24px_rgba(0,0,0,0.08)] border-l border-black/[0.04] flex flex-col z-30 overflow-hidden"
-              >
-                <AnimatePresence mode="wait" initial={false}>
-                  {creatorModalTab ? (
-                    <ActionCreatorDrawer
-                      creatorModalTab={creatorModalTab}
-                      onClose={() => {
-                        setIconPickerOpen(false);
-                        setActiveGestureDropdown(null);
-                        setCreatorModalTab(null);
-                      }}
-                      activeTooltip={activeTooltip}
-                      setActiveTooltip={setActiveTooltip}
-                      handleToggleIconPicker={handleToggleIconPicker}
-                      selectedIconId={selectedIconId}
-                      selectedEmoji={selectedEmoji}
-                      newCustomName={newCustomName}
-                      setNewCustomName={setNewCustomName}
-                      handleSaveCustomItem={handleSaveCustomItem}
-                      handleDiscardCustomItem={handleDiscardCustomItem}
-                      editingCustomItemId={editingCustomItemId}
-                      customItemDeleteConfirm={customItemDeleteConfirm}
-                      setCustomItemDeleteConfirm={setCustomItemDeleteConfirm}
-                      handleDeleteCustomItem={handleDeleteCustomItem}
-                      iconPickerProps={{
-                        open: iconPickerOpen,
-                        onClose: () => setIconPickerOpen(false),
-                        iconPickerTab,
-                        handleIconPickerTabChange,
-                        iconPickerSearch,
-                        setIconPickerSearch,
-                        iconSearchResults,
-                        selectedIconId,
-                        setSelectedIconId,
-                        selectedEmoji,
-                        setSelectedEmoji,
-                        selectableEmojiList,
-                        iconPickerShowAll,
-                        setIconPickerShowAll,
-                        iconPickerPage,
-                        setIconPickerPage,
-                        iconCatalogLength: iconCatalog.length,
-                      }}
-                      multiGestures={multiGestures}
-                      setMultiGestures={setMultiGestures}
-                      activeGestureDropdown={activeGestureDropdown}
-                      setActiveGestureDropdown={setActiveGestureDropdown}
-                      gestureKeySearch={gestureKeySearch}
-                      setGestureKeySearch={setGestureKeySearch}
-                      expandedGestureSection={expandedGestureSection}
-                      setExpandedGestureSection={setExpandedGestureSection}
-                      basicKeySections={basicKeySections}
-                      tappingTermMs={tappingTermMs}
-                      setTappingTermMs={setTappingTermMs}
-                      smartSubTab={smartSubTab}
-                      setSmartSubTab={setSmartSubTab}
-                      smartTextValue={smartTextValue}
-                      setSmartTextValue={setSmartTextValue}
-                      smartCmdValue={smartCmdValue}
-                      setSmartCmdValue={setSmartCmdValue}
-                      smartWebValue={smartWebValue}
-                      setSmartWebValue={setSmartWebValue}
-                      smartAppValue={smartAppValue}
-                      setSmartAppValue={setSmartAppValue}
-                      smartAppDropdownOpen={smartAppDropdownOpen}
-                      setSmartAppDropdownOpen={setSmartAppDropdownOpen}
-                      selectedSmartApplication={selectedSmartApplication}
-                      setSelectedSmartApplication={setSelectedSmartApplication}
-                      installedApplications={installedApplications}
-                      installedApplicationsLoading={installedApplicationsLoading}
-                      installedApplicationsError={installedApplicationsError}
-                      loadInstalledApplications={loadInstalledApplications}
-                      actionAdvanceMode={actionAdvanceMode}
-                      setActionAdvanceMode={setActionAdvanceMode}
-                      actionRecordingStatus={actionRecordingStatus}
-                      setActionRecordingStatus={setActionRecordingStatus}
-                      actionTokens={actionTokens}
-                      actionAdvanceSteps={actionAdvanceSteps}
-                      setActionAdvanceSteps={setActionAdvanceSteps}
-                      activeAdvanceStepDropdown={activeAdvanceStepDropdown}
-                      setActiveAdvanceStepDropdown={setActiveAdvanceStepDropdown}
-                      editingDelayStepId={editingDelayStepId}
-                      setEditingDelayStepId={setEditingDelayStepId}
-                      draggingAdvStep={draggingAdvStep}
-                      advStepDragRef={advStepDragRef}
-                      setDraggingAdvStep={setDraggingAdvStep}
-                      hoveredModeStepId={hoveredModeStepId}
-                      setHoveredModeStepId={setHoveredModeStepId}
-                      hoveredDelayStepId={hoveredDelayStepId}
-                      setHoveredDelayStepId={setHoveredDelayStepId}
-                      showToast={showToast}
-                    />
-                  ) : (
-                    <ActionLibrarySidebar
-                      onClose={() => {
-                        setMappingDrawerOpen(false);
-                        setSelectedKey(null);
-                        setSelectedEncoderSub(null);
-                        setSelectedDrawerTile(null);
-                      }}
-                      activeTooltip={activeTooltip}
-                      setActiveTooltip={setActiveTooltip}
-                      mappingSearch={mappingSearch}
-                      setMappingSearch={setMappingSearch}
-                      mappingViewMode={mappingViewMode}
-                      setMappingViewMode={setMappingViewMode}
-                      mappingTab={mappingTab}
-                      setMappingTab={setMappingTab}
-                      filteredBasicSections={filteredBasicSections}
-                      expandedListSections={expandedListSections}
-                      toggleListSection={toggleListSection}
-                      draggedTile={draggedTile}
-                      flashedTileId={flashedTileId}
-                      handleStartTileDrag={handleStartTileDrag}
-                      handleAssignTileFromDrawer={handleAssignTileFromDrawer}
-                      handleOpenCreatorEditor={handleOpenCreatorEditor}
-                      customItemsByTab={customItemsByTab}
-                      renderAppIcon={(id, size) => (
-                        <PresetAppIcon id={id} size={size} />
-                      )}
-                      showToast={showToast}
-                    />
-                  )}
-                </AnimatePresence>
-              </motion.aside>
+              <MappingDrawer
+                creatorModalTab={creatorModalTab}
+                creatorProps={{
+                  onClose: () => {
+                    setIconPickerOpen(false);
+                    setActiveGestureDropdown(null);
+                    setCreatorModalTab(null);
+                  },
+                  activeTooltip,
+                  setActiveTooltip,
+                  handleToggleIconPicker,
+                  selectedIconId,
+                  selectedEmoji,
+                  newCustomName,
+                  setNewCustomName,
+                  handleSaveCustomItem,
+                  handleDiscardCustomItem,
+                  editingCustomItemId,
+                  customItemDeleteConfirm,
+                  setCustomItemDeleteConfirm,
+                  handleDeleteCustomItem,
+                  iconPickerProps: {
+                    open: iconPickerOpen,
+                    onClose: () => setIconPickerOpen(false),
+                    iconPickerTab,
+                    handleIconPickerTabChange,
+                    iconPickerSearch,
+                    setIconPickerSearch,
+                    iconSearchResults,
+                    selectedIconId,
+                    setSelectedIconId,
+                    selectedEmoji,
+                    setSelectedEmoji,
+                    selectableEmojiList,
+                    iconPickerShowAll,
+                    setIconPickerShowAll,
+                    iconPickerPage,
+                    setIconPickerPage,
+                    iconCatalogLength: iconCatalog.length,
+                  },
+                  multiGestures,
+                  setMultiGestures,
+                  activeGestureDropdown,
+                  setActiveGestureDropdown,
+                  gestureKeySearch,
+                  setGestureKeySearch,
+                  expandedGestureSection,
+                  setExpandedGestureSection,
+                  basicKeySections,
+                  tappingTermMs,
+                  setTappingTermMs,
+                  smartSubTab,
+                  setSmartSubTab,
+                  smartTextValue,
+                  setSmartTextValue,
+                  smartCmdValue,
+                  setSmartCmdValue,
+                  smartWebValue,
+                  setSmartWebValue,
+                  smartAppValue,
+                  setSmartAppValue,
+                  smartAppDropdownOpen,
+                  setSmartAppDropdownOpen,
+                  selectedSmartApplication,
+                  setSelectedSmartApplication,
+                  installedApplications,
+                  installedApplicationsLoading,
+                  installedApplicationsError,
+                  loadInstalledApplications,
+                  actionAdvanceMode,
+                  setActionAdvanceMode,
+                  actionRecordingStatus,
+                  setActionRecordingStatus,
+                  actionTokens,
+                  actionAdvanceSteps,
+                  setActionAdvanceSteps,
+                  activeAdvanceStepDropdown,
+                  setActiveAdvanceStepDropdown,
+                  editingDelayStepId,
+                  setEditingDelayStepId,
+                  draggingAdvStep,
+                  advStepDragRef,
+                  setDraggingAdvStep,
+                  hoveredModeStepId,
+                  setHoveredModeStepId,
+                  hoveredDelayStepId,
+                  setHoveredDelayStepId,
+                  showToast,
+                }}
+                libraryProps={{
+                  onClose: () => {
+                    setMappingDrawerOpen(false);
+                    setSelectedKey(null);
+                    setSelectedEncoderSub(null);
+                    setSelectedDrawerTile(null);
+                  },
+                  activeTooltip,
+                  setActiveTooltip,
+                  mappingSearch,
+                  setMappingSearch,
+                  mappingViewMode,
+                  setMappingViewMode,
+                  mappingTab,
+                  setMappingTab,
+                  filteredBasicSections,
+                  expandedListSections,
+                  toggleListSection,
+                  draggedTile,
+                  flashedTileId,
+                  handleStartTileDrag,
+                  handleAssignTileFromDrawer,
+                  handleOpenCreatorEditor,
+                  customItemsByTab,
+                  renderAppIcon: (id, size) => (
+                    <PresetAppIcon id={id} size={size} />
+                  ),
+                  showToast,
+                }}
+              />
             )}
           </AnimatePresence>
         </motion.main>
@@ -3933,82 +3924,18 @@ export default function App() {
       {/* FLOATING BLACK KEYCAP DRAG PREVIEW WITH SUBTLE CORNER-HELD CIRCULAR MOTION */}
       <AnimatePresence>
         {draggedTile && (
-          <motion.div
-            key="dragged-tile-preview"
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1.04 }}
-            exit={{ opacity: 0, scale: 0.92 }}
-            transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
-            style={{
-              left: draggedTile.x - 27,
-              top: draggedTile.y - 27,
-              y: dragSpringBobY,
-              rotate: dragSpringRotate,
-              transformOrigin: '22% 20%',
-            }}
-            className="fixed w-[54px] h-[54px] rounded-[9px] bg-[#000000] text-white shadow-[0_14px_28px_rgba(0,0,0,0.34)] flex flex-col items-center justify-center px-1 text-center pointer-events-none z-[100] select-none"
-          >
-            {draggedTile.item.iconId ? (
-              <CustomPickerIcon id={draggedTile.item.iconId} size={20} />
-            ) : draggedTile.item.emoji ? (
-              <span className="text-[20px] leading-none">
-                {draggedTile.item.emoji}
-              </span>
-            ) : draggedTile.item.isClearIcon ? (
-              <EmptyKeyPlusIcon size={16} stroke="#ffffff" />
-            ) : draggedTile.item.arrowDir ? (
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                fill="none"
-                stroke="#ffffff"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{
-                  transform: `rotate(${
-                    draggedTile.item.arrowDir === 'right'
-                      ? 0
-                      : draggedTile.item.arrowDir === 'down'
-                      ? 90
-                      : draggedTile.item.arrowDir === 'left'
-                      ? 180
-                      : -90
-                  }deg)`,
-                }}
-              >
-                <path d="M2.5 6H9.5M9.5 6L6.5 3M9.5 6L6.5 9" />
-              </svg>
-            ) : draggedTile.item.top ? (
-              <div className="flex flex-col items-center leading-[1.15] text-[10.5px] font-medium">
-                <span>{draggedTile.item.top}</span>
-                <span>{draggedTile.item.main}</span>
-              </div>
-            ) : (
-              <span className="text-[10.5px] font-medium leading-[1.15] text-center whitespace-pre-line">
-                {draggedTile.sourceTab === 'Basic'
-                  ? draggedTile.item.main
-                  : formatCustomTileText(draggedTile.item.main)}
-              </span>
-            )}
-          </motion.div>
+          <DraggedTilePreview
+            draggedTile={draggedTile}
+            dragSpringBobY={dragSpringBobY}
+            dragSpringRotate={dragSpringRotate}
+          />
         )}
       </AnimatePresence>
 
       {/* SUBTLE FEEDBACK TOAST */}
       <AnimatePresence>
         {toastMessage && (
-          <motion.div
-            key="feedback-toast"
-            initial={{ opacity: 0, y: 12, scale: 0.94 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.94 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-black text-white text-[11px] font-medium px-4 py-1.5 rounded-full shadow-lg z-50"
-          >
-            {toastMessage}
-          </motion.div>
+          <FeedbackToast message={toastMessage} />
         )}
       </AnimatePresence>
     </div>
