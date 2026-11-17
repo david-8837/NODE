@@ -581,6 +581,25 @@ function createWindow() {
 
   const ses = mainWindow.webContents.session;
 
+  // Enforce strict Content Security Policy (CSP) headers across all session responses
+  ses.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self' file:; " +
+          "script-src 'self' file: 'unsafe-inline' blob:; " +
+          "style-src 'self' file: 'unsafe-inline' https://fonts.googleapis.com; " +
+          "font-src 'self' file: data: https://fonts.gstatic.com; " +
+          "img-src 'self' file: data: blob:; " +
+          "connect-src 'self' file: http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:* https://api.github.com; " +
+          "object-src 'none'; " +
+          "base-uri 'self';"
+        ],
+      },
+    });
+  });
+
   // Limit device access to the expected QMK/VIA Raw HID keyboard interface
   // and only from the trusted app window/origin.
   ses.setDevicePermissionHandler((details) => {
@@ -702,9 +721,9 @@ function createWindow() {
 
 // Only the trusted studio renderer can control the HUD; the HUD has no control IPC.
 ipcMain.handle('cheat-sheet-update', (event, snapshot) =>
-  isTrustedRenderer(event) && cheatSheet.update(snapshot));
+  isTrustedRenderer(event) && snapshot && typeof snapshot === 'object' && cheatSheet.update(snapshot));
 ipcMain.handle('cheat-sheet-command', (event, command, token) =>
-  isTrustedRenderer(event) && cheatSheet.command(command, token));
+  isTrustedRenderer(event) && typeof command === 'string' && cheatSheet.command(command, token));
 
 // IPC Handlers for Native Windows Control
 ipcMain.handle('window-minimize', (event) => {

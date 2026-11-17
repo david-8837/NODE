@@ -82,7 +82,10 @@ export function EncoderPopupCapsule({
               )}
             </AnimatePresence>
 
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.93 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
               data-drop-slot={slotId}
               data-drop-encoder-sub={item.id}
               onPointerDown={(e) => onStartSubDrag(e, item.id)}
@@ -175,7 +178,7 @@ export function EncoderPopupCapsule({
                   {item.bottomText}
                 </span>
               )}
-            </button>
+            </motion.button>
           </div>
         );
       })}
