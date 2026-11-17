@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 'Documentation & User Guide'
+    url: 'https://david-8837.github.io/NODE/docs.html'
+    about: 'Check the official reference guide for quick start, keymaps, and flashing steps.'
+  - name: 'Support & FAQs'
+    url: 'https://david-8837.github.io/NODE/support.html'
+    about: 'Find troubleshooting tips for hardware detection, drivers, and recovery.'
+  - name: 'Community Feedback'
+    url: 'https://david-8837.github.io/NODE/feedback.html'
+    about: 'Share general ideas and feedback directly on the website.'

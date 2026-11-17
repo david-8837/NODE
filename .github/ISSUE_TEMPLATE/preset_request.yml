@@ -1,0 +1,44 @@
+name: 'Preset Request'
+description: 'Suggest a new workflow preset for a creative, coding, or productivity app'
+title: '[Preset]: '
+labels: ['preset', 'enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggest a new bundled preset for NODE studio (e.g. Blender, Premiere, Figma, VS Code, OBS).
+  - type: input
+    id: app-name
+    attributes:
+      label: 'Target Application'
+      description: 'Which app or software is this preset for?'
+      placeholder: 'e.g. DaVinci Resolve, Ableton Live, Blender'
+    validations:
+      required: true
+  - type: textarea
+    id: key-mappings
+    attributes:
+      label: 'Proposed 3×3 Key Layout'
+      description: 'List the 9 recommended shortcuts for the 3×3 key matrix.'
+      value: |
+        Row 1: [Key 1], [Key 2], [Key 3]
+        Row 2: [Key 4], [Key 5], [Key 6]
+        Row 3: [Key 7], [Key 8], [Key 9]
+    validations:
+      required: true
+  - type: textarea
+    id: encoder-mappings
+    attributes:
+      label: 'Rotary Encoder Actions'
+      description: 'What should the dial do?'
+      value: |
+        - Clockwise (CW): e.g. Zoom In / Scrub Forward
+        - Counter-Clockwise (CCW): e.g. Zoom Out / Scrub Backward
+        - Press (Push switch): e.g. Play / Pause / Reset View
+    validations:
+      required: true
+  - type: input
+    id: accent-color
+    attributes:
+      label: 'Suggested Accent Color (Hex)'
+      placeholder: '#0051ff'

@@ -1,0 +1,73 @@
+name: 'Bug Report'
+description: 'Report an issue or unexpected behavior in NODE studio'
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please provide as much detail as possible.
+  - type: input
+    id: version
+    attributes:
+      label: 'NODE Studio Version'
+      description: 'Which version of the app are you running? (e.g. v1.1.11, Web browser)'
+      placeholder: 'v1.1.11'
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: 'Platform / Environment'
+      options:
+        - 'Windows 11 (Installed .exe)'
+        - 'Windows 10 (Installed .exe)'
+        - 'Windows (Portable .zip)'
+        - 'Web Browser (Google Chrome)'
+        - 'Web Browser (Microsoft Edge)'
+        - 'Other'
+    validations:
+      required: true
+  - type: dropdown
+    id: hardware-status
+    attributes:
+      label: 'Hardware Connection'
+      options:
+        - 'Grid Macro 1 Connected via USB-C'
+        - 'Simulation Mode (No hardware)'
+        - 'Third-party QMK/VIA macropad'
+        - 'Not connected'
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 'Describe the Bug'
+      description: 'A clear and concise description of what went wrong.'
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 'Steps to Reproduce'
+      description: 'How can we reproduce the problem?'
+      value: |
+        1. Open NODE studio
+        2. Connect device or open profile '...'
+        3. Click on '...'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 'Expected Behavior'
+      description: 'What did you expect to happen instead?'
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 'Console Logs or Error Output'
+      description: 'Paste any error messages from the DevTools console or diagnostic files.'
+      render: shell
