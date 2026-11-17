@@ -5,12 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f4f4f1" />
     <meta name="description" content="Meet NODE studio: map nine keys and one rotary encoder, build profiles, and download the Windows x64 app." />
-    <meta property="og:title" content="NODE studio" />
-    <meta property="og:description" content="Nine keys. One dial. Your workflow, within reach." />
+    <meta name="author" content="NODE studio" />
+    <meta name="keywords" content="NODE studio, macropad, Grid Macro 1, QMK, VIA, WebHID, RP2040, rotary encoder, shortcuts, mechanical keyboard" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://david-8837.github.io/NODE/" />
+
+    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://david-8837.github.io/NODE/" />
+    <meta property="og:site_name" content="NODE studio" />
+    <meta property="og:title" content="NODE studio — Your shortcuts, within reach" />
+    <meta property="og:description" content="A focused desktop studio for configuring the Grid Macro 1 macropad: nine keys, one rotary encoder, profiles, presets, and live WebHID sync." />
+    <meta property="og:image" content="https://david-8837.github.io/NODE/assets/grid-macro-studio-current.png" />
+    <meta property="og:image:width" content="1350" />
+    <meta property="og:image:height" content="942" />
+    <meta property="og:image:alt" content="NODE studio keymap screen with profile and layer controls" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://david-8837.github.io/NODE/" />
+    <meta name="twitter:title" content="NODE studio — Your shortcuts, within reach" />
+    <meta name="twitter:description" content="Nine keys. One dial. Map your workflow, switch profiles, and tune your dial in one focused desktop studio." />
+    <meta name="twitter:image" content="https://david-8837.github.io/NODE/assets/grid-macro-studio-current.png" />
+    <meta name="twitter:image:alt" content="NODE studio keymap screen with profile and layer controls" />
+
     <title>NODE studio — Your shortcuts, within reach</title>
     <link rel="icon" type="image/png" href="./assets/node-studio-icon.png" />
-    <link rel="stylesheet" href="./styles.css?v=6" />
+    <link rel="stylesheet" href="./styles.css?v=7" />
     <script src="./downloads.js" defer></script>
   </head>
   <body>
@@ -27,6 +48,7 @@
         </a>
         <nav class="main-nav" aria-label="Main navigation">
           <a href="#features">Features</a>
+          <a href="#hardware">Hardware Guide</a>
           <a href="#how-it-works">How it works</a>
           <a href="https://github.com/david-8837/NODE/releases" target="_blank" rel="noreferrer">Releases <span aria-hidden="true">↗</span></a>
         </nav>
@@ -124,6 +146,79 @@
             <p>Set clockwise, counter-clockwise, and press actions for quick control without reaching for the mouse.</p>
             <span class="feature-link">Three actions. One dial. <span aria-hidden="true">↗</span></span>
           </article>
+        </div>
+      </section>
+
+      <section class="section container hardware-section" id="hardware" aria-labelledby="hardware-title">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow eyebrow-muted">HARDWARE SPEC &amp; SETUP</div>
+            <h2 id="hardware-title">Built for Grid Macro 1.<br /><span>Rock-solid from first flash.</span></h2>
+          </div>
+          <p>Follow the pinout guide, verify QMK/VIA protocols, and flash the RP2040-Zero controller with confidence.</p>
+        </div>
+        <div class="hardware-grid">
+          <article class="hardware-card">
+            <div class="hardware-card-badge">SPEC 01</div>
+            <h3>Microcontroller &amp; Pinout</h3>
+            <p>Runs on the compact Raspberry Pi RP2040-Zero. Direct matrix keys GP0–GP8, rotary encoder on GP9 (A), GP10 (B), GP11 (Push), and WS2812 RGB data on GP16.</p>
+            <ul class="hardware-tags">
+              <li>RP2040-Zero</li>
+              <li>GP0–GP8 Keys</li>
+              <li>GP9–GP11 Encoder</li>
+              <li>GP16 WS2812</li>
+            </ul>
+          </article>
+          <article class="hardware-card">
+            <div class="hardware-card-badge">SPEC 02</div>
+            <h3>QMK &amp; VIA Protocol</h3>
+            <p>Communicates over standard 32-byte Raw HID packets (Usage Page <code>0xFF60</code>, Usage <code>0x61</code>). Registered under USB VID/PID <code>0xFEED:0x6001</code> with full VIA v13 protocol support.</p>
+            <ul class="hardware-tags">
+              <li>VID/PID 0xFEED:0x6001</li>
+              <li>Raw HID 0xFF60:0x61</li>
+              <li>VIA v13 Protocol</li>
+              <li>4 Hardware Layers</li>
+            </ul>
+          </article>
+          <article class="hardware-card">
+            <div class="hardware-card-badge">GUIDE 03</div>
+            <h3>1-Click UF2 Flashing</h3>
+            <p>Hold the <code>BOOT</code> button while plugging in USB to mount the <code>RPI-RP2</code> drive. Drop in <code>grid_macro_1_via.uf2</code> to flash. Builds include verifiable SHA-256 provenance.</p>
+            <ul class="hardware-tags">
+              <li>BOOT Mode Recovery</li>
+              <li>Drag &amp; Drop UF2</li>
+              <li>SHA-256 Checksums</li>
+              <li>Instant Auto-Reboot</li>
+            </ul>
+          </article>
+          <article class="hardware-card">
+            <div class="hardware-card-badge">GUIDE 04</div>
+            <h3>Pre-Sync Safety &amp; Backup</h3>
+            <p>Studio automatically captures a device snapshot before writes. If a cable disconnects mid-sync, local profiles stay safely preserved in storage without corrupted device memory.</p>
+            <ul class="hardware-tags">
+              <li>Auto Pre-Sync Backup</li>
+              <li>Disconnect Protection</li>
+              <li>JSON Profile Export</li>
+              <li>Instant Device Restore</li>
+            </ul>
+          </article>
+        </div>
+        <div class="hardware-links-strip">
+          <a class="hardware-doc-link" href="https://github.com/david-8837/NODE/blob/main/HARDWARE_PREPARATION_CHECKLIST.md" target="_blank" rel="noreferrer">
+            <span class="doc-icon" aria-hidden="true">📋</span>
+            <span><strong>Hardware Checklist</strong><small>Pre-flight pinout &amp; electrical testing guide</small></span>
+            <span class="doc-arrow" aria-hidden="true">↗</span>
+          </a>
+          <a class="hardware-doc-link" href="https://github.com/david-8837/NODE/blob/main/WINDOWS_APP_AND_FIRMWARE_GUIDE.md" target="_blank" rel="noreferrer">
+            <span class="doc-icon" aria-hidden="true">📖</span>
+            <span><strong>Firmware Guide</strong><small>QMK building, flashing &amp; WebHID bridge</small></span>
+            <span class="doc-arrow" aria-hidden="true">↗</span>
+          </a>
+          <a class="hardware-doc-link" href="https://github.com/david-8837/NODE/tree/main/qmk_firmware/grid_macro_1" target="_blank" rel="noreferrer">
+            <span class="doc-icon" aria-hidden="true">⚡</span>
+            <span><strong>QMK Source</strong><small>Explore keymaps, rules, and stubs</small></span>
+            <span class="doc-arrow" aria-hidden="true">↗</span>
+          </a>
         </div>
       </section>
 

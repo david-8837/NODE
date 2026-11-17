@@ -105,6 +105,24 @@ h1, h2, h3, p { margin-top: 0; }
 .feature-link { color: #5b6069; font-size: 9px; font-weight: 700; }
 .feature-link span { margin-left: 3px; color: var(--blue); }
 
+.hardware-section { padding-top: 0; }
+.hardware-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+.hardware-card { position: relative; padding: 26px 28px; border: 1px solid #e5e6e8; border-radius: 14px; background: rgba(255, 255, 255, .63); transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; }
+.hardware-card:hover { transform: translateY(-3px); border-color: #d3d9e9; box-shadow: 0 15px 35px rgba(35, 41, 54, .07); }
+.hardware-card-badge { display: inline-block; padding: 4px 8px; border-radius: 6px; font-size: 8px; font-weight: 800; letter-spacing: .12em; color: var(--blue); background: var(--soft-blue); margin-bottom: 14px; }
+.hardware-card h3 { margin: 0 0 10px; font-size: 17px; font-weight: 700; letter-spacing: -.03em; }
+.hardware-card p { margin: 0 0 18px; color: #737780; font-size: 12px; line-height: 1.65; }
+.hardware-card code { padding: 2px 6px; border-radius: 5px; font-size: 11px; background: #e8ebf0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #30333a; }
+.hardware-tags { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0; }
+.hardware-tags li { padding: 4px 9px; border-radius: 99px; font-size: 9px; font-weight: 600; color: #5a5e66; background: #eceef2; }
+.hardware-links-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 24px; }
+.hardware-doc-link { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border: 1px solid #e1e3e6; border-radius: 12px; background: rgba(255, 255, 255, .45); transition: transform .2s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease; }
+.hardware-doc-link:hover { transform: translateY(-2px); border-color: #c7cbd4; background: #fff; box-shadow: 0 8px 20px rgba(30, 35, 45, .05); }
+.doc-icon { font-size: 20px; line-height: 1; }
+.hardware-doc-link span strong { display: block; font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.hardware-doc-link span small { display: block; font-size: 9px; color: #7a7e86; }
+.doc-arrow { margin-left: auto; color: var(--blue); font-size: 14px; font-weight: 600; }
+
 .download-section { position: relative; overflow: hidden; padding-block: 86px; color: white; background: #111214; }
 .download-section::before { position: absolute; top: -280px; right: -140px; width: 700px; height: 700px; border: 1px solid rgba(255, 255, 255, .075); border-radius: 50%; content: ""; }
 .download-section::after { position: absolute; top: -145px; right: -5px; width: 430px; height: 430px; border: 1px dashed rgba(255, 255, 255, .07); border-radius: 50%; content: ""; }
@@ -182,6 +200,7 @@ h1, h2, h3, p { margin-top: 0; }
   .steps-section { gap: 45px; }
   .spec-grid { gap: 18px; }
   .spec-note { font-size: 9px; }
+  .hardware-links-strip { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -213,6 +232,8 @@ h1, h2, h3, p { margin-top: 0; }
   .feature-card { min-height: 0; padding: 21px; }
   .feature-icon { margin-top: 20px; }
   .feature-card p { max-width: 440px; margin-bottom: 15px; }
+  .hardware-grid { grid-template-columns: 1fr; }
+  .hardware-card { padding: 20px; }
   .download-section { padding-block: 70px; }
   .download-layout { grid-template-columns: 1fr; gap: 31px; }
   .download-copy h2 { font-size: clamp(42px, 9vw, 54px); }
