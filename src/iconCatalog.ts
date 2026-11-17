@@ -188,3 +188,13 @@ export function findIconMetadata(
 
   return index.get(iconId);
 }
+
+export function getMacroIconLibrary(): IconLibrary | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return (window as Window & { __MACRO_ICONS__?: IconLibrary }).__MACRO_ICONS__;
+}
+
+export function getMacroIconPath(iconId: string): string | undefined {
+  return getMacroIconLibrary()?.d?.[iconId];
+}
+

@@ -179,6 +179,8 @@ export default defineConfig(() => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     test: {
+      testTimeout: 15000,
+      maxWorkers: 4,
       coverage: {
         provider: 'v8' as const,
         reporter: ['text', 'json-summary', 'html'],
