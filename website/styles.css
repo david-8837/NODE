@@ -118,7 +118,8 @@ h1, h2, h3, p { margin-top: 0; }
 .hardware-links-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 24px; }
 .hardware-doc-link { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border: 1px solid #e1e3e6; border-radius: 12px; background: rgba(255, 255, 255, .45); transition: transform .2s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease; }
 .hardware-doc-link:hover { transform: translateY(-2px); border-color: #c7cbd4; background: #fff; box-shadow: 0 8px 20px rgba(30, 35, 45, .05); }
-.doc-icon { font-size: 20px; line-height: 1; }
+.doc-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 9px; color: var(--blue); background: var(--soft-blue); flex: 0 0 auto; }
+.doc-icon svg { width: 20px; height: 20px; }
 .hardware-doc-link span strong { display: block; font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
 .hardware-doc-link span small { display: block; font-size: 9px; color: #7a7e86; }
 .doc-arrow { margin-left: auto; color: var(--blue); font-size: 14px; font-weight: 600; }
@@ -162,8 +163,9 @@ h1, h2, h3, p { margin-top: 0; }
 .status-spinner { width: 10px; height: 10px; flex: 0 0 auto; border: 1px solid #555962; border-top-color: #aeb5c2; border-radius: 50%; animation: spin .8s linear infinite; }
 .release-status[data-state="ready"] .status-spinner { border: 0; border-radius: 0; background: #50b77a; clip-path: polygon(0 48%, 38% 85%, 100% 10%, 88% 0, 37% 62%, 12% 39%); animation: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.download-safety { display: flex; gap: 7px; margin-top: 11px; padding-top: 12px; border-top: 1px solid #303237; color: #858991; font-size: 8px; line-height: 1.6; }
-.download-safety > span { color: #a0a6b1; }
+.download-safety { display: flex; align-items: flex-start; gap: 7px; margin-top: 11px; padding-top: 12px; border-top: 1px solid #303237; color: #858991; font-size: 8px; line-height: 1.6; }
+.safety-icon { display: inline-grid; width: 13px; height: 13px; place-items: center; flex: 0 0 auto; margin-top: 1px; color: #a0a6b1; }
+.safety-icon svg { width: 13px; height: 13px; }
 
 .steps-section { display: grid; grid-template-columns: .9fr 1.1fr; gap: 80px; }
 .steps-heading h2 { font-size: clamp(39px, 5vw, 55px); }
