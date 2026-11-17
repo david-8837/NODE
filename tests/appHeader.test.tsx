@@ -25,7 +25,7 @@ describe('AppHeader component', () => {
     device: 'Grid Macro 1',
     path: 'USB#VID_FEED&PID_6001',
     fw: 'v1.2.0',
-    layers: 4,
+    layerCount: 4,
   };
 
   it('renders brand logo and handles logo click', async () => {
