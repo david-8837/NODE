@@ -328,9 +328,27 @@ async function captureVisualSmokeScreenshot() {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Cheat-Sheet failed to load')), 15000)),
       ]);
     }
-    const hudContent = await hud.webContents.executeJavaScript(`({ layer: document.querySelector('#layer')?.textContent, keys: Array.from(document.querySelectorAll('.key'), node => node.textContent), encoder: ['ccw', 'press', 'cw'].map(direction => document.getElementById('dial-' + direction)?.textContent), hasDial: !!document.querySelector('.dial'), actionPanels: document.querySelectorAll('.dial-action').length, hasCopyIcon: !!document.querySelector('.key svg'), transparent: ['html', 'body', 'main', '.key', '.dial-action', '.dial'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none'; }) })`);
+    const hudContent = await hud.webContents.executeJavaScript(`(() => {
+      const panel = document.querySelector('main');
+      const grid = document.querySelector('.keys');
+      const panelRect = panel.getBoundingClientRect();
+      const keys = Array.from(document.querySelectorAll('.key'));
+      return {
+        layer: document.querySelector('#layer')?.textContent,
+        keys: keys.map(node => node.textContent),
+        encoder: ['ccw', 'press', 'cw'].map(direction => document.getElementById('dial-' + direction)?.textContent),
+        hasDial: !!document.querySelector('.dial'),
+        actionPanels: document.querySelectorAll('.dial-action').length,
+        hasCopyIcon: !!document.querySelector('.key svg'),
+        transparent: ['html', 'body', 'main', '.key', '.dial-action', '.dial'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none'; }),
+        outlines: keys.length === 9 && getComputedStyle(panel).overflow === 'visible' && getComputedStyle(grid).overflow === 'visible' && getComputedStyle(panel).borderTopWidth === '1px' && getComputedStyle(panel).borderTopStyle === 'solid' && getComputedStyle(panel).borderRadius === '22px' && keys.every(node => {
+          const style = getComputedStyle(node), rect = node.getBoundingClientRect();
+          return ['Top', 'Right', 'Bottom', 'Left'].every(side => style['border' + side + 'Width'] === '1px' && style['border' + side + 'Style'] === 'solid' && style['border' + side + 'Color'] === 'rgba(255, 255, 255, 0.85)') && style.borderRadius === '14px' && rect.width > 0 && rect.height > 0 && rect.left >= panelRect.left && rect.top >= panelRect.top && rect.right <= panelRect.right && rect.bottom <= panelRect.bottom;
+        }),
+      };
+    })()`);
     if (!hud.isVisible() || !hud.isAlwaysOnTop() || hud.isFocusable() ||
-        (process.platform === 'win32' && !cheatSheet.isBlurEnabled()) || !hudContent.transparent ||
+        (process.platform === 'win32' && !cheatSheet.isBlurEnabled()) || !hudContent.transparent || !hudContent.outlines ||
         hudContent.layer !== 'LAYER 2' || hudContent.keys.length !== 9 || !hudContent.hasDial || hudContent.actionPanels !== 3 || !hudContent.hasCopyIcon ||
         hudContent.encoder.join('|') !== 'Volume Down|Mute|Volume Up' ||
         hudContent.keys[0] !== 'Ctrl + C' || hudContent.keys[1] !== 'Volume Up') {

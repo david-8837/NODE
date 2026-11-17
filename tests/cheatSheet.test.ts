@@ -137,7 +137,17 @@ describe('HUD document', () => {
     expect(css).toContain('grid-template-columns: repeat(3, 1fr)');
     expect(css).toContain('grid-template-rows: repeat(3, 1fr)');
     expect(css).toContain('border: 1px solid white');
+    expect(css).toContain('border: 1px solid rgba(255, 255, 255, 0.85)');
     expect(css).toContain('border-radius: 22px');
+    for (const cell of dom.window.document.querySelectorAll('.key')) {
+      const computed = dom.window.getComputedStyle(cell);
+      expect(computed.borderWidth).toBe('1px');
+      expect(computed.borderStyle).toBe('solid');
+      expect(computed.borderColor).toBe('rgba(255, 255, 255, 0.85)');
+      expect(computed.borderRadius).toBe('14px');
+    }
+    expect(dom.window.getComputedStyle(dom.window.document.querySelector('main')!).overflow).toBe('visible');
+    expect(dom.window.getComputedStyle(dom.window.document.querySelector('.keys')!).overflow).toBe('visible');
     expect(css).not.toMatch(/gradient|box-shadow|backdrop-filter/);
     expect(dom.window.document.querySelectorAll('.key')).toHaveLength(9);
     expect(dom.window.document.querySelectorAll('.dial-action')).toHaveLength(3);
@@ -186,31 +196,17 @@ describe('native HUD controller (mock Electron)', () => {
     expect(win.ignored).toBe(true);
     hud.destroy();
   });
-  it('clips accepted Windows blur to rounded corners without changing click-through', () => {
+  it('keeps the HUD unshaped when Windows accepts blur so native clipping cannot cut the outlines', () => {
     const blur = vi.fn(() => true);
     const hud = harness('win32', '10.0.22621', blur);
     hud.update({ layer: 1, keys: Array(9).fill('') });
     const win = FakeWindow.instance;
     expect(blur).toHaveBeenCalledOnce();
     expect(hud.isBlurEnabled()).toBe(true);
-    expect(win.shape).toHaveLength(45);
-    expect(win.shape[0].x).toBeGreaterThan(0);
-    expect(win.shape.at(-1)).toEqual({ x: 0, y: 22, width: 240, height: 256 });
+    expect(win.shape).toEqual([]);
     expect(win.ignored).toBe(true);
     hud.destroy();
     expect(hud.isBlurEnabled()).toBe(false);
-  });
-  it('disables blur if rounded clipping fails', () => {
-    const blur = vi.fn((_handle: Buffer, _enabled?: boolean) => true);
-    const shape = vi.spyOn(FakeWindow.prototype, 'setShape').mockImplementation(() => { throw new Error('unsupported'); });
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const hud = harness('win32', '10.0.22621', blur);
-    hud.update({ layer: 1, keys: Array(9).fill('') });
-    expect(blur).toHaveBeenCalledTimes(2);
-    expect(blur.mock.calls[1][1]).toBe(false);
-    expect(hud.isBlurEnabled()).toBe(false);
-    expect(FakeWindow.instance.ignored).toBe(true);
-    hud.destroy(); shape.mockRestore(); warning.mockRestore();
   });
   it('creates a non-focusable click-through always-on-top window and updates it after load', () => {
     const hud = harness();

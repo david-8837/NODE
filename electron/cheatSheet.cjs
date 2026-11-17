@@ -2,18 +2,6 @@
 const path = require('node:path');
 const { makeWindowsBlur } = require('./cheatSheetBlur.cjs');
 
-function roundedWindowShape(width, height, radius) {
-  const rows = [];
-  for (let y = 0; y < radius; y++) {
-    const dy = radius - y - 0.5;
-    const inset = Math.ceil(radius - Math.sqrt(radius * radius - dy * dy));
-    rows.push({ x: inset, y, width: width - 2 * inset, height: 1 });
-    rows.push({ x: inset, y: height - 1 - y, width: width - 2 * inset, height: 1 });
-  }
-  rows.push({ x: 0, y: radius, width, height: height - 2 * radius });
-  return rows;
-}
-
 /** Native, non-focusable and click-through HUD. All renderer-provided text is
  * rendered using textContent in the isolated overlay, never as HTML. */
 function createCheatSheetController({ BrowserWindow, screen, platform = process.platform, createBlur = makeWindowsBlur }) {
@@ -44,21 +32,13 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
         contextIsolation: true, nodeIntegration: false, sandbox: true,
       },
     });
-    // If Windows accepts blur, clip its backdrop to the same rounded outline.
-    // If either API is unavailable, leave the earlier transparent HUD intact.
-    if (platform === 'win32' && typeof window.setShape === 'function' && typeof window.getNativeWindowHandle === 'function') {
+    // The Windows accent blur is rectangular even when setShape succeeds.
+    // Native shape clipping can also cut off the HUD outline at some DPI scales,
+    // so keep the renderer unshaped. Windows' blur corners remain a known issue.
+    if (platform === 'win32' && typeof window.getNativeWindowHandle === 'function') {
       try {
         const blur = createBlur({ platform });
-        const handle = window.getNativeWindowHandle();
-        if (blur(handle)) {
-          try {
-            window.setShape(roundedWindowShape(240, 300, 22));
-            blurEnabled = true;
-          } catch (error) {
-            blur(handle, false);
-            console.warn('Cheat-Sheet rounded blur unavailable:', error.message);
-          }
-        }
+        blurEnabled = blur(window.getNativeWindowHandle());
       } catch (error) {
         console.warn('Cheat-Sheet native blur unavailable:', error.message);
       }
