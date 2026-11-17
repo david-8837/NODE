@@ -30,12 +30,21 @@ export const MP_CMD_GET_STATE = 0x01;
 export const MP_CMD_SELECT_PROFILE = 0x02;
 export const MP_CMD_SAVE_PROFILE = 0x03;
 export const MP_CMD_SET_RGB = 0x04;
+export const MP_CMD_SELECT_LAYER = 0x05;
 export const MP_EVT_LAYER_STATE = 0x10;
 export const MP_EVT_HOST_TRIGGER = 0x11;
+export const MP_EVT_RGB_STATE = 0x12;
 export const MP_TRIG_BASE = 0x7e00;
 export const MP_TRIG_MAX = 0x7e3f;
 export const MP_PROF_BASE = 0x7e40;
 export const MP_PROF_MAX = 0x7e43;
+/** Custom keycode handled by process_record_user: advance one layer, wrapping. */
+export const MP_LAYER_CYCLE = 0x7e44;
+/** RGB keycodes that drive the firmware's own renderer state (not QMK rgblight). */
+export const MP_RGB_TOGG = 0x7e45;
+export const MP_RGB_MODE = 0x7e46;
+export const MP_RGB_SPDD = 0x7e47;
+export const MP_RGB_SPDU = 0x7e48;
 
 export const TRIGGER_SLOT_ORDER = [
   'r1c1', 'r1c2', 'r1c3',
@@ -62,6 +71,12 @@ export interface DeviceLayerStateEvent {
   activeProfileSlot: number;
 }
 
+/** Emitted when RGB settings are changed on the device (FN keys / encoder). */
+export interface DeviceRgbStateEvent {
+  type: 'rgb_state';
+  rgbConfig: DeviceRgbConfig;
+}
+
 export interface LayerRgbColor {
   r: number;
   g: number;
@@ -86,6 +101,10 @@ export interface QmkViaStatus {
   deviceActiveLayer?: number;
   activeProfileSlot?: number;
   rgbConfig?: DeviceRgbConfig;
+  /** Layer the host asked for, echoed back for diagnostics. */
+  requestedLayer?: number;
+  /** True only when the firmware settled on the requested layer. */
+  confirmed?: boolean;
 }
 
 export interface ViaAction {
@@ -171,6 +190,10 @@ export interface BridgeResult {
   deviceActiveLayer?: number;
   activeProfileSlot?: number;
   rgbConfig?: DeviceRgbConfig;
+  /** Layer the host asked for, echoed back for diagnostics. */
+  requestedLayer?: number;
+  /** True only when the firmware settled on the requested layer. */
+  confirmed?: boolean;
 }
 
 const KEY_SLOTS = [
@@ -208,10 +231,12 @@ const SPECIAL_KEYCODES: Record<string, number> = {
   KEYPAD_MINUS: 0x56, KEYPAD_PLUS: 0x57, KEYPAD_ENTER: 0x58,
   KEYPAD_1: 0x59, KEYPAD_2: 0x5a, KEYPAD_3: 0x5b, KEYPAD_4: 0x5c,
   KEYPAD_5: 0x5d, KEYPAD_6: 0x5e, KEYPAD_7: 0x5f, KEYPAD_8: 0x60,
-  KEYPAD_9: 0x61, KEYPAD_0: 0x62, KEYPAD_PERIOD: 0x63, KEYPAD_EQUAL: 0x67,
+  KEYPAD_9: 0x61, KEYPAD_0: 0x62, KEYPAD_PERIOD: 0x63, KEYPAD_EQUAL: 0x67, KEYPAD_COMMA: 0x85,
 };
 
 const MEDIA_KEYCODES: Record<string, number> = {
+  SYSTEM_POWER: 0x00a5,
+  SYSTEM_SLEEP: 0x00a6,
   MUTE: 0x00a8,
   VOLUME_INCREMENT: 0x00a9,
   VOLUME_DECREMENT: 0x00aa,
@@ -328,10 +353,13 @@ export function actionToViaKeycode(action: ViaAction | null | undefined): number
   }
 
   if (action.t === 'layer') {
+    // Layer Cycle needs no target layer: the firmware advances from wherever it
+    // currently is. Handled by MP_LAYER_CYCLE in process_record_user.
+    if (action.op === 'next') return MP_LAYER_CYCLE;
     if (!Number.isInteger(action.n) || action.n! < 0 || action.n! > 31) return null;
     if (action.op === 'set') return 0x5200 | action.n!; // TO(layer)
     if (action.op === 'hold') return 0x5220 | action.n!; // MO(layer)
-    return null; // layer-cycle has no standard single VIA keycode
+    return null;
   }
 
   if (action.t !== 'keys' || !Array.isArray(action.k) || action.k.length === 0) return null;
@@ -402,6 +430,16 @@ export class QmkViaBridge {
       return;
     }
 
+    // RGB edited on the device itself (FN keys / encoder). Adopt the firmware's
+    // values so the editor stops showing stale settings and does not overwrite
+    // them on the next sync.
+    if (bytes[0] === MP_HID_PREFIX && bytes[1] === MP_EVT_RGB_STATE) {
+      const parsed = this.parseDeviceStateReport(bytes);
+      this.setStatus({ ...this.status, ...parsed });
+      this.emit({ type: 'rgb_state', rgbConfig: parsed.rgbConfig } satisfies DeviceRgbStateEvent);
+      return;
+    }
+
     if (bytes[0] === MP_HID_PREFIX && bytes[1] === MP_EVT_HOST_TRIGGER) {
       const checksum = (bytes[0] ^ bytes[1] ^ bytes[2] ^ bytes[3] ^ bytes[4] ^ bytes[5] ^ bytes[6]) & 0xff;
       const slotIndex = bytes[5] ?? 0xff;
@@ -452,7 +490,18 @@ export class QmkViaBridge {
     this.timeoutMs = options.timeoutMs ?? 1500;
     this.status = { state: hid ? 'disconnected' : 'unavailable' };
     this.hid?.addEventListener('disconnect', this.onHidDisconnect);
+    // Re-plugging a previously authorised device must recover without a restart
+    // or a fresh permission prompt. getStatus() only opens already-granted
+    // devices, so this cannot trigger a browser chooser on its own.
+    this.hid?.addEventListener('connect', this.onHidConnect);
   }
+
+  private readonly onHidConnect = (event: Event) => {
+    const device = (event as Event & { device?: HidDeviceLike }).device;
+    if (!device || !this.isTarget(device)) return;
+    if (this.device || this.status.state === 'connecting' || this.status.state === 'connected') return;
+    void this.getStatus();
+  };
 
   public onStatus(callback: (status: QmkViaStatus) => void): () => void {
     this.statusListeners.add(callback);
@@ -562,6 +611,8 @@ export class QmkViaBridge {
     profileSlot?: number;
     saveCurrentProfile?: boolean;
     rgbConfig?: DeviceRgbConfig;
+    /** Target layer for select_layer (0-based). */
+    layer?: number;
   }): Promise<BridgeResult> {
     if (
       ![
@@ -572,6 +623,7 @@ export class QmkViaBridge {
         'save_profile',
         'get_device_state',
         'set_rgb_config',
+        'select_layer',
       ].includes(request?.cmd ?? '')
     ) {
       return { ok: false, error: 'Unsupported QMK/VIA request' };
@@ -586,6 +638,28 @@ export class QmkViaBridge {
         const parsed = this.parseDeviceStateReport(res);
         this.setStatus({ ...this.status, ...parsed });
         return { ok: true, ...parsed };
+      } catch (error) {
+        return { ok: false, error: this.errorMessage(error) };
+      }
+    }
+
+    if (request.cmd === 'select_layer') {
+      const layer = Number(request.layer);
+      if (!Number.isInteger(layer) || layer < 0 || layer >= 4) {
+        return { ok: false, error: 'Layer must be between 0 and 3' };
+      }
+      try {
+        const res = await this.exchange(new Uint8Array([MP_HID_PREFIX, MP_CMD_SELECT_LAYER, layer]));
+        // The firmware answers with the layer it actually settled on. Callers must
+        // use this confirmed value rather than the requested one.
+        const parsed = this.parseDeviceStateReport(res);
+        this.setStatus({ ...this.status, ...parsed });
+        this.emit({
+          type: 'layer_state',
+          deviceActiveLayer: parsed.deviceActiveLayer,
+          activeProfileSlot: parsed.activeProfileSlot,
+        } satisfies DeviceLayerStateEvent);
+        return { ok: true, ...parsed, requestedLayer: layer, confirmed: parsed.deviceActiveLayer === layer };
       } catch (error) {
         return { ok: false, error: this.errorMessage(error) };
       }
@@ -703,11 +777,16 @@ export class QmkViaBridge {
     try {
       const reportedLayers = await this.readLayerCount();
       const configuredLayers = request.config.layers.length;
-      const layersToWrite = Math.min(configuredLayers, reportedLayers, 8);
+      // A profile owns the entire device image. SAVE_PROFILE copies *every* layer
+      // and slot of the live keymap into the profile's EEPROM slot, so anything
+      // left over from the previously active profile would be captured into this
+      // one and then reappear on later switches. Write every device layer and
+      // clear slots this profile does not define (KC_NO) so switching is exact.
+      const layersToWrite = Math.min(reportedLayers, 8);
       if (configuredLayers > reportedLayers) {
         warnings.push(`Device supports ${reportedLayers} layers; extra profile layers were not synced`);
-      } else if (configuredLayers < reportedLayers) {
-        warnings.push(`Only the first ${configuredLayers} of ${reportedLayers} device layers are controlled by this profile; the rest were left unchanged`);
+      } else if (configuredLayers < layersToWrite) {
+        warnings.push(`This profile defines ${configuredLayers} of ${layersToWrite} device layers; the remaining layers were cleared so the previous profile cannot leak into it`);
       }
       if (configuredLayers > 8) {
         warnings.push('The configurator supports at most 8 profile layers; higher profile layers were not synced');
@@ -718,14 +797,21 @@ export class QmkViaBridge {
 
       for (let layer = 0; layer < layersToWrite; layer++) {
         const layerConfig = request.config.layers[layer];
-        if (!layerConfig || typeof layerConfig !== 'object') {
-          warnings.push(`Layer ${layer + 1} was invalid and left unchanged`);
-          continue;
+        const usable = !!layerConfig && typeof layerConfig === 'object';
+        if (layerConfig !== undefined && !usable) {
+          warnings.push(`Layer ${layer + 1} was invalid and was cleared`);
         }
+        // Layers past the end of the profile are written as empty rather than
+        // skipped, so the pad cannot keep firing the old profile's assignments.
+        const layerKeys = usable && layerConfig.keys && typeof layerConfig.keys === 'object'
+          ? layerConfig.keys
+          : {};
+        const layerEnc = usable && layerConfig.enc && typeof layerConfig.enc === 'object'
+          ? layerConfig.enc
+          : {};
 
         for (const [slot, row, col] of KEY_SLOTS) {
-          if (!layerConfig.keys || !Object.hasOwn(layerConfig.keys, slot)) continue;
-          const action = layerConfig.keys[slot];
+          const action = Object.hasOwn(layerKeys, slot) ? layerKeys[slot] : undefined;
           const keycode = keycodeForDevice(action, reportedLayers);
           if (keycode === null) {
             warnings.push(unsupportedActionWarning(layer + 1, slot.toUpperCase(), action, reportedLayers));
@@ -735,8 +821,8 @@ export class QmkViaBridge {
           if (current !== keycode) await this.setKeycode(layer, row, col, keycode);
         }
 
-        if (layerConfig.enc && Object.hasOwn(layerConfig.enc, 'press')) {
-          const pressAction = layerConfig.enc.press;
+        {
+          const pressAction = Object.hasOwn(layerEnc, 'press') ? layerEnc.press : undefined;
           const pressKeycode = keycodeForDevice(pressAction, reportedLayers);
           if (pressKeycode === null) {
             warnings.push(unsupportedActionWarning(layer + 1, 'encoder press', pressAction, reportedLayers));
@@ -750,8 +836,7 @@ export class QmkViaBridge {
           { name: 'ccw', clockwise: false },
           { name: 'cw', clockwise: true },
         ]) {
-          if (!layerConfig.enc || !Object.hasOwn(layerConfig.enc, direction.name)) continue;
-          const action = layerConfig.enc[direction.name];
+          const action = Object.hasOwn(layerEnc, direction.name) ? layerEnc[direction.name] : undefined;
           const keycode = keycodeForDevice(action, reportedLayers);
           if (keycode === null) {
             warnings.push(unsupportedActionWarning(

@@ -1,3 +1,5 @@
+import { referencesAtOrAfter } from './referenceSafety';
+import { cheatSheetCommand } from './cheatSheet';
 import type { ViaAction, ViaConfiguration } from './qmkViaBridge';
 
 export type PresetOperatingSystem = 'mac' | 'win';
@@ -65,6 +67,10 @@ const KEY_ALIASES: Record<string, string> = {
   '←': 'LEFT_ARROW',
   '↓': 'DOWN_ARROW',
   '↑': 'UP_ARROW',
+  'right arrow': 'RIGHT_ARROW',
+  'left arrow': 'LEFT_ARROW',
+  'down arrow': 'DOWN_ARROW',
+  'up arrow': 'UP_ARROW',
   right: 'RIGHT_ARROW',
   left: 'LEFT_ARROW',
   down: 'DOWN_ARROW',
@@ -89,7 +95,20 @@ const KEY_ALIASES: Record<string, string> = {
   '.': 'PERIOD',
   '/': 'FORWARD_SLASH',
   nuhs: 'POUND',
-  '*': 'KEYPAD_ASTERISK',
+  'num /': 'KEYPAD_SLASH',
+  'num *': 'KEYPAD_ASTERISK',
+  'num =': 'KEYPAD_EQUAL',
+  'num ,': 'KEYPAD_COMMA',
+  'num 0': 'KEYPAD_0',
+  'num 1': 'KEYPAD_1',
+  'num 2': 'KEYPAD_2',
+  'num 3': 'KEYPAD_3',
+  'num 4': 'KEYPAD_4',
+  'num 5': 'KEYPAD_5',
+  'num 6': 'KEYPAD_6',
+  'num 7': 'KEYPAD_7',
+  'num 8': 'KEYPAD_8',
+  'num 9': 'KEYPAD_9',
   'num .': 'KEYPAD_PERIOD',
   'num +': 'KEYPAD_PLUS',
   'num -': 'KEYPAD_MINUS',
@@ -103,6 +122,8 @@ const SYMBOL_MODIFIERS: Record<string, string> = {
 };
 
 const MEDIA_ACTIONS: Record<string, string> = {
+  'power down': 'SYSTEM_POWER',
+  sleep: 'SYSTEM_SLEEP',
   mute: 'MUTE',
   'volume +': 'VOLUME_INCREMENT',
   'volume -': 'VOLUME_DECREMENT',
@@ -165,10 +186,12 @@ function parseShortcut(value: string, os: PresetOperatingSystem): string[] | nul
   if (standaloneModifier) return [standaloneModifier];
   const standaloneKey = basicKeyName(normalized);
   if (standaloneKey) return [standaloneKey];
-  if (normalized === '+') return ['KEYPAD_PLUS'];
+  if (normalized === '+') return ['SHIFT', 'EQUALS'];
+  if (normalized === '*') return ['SHIFT', 'EIGHT'];
 
   const keys: string[] = [];
-  for (const token of value.split('+')) {
+  const tokens = value.replace(/num\s*\+/gi, 'num __plus__').split('+').map((token) => token.replace(/__plus__/gi, '+'));
+  for (const token of tokens) {
     const clean = normalizeKey(token);
     if (!clean) continue;
     const key = modifierName(clean, os) ?? basicKeyName(clean);
@@ -368,6 +391,9 @@ function readEncoderEntry(layer: unknown): EncoderBindingEntry | undefined {
 
 export interface BuildViaConfigurationOptions {
   enableHostTriggers?: boolean;
+  /** Number of configured profiles, when known by the caller. */
+  profileCount?: number;
+  layerCount?: number;
 }
 
 const SLOT_TRIGGER_INDEX: Record<string, number> = {
@@ -378,6 +404,7 @@ const SLOT_TRIGGER_INDEX: Record<string, number> = {
 };
 
 function isHostExecutableEntry(entry: BindingEntry, os: PresetOperatingSystem): boolean {
+  if (cheatSheetCommand(entry.binding)) return true;
   const exec = entry.execution;
   if (isRecord(exec) && typeof exec.kind === 'string') {
     if (exec.kind === 'smart' || exec.kind === 'text' || exec.kind === 'sequence') {
@@ -413,6 +440,11 @@ function applyBinding(
   slotId?: string,
   options?: BuildViaConfigurationOptions
 ): ViaAction | undefined {
+  if ((options?.layerCount !== undefined && referencesAtOrAfter(entry, 'layer', options.layerCount)) ||
+      (options?.profileCount !== undefined && referencesAtOrAfter(entry, 'profile', options.profileCount))) {
+    warnings.push(`Layer ${layerNumber} ${location}: reference points to an unavailable layer or profile; cleared on device`);
+    return { t: 'none' };
+  }
   if (
     options?.enableHostTriggers &&
     layerNumber >= 1 &&
@@ -457,7 +489,7 @@ export function buildViaConfiguration(
         slot.toUpperCase(),
         warnings,
         slot,
-        options
+        { ...options, layerCount: sourceLayers.length }
       );
       if (action) keys[slot] = action;
     }
@@ -473,7 +505,7 @@ export function buildViaConfiguration(
         `dial ${direction.toUpperCase()}`,
         warnings,
         direction,
-        options
+        { ...options, layerCount: sourceLayers.length }
       );
       if (action) encoder[direction] = action;
     }

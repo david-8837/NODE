@@ -1,5 +1,5 @@
 {
-  "source": "Original React app Keymap screen baseline, before the inline shipped app received its QMK/VIA control",
+  "source": "Shipped React app Keymap screen with a verified Micro Pad connection (the configurator is gated behind device detection); transient framer-motion opacity/transform/filter frames are excluded.",
   "tree": {
     "tag": "div",
     "attributes": {
@@ -25,7 +25,7 @@
                 "tag": "button",
                 "attributes": {
                   "class": "flex items-center gap-[3px] text-white hover:opacity-90 transition-opacity focus:outline-none cursor-pointer px-[10px]",
-                  "title": "NØDE Studio"
+                  "title": "NODE studio"
                 },
                 "text": "",
                 "children": [
@@ -34,7 +34,7 @@
                     "attributes": {
                       "class": "font-bold text-[13px] tracking-[0.16em] text-white select-none leading-none"
                     },
-                    "text": "NØDE",
+                    "text": "NODE",
                     "children": []
                   }
                 ]
@@ -172,9 +172,9 @@
           {
             "tag": "button",
             "attributes": {
-              "aria-label": "Connect Grid Macro 1 via QMK/VIA",
-              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 justify-self-end transition-colors cursor-pointer disabled:cursor-wait bg-[#4a4a4a]",
-              "title": "WebHID unavailable; use Chrome or Edge over HTTPS or localhost",
+              "aria-label": "Disconnect Grid Macro 1",
+              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 justify-self-end transition-colors cursor-pointer disabled:cursor-wait bg-[#0051ff]",
+              "title": "Firmware VIA 01020304 on VIA 4 layers",
               "type": "button"
             },
             "text": "",
@@ -211,7 +211,7 @@
                 "attributes": {
                   "class": "text-[12px] font-normal tracking-[0.01em] whitespace-nowrap"
                 },
-                "text": "Not connected",
+                "text": "Grid Macro 1 (test)",
                 "children": []
               },
               {
@@ -225,8 +225,8 @@
               {
                 "tag": "svg",
                 "attributes": {
-                  "aria-label": "USB Not connected",
-                  "class": "opacity-50",
+                  "aria-label": "USB Connected",
+                  "class": "opacity-100",
                   "fill": "none",
                   "height": "14",
                   "viewBox": "0 0 12 15",
@@ -290,8 +290,7 @@
       {
         "tag": "main",
         "attributes": {
-          "class": "flex-1 flex flex-col justify-between relative overflow-hidden",
-          "style": "opacity: 0; filter: blur(4px); transform: scale(0.985);"
+          "class": "flex-1 flex flex-col justify-between relative overflow-hidden"
         },
         "text": "",
         "children": [
@@ -554,7 +553,9 @@
                       {
                         "tag": "button",
                         "attributes": {
+                          "aria-pressed": "true",
                           "class": "w-[26px] h-[26px] rounded-full border-[1.5px] text-[11.5px] font-medium flex items-center justify-center transition-colors duration-200 tabular-nums cursor-pointer bg-[#0051ff] border-[#0051ff] text-white",
+                          "data-active-layer": "true",
                           "tabindex": "0",
                           "title": "Layer 1"
                         },
@@ -695,7 +696,6 @@
                         "tag": "button",
                         "attributes": {
                           "class": "w-[49px] h-[49px] bg-white rounded-[11px] border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_14px_rgba(0,81,255,0.18)] flex items-center justify-center text-[#333333] transition-all cursor-pointer",
-                          "style": "opacity: 0; transform: scale(0.92);",
                           "title": "Open Key Mapping"
                         },
                         "text": "",
@@ -825,7 +825,6 @@
                                                 "attributes": {
                                                   "class": "transition-transform duration-150 pointer-events-none",
                                                   "height": "39",
-                                                  "style": "transform: rotate(0deg);",
                                                   "viewBox": "0 0 40 40",
                                                   "width": "39"
                                                 },
@@ -1683,9 +1682,7 @@
                       },
                       {
                         "tag": "div",
-                        "attributes": {
-                          "style": "opacity: 0;"
-                        },
+                        "attributes": {},
                         "text": "",
                         "children": [
                           {

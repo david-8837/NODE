@@ -3,6 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
+import { installConnectedDevice, removeConnectedDevice } from './helpers/connectedDevice';
 import { PROFILE_FILE_STORAGE_KEY } from '../src/profileFiles';
 
 let container: HTMLDivElement;
@@ -35,11 +36,12 @@ beforeEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
   Object.defineProperty(window, 'confirm', { configurable: true, value: vi.fn(() => true) });
-  Object.defineProperty(window, 'macropad', { configurable: true, value: undefined });
+  installConnectedDevice();
   Object.defineProperty(window, 'Notification', { configurable: true, value: undefined });
 });
 
 afterEach(async () => {
+  removeConnectedDevice();
   if (root) await act(async () => root.unmount());
   container?.remove();
   delete (window as Window & { electronAPI?: unknown }).electronAPI;

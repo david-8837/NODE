@@ -95,6 +95,8 @@ export interface ElectronApi {
   flashFirmware?: () => Promise<AppOperationResult>;
   setSimulationEnabled?: (enabled: boolean) => Promise<SimulationToggleResult>;
   executeSmartAction?: (payload: Record<string, unknown>) => Promise<NativeActionResult>;
+  updateCheatSheet?: (snapshot: import('./cheatSheet').CheatSheetSnapshot) => Promise<boolean>;
+  commandCheatSheet?: (command: import('./cheatSheet').CheatSheetCommand, token?: string) => Promise<boolean>;
   minimize?: () => Promise<void>;
   maximize?: () => Promise<void>;
   close?: () => Promise<void>;

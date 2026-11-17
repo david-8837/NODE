@@ -145,7 +145,17 @@ export class MultiActionGestureEngine {
     const hasDouble = hasConfiguredGesture(gestures, 'doubleTap');
     const hasTapHold = hasConfiguredGesture(gestures, 'tapHold');
 
-    // If ONLY onTap is configured, wait for release or hold based on whether onHold exists.
+    // Nothing to disambiguate: onTap is the only possible outcome, so fire on the
+    // press edge like a firmware-native Basic Action. Waiting for key-up added a
+    // full physical press duration (typically 60-120ms) of avoidable latency.
+    if (!hasHold && !hasDouble && !hasTapHold) {
+      state.phase = 'resolved_until_release';
+      this.emitIfConfigured(slotId, gestures, 'onTap');
+      return;
+    }
+
+    // A competing gesture exists, so the press must stay pending until the hold
+    // threshold or the release decides which gesture the user meant.
     if (hasHold || hasDouble || hasTapHold) {
       state.timer = this.timerHost.setTimeout(() => {
         state.timer = null;

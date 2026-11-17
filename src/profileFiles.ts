@@ -455,7 +455,7 @@ export function parseProfileFile(text: string): ParsedProfileFile {
     };
   }
 
-  throw makeError('This is not a supported Node Studio profile file');
+  throw makeError('This is not a supported NODE studio profile file');
 }
 
 function normalizeExportProfile(profile: unknown): JsonRecord {
@@ -542,7 +542,6 @@ export function mergeImportedProfiles(
         return normalizeProfile(profile);
       })
     : [];
-  const existingIndex = normalizeActiveIndex(current.activeProfileIndex, Math.max(currentProfiles.length, 1));
   const baseCustom = normalizeCustomItems(current.customItems);
   const importedCustom = normalizeCustomItems(imported.customItems);
   const usedProfileIds = new Set(currentProfiles.map((profile) => String(profile.id)));
@@ -639,7 +638,7 @@ export function createProfileFileTools(host?: Window & typeof globalThis): Profi
         input.type = 'file';
         input.accept = 'application/json,.json';
         input.style.display = 'none';
-        input.setAttribute('aria-label', 'Choose a Node Studio profile JSON file');
+        input.setAttribute('aria-label', 'Choose a NODE studio profile JSON file');
         input.addEventListener('cancel', () => finish(null), { once: true });
         input.addEventListener('change', async () => {
           const file = input.files?.[0];

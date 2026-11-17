@@ -18,7 +18,8 @@ const windowsWorkflow = readFileSync(
 
 describe('Public download website', () => {
   it('has a responsive landing page with clear installer and portable-package entry points', () => {
-    expect(siteHtml).toContain('NØDE Grid Macro 1 Studio');
+    expect(siteHtml).toContain('NODE studio');
+    expect(siteHtml).not.toMatch(/Grid Macro 1 Studio/i);
     expect(siteHtml).toContain('[:: QNTM-IRS / 04 ::]');
     expect(siteHtml).toContain('id="download-installer"');
     expect(siteHtml).toContain('id="download-zip"');
@@ -60,16 +61,16 @@ describe('Public download website', () => {
   it('points both download buttons at matching assets in the latest GitHub release', async () => {
     const release = {
       tag_name: 'v1.0.0',
-      name: 'NØDE Grid Macro 1 Studio v1.0.0',
+      name: 'NODE studio v1.0.0',
       published_at: '2026-11-09T00:00:00Z',
       assets: [
         {
-          name: 'NØDE Grid Macro 1 Studio-1.0.0-x64.exe',
+          name: 'NODE.studio-1.0.0-x64.exe',
           browser_download_url: 'https://github.com/david-8837/NODE/releases/download/v1.0.0/studio.exe',
           size: 10 * 1024 * 1024,
         },
         {
-          name: 'NØDE Grid Macro 1 Studio-1.0.0-x64.zip',
+          name: 'NODE.studio-1.0.0-x64.zip',
           browser_download_url: 'https://github.com/david-8837/NODE/releases/download/v1.0.0/studio.zip',
           size: 8 * 1024 * 1024,
         },

@@ -1,4 +1,4 @@
-// electron/main.cjs - NØDE Grid Macro 1 Desktop Application Entry Point for Windows
+// electron/main.cjs - NODE studio Desktop Application Entry Point for Windows
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -6,6 +6,9 @@ const { fileURLToPath, pathToFileURL } = require('url');
 const { validateRp2040Uf2 } = require('./uf2Validator.cjs');
 const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 const { listInstalledApplications } = require('./installedApplications.cjs');
+const { migrateLegacyUserData } = require('./userDataMigration.cjs');
+const { createCheatSheetController } = require('./cheatSheet.cjs');
+const cheatSheet = createCheatSheetController({ BrowserWindow, screen });
 
 const desktopActionExecutor = createDesktopActionExecutor({
   openExternal: (url) => shell.openExternal(url),
@@ -43,6 +46,16 @@ if (isPersistenceSmokeTest() && process.env.APPDATA && path.isAbsolute(process.e
   const userDataDirectoryName = path.basename(app.getPath('userData'));
   app.setPath('appData', process.env.APPDATA);
   app.setPath('userData', path.join(process.env.APPDATA, userDataDirectoryName));
+}
+
+// Preserve profiles, key assignments, and native settings for users upgrading
+// from earlier `NØDE Grid Macro 1 Studio` installations into `NODE studio`.
+if (app.isPackaged) {
+  const currentUserDataDir = app.getPath('userData');
+  migrateLegacyUserData({
+    currentUserDataDir,
+    appDataDir: path.dirname(currentUserDataDir),
+  });
 }
 
 function getDevServerUrl() {
@@ -245,6 +258,7 @@ async function captureVisualSmokeScreenshot() {
         .filter((slot) => /^r[1-3]c[1-3]$/.test(slot));
       const navText = root?.querySelector('nav')?.textContent || '';
       const centerPad = root?.querySelector('div.absolute.inset-0.flex.flex-col.items-center.justify-center.pointer-events-none.z-10');
+      const gate = root?.querySelector('[data-testid="device-connection-gate"]');
       return {
         title: document.title,
         appMounted: Boolean(root?.firstElementChild),
@@ -252,17 +266,37 @@ async function captureVisualSmokeScreenshot() {
         hasEncoder: Boolean(root?.querySelector('button[title^="Dial:"]')),
         hasNavigation: ['Keymap', 'Preset', 'Settings'].every((label) => navText.includes(label)),
         centerPadPosition: centerPad ? getComputedStyle(centerPad).position : null,
+        gateVisible: Boolean(gate),
+        gateHeadline: gate?.querySelector('h1')?.textContent?.trim() || '',
+        gateHasIllustration: Boolean(gate?.querySelector('[aria-label="Micro Pad illustration"]')),
+        gateHasRetry: Boolean(gate?.querySelector('[data-testid="device-gate-retry"]')),
         viewport: { width: window.innerWidth, height: window.innerHeight },
       };
     })()`);
 
-    if (
-      !renderedUi.appMounted ||
+    // The configurator is gated behind a verified device connection. A CI
+    // runner has no Micro Pad, so the gate IS the correct packaged screen here.
+    // Assert it rendered properly and that no editing surface leaked through.
+    if (!renderedUi.appMounted) {
+      throw new Error(`Packaged UI did not pass its visual smoke checks: ${JSON.stringify(renderedUi)}`);
+    }
+    if (renderedUi.gateVisible) {
+      if (
+        renderedUi.gateHeadline !== 'Connect your Micro Pad to continue.' ||
+        !renderedUi.gateHasIllustration ||
+        !renderedUi.gateHasRetry ||
+        renderedUi.keyCount !== 0 ||
+        renderedUi.hasNavigation
+      ) {
+        throw new Error(`Packaged connection gate is incomplete or leaked editing controls: ${JSON.stringify(renderedUi)}`);
+      }
+    } else if (
       renderedUi.keyCount !== 9 ||
       !renderedUi.hasEncoder ||
       !renderedUi.hasNavigation ||
       renderedUi.centerPadPosition !== 'relative'
     ) {
+      // A device was attached to the build machine: verify the full editor.
       throw new Error(`Packaged UI did not pass its visual smoke checks: ${JSON.stringify(renderedUi)}`);
     }
 
@@ -276,7 +310,57 @@ async function captureVisualSmokeScreenshot() {
     }
     fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
     fs.writeFileSync(screenshotPath, png);
-    console.log(`Packaged UI visual smoke test passed: ${screenshotPath} (${png.length} bytes)`);
+
+    // Exercise the actual packaged HUD and trusted IPC without opening another
+    // application or claiming a physical-device test. The main window is the
+    // sole trusted caller, exactly as in normal use.
+    const hudSent = await mainWindow.webContents.executeJavaScript(`(async () => {
+      const updated = await window.electronAPI.updateCheatSheet({ layer: 2, available: true, keys: ['Ctrl + C', 'Volume Up', '', '', '', '', '', '', ''], encoder: { ccw: 'Volume Down', press: 'Mute', cw: 'Volume Up' } });
+      const shown = await window.electronAPI.commandCheatSheet('show');
+      return updated && shown;
+    })()`);
+    if (!hudSent) throw new Error('Packaged Cheat-Sheet IPC rejected the smoke test');
+    const hud = BrowserWindow.getAllWindows().find((candidate) => candidate !== mainWindow);
+    if (!hud) throw new Error('Packaged Cheat-Sheet window was not created');
+    if (hud.webContents.isLoadingMainFrame()) {
+      await Promise.race([
+        new Promise((resolve) => hud.webContents.once('did-finish-load', resolve)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Cheat-Sheet failed to load')), 15000)),
+      ]);
+    }
+    const hudContent = await hud.webContents.executeJavaScript(`(() => {
+      const panel = document.querySelector('main');
+      const grid = document.querySelector('.keys');
+      const panelRect = panel.getBoundingClientRect();
+      const keys = Array.from(document.querySelectorAll('.key'));
+      return {
+        layer: document.querySelector('#layer')?.textContent,
+        keys: keys.map(node => node.textContent),
+        encoder: ['ccw', 'press', 'cw'].map(direction => document.getElementById('dial-' + direction)?.textContent),
+        hasDial: !!document.querySelector('.dial'),
+        actionPanels: document.querySelectorAll('.dial-action').length,
+        hasCopyIcon: !!document.querySelector('.key svg'),
+        transparent: ['html', 'body', 'main', '.key', '.dial-action', '.dial'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none'; }),
+        outlines: keys.length === 9 && getComputedStyle(panel).overflow === 'visible' && getComputedStyle(grid).overflow === 'visible' && getComputedStyle(panel).borderTopWidth === '1px' && getComputedStyle(panel).borderTopStyle === 'solid' && getComputedStyle(panel).borderRadius === '22px' && keys.every(node => {
+          const style = getComputedStyle(node), rect = node.getBoundingClientRect();
+          return ['Top', 'Right', 'Bottom', 'Left'].every(side => style['border' + side + 'Width'] === '1px' && style['border' + side + 'Style'] === 'solid' && style['border' + side + 'Color'] === 'rgba(255, 255, 255, 0.85)') && style.borderRadius === '14px' && rect.width > 0 && rect.height > 0 && rect.left >= panelRect.left && rect.top >= panelRect.top && rect.right <= panelRect.right && rect.bottom <= panelRect.bottom;
+        }),
+      };
+    })()`);
+    if (!hud.isVisible() || !hud.isAlwaysOnTop() || hud.isFocusable() ||
+        (process.platform === 'win32' && !cheatSheet.isBlurEnabled()) || !hudContent.transparent || !hudContent.outlines ||
+        hudContent.layer !== 'LAYER 2' || hudContent.keys.length !== 9 || !hudContent.hasDial || hudContent.actionPanels !== 3 || !hudContent.hasCopyIcon ||
+        hudContent.encoder.join('|') !== 'Volume Down|Mute|Volume Up' ||
+        hudContent.keys[0] !== 'Ctrl + C' || hudContent.keys[1] !== 'Volume Up') {
+      throw new Error(`Packaged Cheat-Sheet smoke failed: ${JSON.stringify(hudContent)}`);
+    }
+    await mainWindow.webContents.executeJavaScript(`window.electronAPI.commandCheatSheet('hide')`);
+    if (hud.isVisible()) throw new Error('Packaged Cheat-Sheet did not hide');
+    console.log('Packaged Cheat-Sheet IPC, rendering, visibility, always-on-top and non-focusable checks passed');
+    console.log(
+      `Packaged UI visual smoke test passed (${renderedUi.gateVisible ? 'connection gate' : 'configurator'}): `
+      + `${screenshotPath} (${png.length} bytes)`
+    );
     app.exit(0);
   } catch (error) {
     const diagnostics = {
@@ -393,23 +477,37 @@ async function runPersistenceSmokeTest() {
         const expectedName = ${JSON.stringify(profileName)};
         const deadline = Date.now() + 30000;
         while (Date.now() < deadline) {
+          // The configurator is gated behind a device connection, and a build
+          // runner has no Micro Pad. Persistence is about stored data surviving,
+          // so assert that directly instead of requiring an editable screen.
+          const root = document.querySelector('#root');
+          const mounted = Boolean(root?.firstElementChild);
+          const gateVisible = Boolean(root?.querySelector('[data-testid="device-connection-gate"]'));
           const profileVisible = Array.from(document.querySelectorAll('[title]')).some((element) =>
             element.getAttribute('title') === expectedName && element.textContent?.trim() === expectedName
           );
-          if (profileVisible) {
+          if (mounted) {
             const native = await window.electronAPI?.getAppSettings();
             const rawState = window.localStorage.getItem('cm2.state.v2');
             const state = rawState ? JSON.parse(rawState) : null;
             const shortcut = state?.profiles?.[0]?.layers?.[0]?.r1c1?.execution;
             const custom = state?.customItems?.Action?.[0]?.execution;
             if (native?.ok && native.settings?.allowTerminalSmartActions === true &&
+                state?.profiles?.[0]?.name === expectedName &&
                 shortcut?.kind === 'shortcut' && shortcut?.value === 'Ctrl + Shift + S' &&
                 custom?.kind === 'sequence' && custom?.steps?.[0]?.key === 'Ctrl + S') {
+              // With no device the gate must be up AND the data must be intact:
+              // that is exactly the "never lose profiles on disconnect" rule.
+              if (!gateVisible && !profileVisible) {
+                throw new Error('The configurator rendered without the saved profile visible');
+              }
               return {
                 settingRestored: true,
                 profileLoaded: true,
                 structuredExecutionRestored: true,
                 profileName: expectedName,
+                connectionGateVisible: gateVisible,
+                profileVisibleInEditor: profileVisible,
               };
             }
           }
@@ -456,7 +554,7 @@ function createWindow() {
     ...bounds,
     center: true,
     backgroundColor: '#0a0a0a',
-    title: 'NØDE — Grid Macro 1 Studio',
+    title: 'NODE studio',
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: '#0e0e0e',
@@ -470,6 +568,11 @@ function createWindow() {
       enableRemoteModule: false,
       webSecurity: true,
       sandbox: true, // Hardened Sandbox Enabled
+      // Multi-action tap/hold gestures are timed in the renderer against a 200ms
+      // tapping term. Chromium throttles hidden-window timers to ~1s, which would
+      // turn every tap into a hold once the app is minimized or tray-hidden.
+      // Physical keys must behave identically whether or not the window is visible.
+      backgroundThrottling: false,
     },
     icon: path.join(__dirname, '../public/favicon.ico'),
     show: false,
@@ -590,10 +693,17 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    cheatSheet.destroy();
     mainWindow = null;
     void desktopActionExecutor.setSimulationEnabled(false);
   });
 }
+
+// Only the trusted studio renderer can control the HUD; the HUD has no control IPC.
+ipcMain.handle('cheat-sheet-update', (event, snapshot) =>
+  isTrustedRenderer(event) && cheatSheet.update(snapshot));
+ipcMain.handle('cheat-sheet-command', (event, command, token) =>
+  isTrustedRenderer(event) && cheatSheet.command(command, token));
 
 // IPC Handlers for Native Windows Control
 ipcMain.handle('window-minimize', (event) => {
@@ -804,10 +914,10 @@ function createSystemTray() {
     const trayIcon = nativeImage.createFromPath(iconPath);
     if (trayIcon.isEmpty()) return;
     appTray = new Tray(trayIcon);
-    appTray.setToolTip('NØDE — Grid Macro 1 Studio (Background Agent Active)');
+    appTray.setToolTip('NODE studio (Background Agent Active)');
     const trayMenu = Menu.buildFromTemplate([
       {
-        label: 'Open NØDE Studio',
+        label: 'Open NODE studio',
         click: () => {
           if (mainWindow) {
             mainWindow.show();
@@ -831,7 +941,7 @@ function createSystemTray() {
       },
       { type: 'separator' },
       {
-        label: 'Quit NØDE Studio',
+        label: 'Quit NODE studio',
         click: () => {
           app.quit();
         },
@@ -862,7 +972,7 @@ app.whenReady().then(() => {
 
   const template = [
     {
-      label: 'NØDE Studio',
+      label: 'NODE studio',
       submenu: [
         {
           label: 'Reload Configurator',
@@ -882,7 +992,7 @@ app.whenReady().then(() => {
         },
         { type: 'separator' },
         {
-          label: 'Quit NØDE Studio',
+          label: 'Quit NODE studio',
           accelerator: 'CmdOrCtrl+Q',
           click: () => app.quit(),
         },

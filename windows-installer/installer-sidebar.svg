@@ -1,50 +1,34 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
-  <defs>
-    <linearGradient id="panel" x1="0" y1="0" x2="0.9" y2="1">
-      <stop offset="0" stop-color="#111316"/>
-      <stop offset="1" stop-color="#090b0e"/>
-    </linearGradient>
-    <linearGradient id="key" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#25282d"/>
-      <stop offset="1" stop-color="#191b1f"/>
-    </linearGradient>
-    <linearGradient id="active" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3b81ff"/>
-      <stop offset="1" stop-color="#0752d5"/>
-    </linearGradient>
-    <pattern id="grid" width="12" height="12" patternUnits="userSpaceOnUse">
-      <path d="M12 0H0V12" fill="none" stroke="#fff" stroke-opacity=".025" stroke-width=".5"/>
-    </pattern>
-  </defs>
+  <!-- Grey/white welcome and finish panel; device matches the home screen. -->
+  <rect width="164" height="314" fill="#f4f4f4"/>
+  <rect x="0" y="0" width="2" height="314" fill="#aaaaaa"/>
 
-  <rect width="164" height="314" fill="url(#panel)"/>
-  <rect width="164" height="314" fill="url(#grid)"/>
-  <rect x="0" y="0" width="2" height="314" fill="#1762ef"/>
-  <path d="M17 62H147M17 288H147" fill="none" stroke="#fff" stroke-opacity=".13"/>
+  <text x="18" y="31" fill="#333333" font-family="DejaVu Sans" font-size="16" font-weight="700" letter-spacing="0.8">NODE</text>
+  <text x="18" y="45" fill="#777777" font-family="DejaVu Sans" font-size="7.4" font-weight="700" letter-spacing="1.2">studio</text>
+  <path d="M18 60H146" fill="none" stroke="#cccccc"/>
 
-  <text x="18" y="29" fill="#f7f8fa" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="700" letter-spacing=".7">NØDE</text>
-  <text x="18" y="43" fill="#9299a4" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.5" font-weight="600" letter-spacing="1.15">GRID MACRO 1 STUDIO</text>
-  <circle cx="143" cy="23" r="3" fill="#1762ef"/>
-  <circle cx="143" cy="23" r="6" fill="none" stroke="#1762ef" stroke-opacity=".34"/>
+  <text x="18" y="86" fill="#333333" font-family="DejaVu Sans" font-size="10.5" font-weight="700" letter-spacing="0.6">MAKE IT</text>
+  <text x="18" y="101" fill="#333333" font-family="DejaVu Sans" font-size="10.5" font-weight="700" letter-spacing="0.6">YOUR OWN.</text>
+  <text x="18" y="118" fill="#777777" font-family="DejaVu Sans" font-size="6.2">Your keys. Your flow.</text>
 
-  <text x="18" y="84" fill="#f5f6f8" font-family="DejaVu Sans, Arial, sans-serif" font-size="8.4" font-weight="700" letter-spacing=".75">MAKE IT</text>
-  <text x="18" y="99" fill="#f5f6f8" font-family="DejaVu Sans, Arial, sans-serif" font-size="8.4" font-weight="700" letter-spacing=".75">YOUR OWN.</text>
-  <text x="18" y="117" fill="#a0a6af" font-family="DejaVu Sans, Arial, sans-serif" font-size="6.3" font-weight="400">Your keys. Your flow.</text>
-
-  <g fill="url(#key)" stroke="#464a50" stroke-width="1.25">
-    <rect x="18" y="144" width="38" height="38"/>
-    <rect x="63" y="144" width="38" height="38"/>
-    <rect x="108" y="144" width="38" height="38"/>
-    <rect x="18" y="187" width="38" height="38"/>
-    <rect x="63" y="187" width="38" height="38"/>
-    <rect x="108" y="187" width="38" height="38"/>
-    <rect x="18" y="230" width="38" height="38"/>
-    <rect x="63" y="230" width="38" height="38"/>
-    <rect x="108" y="230" width="38" height="38"/>
+  <!-- Home-screen proportions: 172 x 216, not a square generic keypad. -->
+  <g id="micro-pad" transform="translate(23.52 128) scale(0.68)">
+<rect data-part="case" x="0" y="0" width="172" height="216" rx="24" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="inner-frame" x="12" y="12" width="148" height="192" rx="16" fill="#ebebeb"/>
+<circle data-part="status-light" cx="39" cy="39" r="2.5" fill="#888888"/>
+<circle data-part="dial" cx="130.6666666667" cy="39" r="19.5" fill="#fafafa" stroke="#999999" stroke-width="2"/>
+<line data-part="dial-marker" x1="117.1666666667" y1="39" x2="144.1666666667" y2="39" stroke="#999999" stroke-width="2" stroke-linecap="round"/>
+<rect data-part="key" x="18.6666666667" y="66" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="65" y="66" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="111.3333333333" y="66" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="18.6666666667" y="111" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="65" y="111" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="111.3333333333" y="111" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="18.6666666667" y="156" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="65" y="156" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+<rect data-part="key" x="111.3333333333" y="156" width="42" height="42" rx="5" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
   </g>
-  <rect x="75" y="156" width="14" height="14" rx="1" fill="url(#active)"/>
-  <circle cx="82" cy="276" r="2.2" fill="#1762ef"/>
-  <path d="M18 276H73M91 276H146" fill="none" stroke="#fff" stroke-opacity=".17"/>
 
-  <text x="18" y="302" fill="#aab0b9" font-family="DejaVu Sans, Arial, sans-serif" font-size="5.4" font-weight="600" letter-spacing=".65">NINE KEYS. ONE DIAL.</text>
+  <path d="M18 288H146" fill="none" stroke="#cccccc"/>
+  <text x="18" y="303" fill="#777777" font-family="DejaVu Sans" font-size="5.3" font-weight="700" letter-spacing="0.7">NINE KEYS. ONE DIAL.</text>
 </svg>

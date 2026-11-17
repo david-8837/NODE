@@ -1,12 +1,12 @@
-# NØDE Grid Macro 1 Studio
+# NODE studio
 
 [![Quality and test pipeline](https://github.com/david-8837/NODE/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/david-8837/NODE/actions/workflows/ci.yml)
 
-**A desktop studio for configuring the NØDE Grid Macro 1 macropad:** nine keys, one rotary encoder, profiles, presets, and custom actions.
+**A desktop studio for configuring the Grid Macro 1 macropad:** nine keys, one rotary encoder, profiles, presets, and custom actions.
 
 [Download the latest Windows release](https://github.com/david-8837/NODE/releases/latest) · [Open the download site](https://david-8837.github.io/NODE/) · [Read the hardware checklist](HARDWARE_PREPARATION_CHECKLIST.md)
 
-![NØDE Grid Macro 1 Studio keymap screen](website/assets/grid-macro-studio-current.png)
+![NODE studio keymap screen](website/assets/grid-macro-studio-current.png)
 
 ## What it does
 
@@ -15,9 +15,9 @@
 - Start from workflow presets and customize them for your setup.
 - Connect to supported QMK/VIA firmware over USB to read and synchronize supported key and encoder mappings.
 - Import and export profile JSON files, and use the desktop app's native features such as installed-app discovery and firmware selection.
-- Use the Windows desktop app's optional simulation and Smart Action features. Terminal Smart Actions are disabled by default and require explicit opt-in.
+- Run host-assisted actions and an optional click-through Cheat Sheet overlay in the Windows desktop app. Terminal Smart Actions are disabled by default and require explicit opt-in.
 
-The configurator keeps full profiles and custom actions in local browser/app storage; they are **not stored on the keyboard** and do not automatically follow the device to another browser or computer. Device synchronization supports standard VIA-compatible mappings; desktop-only or unsupported actions are not written to firmware and are reported in the app.
+Full profile descriptions and custom action definitions are stored in local browser/app storage; they do not automatically follow the device to another computer. The custom QMK firmware stores supported mappings and profile/layer state. Host-assisted actions and the Cheat Sheet require the desktop app to be running, although it can be minimized. Unsupported mappings are reported in the app.
 
 ## Download and platform support
 
@@ -32,7 +32,7 @@ For browser-based device access, use a supported Chromium browser such as Chrome
 
 ## Run from source
 
-Requirements: **Node.js 22** and npm.
+Requirements: **Node.js 22** and npm. Windows packaging also requires Rust and the Windows build toolchain.
 
 ```sh
 git clone https://github.com/david-8837/NODE.git
@@ -59,14 +59,7 @@ npm run lint          # TypeScript check
 npm test               # Unit and integration tests
 npm run build          # Production UI build
 npm run check:bundle   # Enforce shipped JavaScript size budgets
-npm run test:stress    # Stress-test suite
-```
-
-Optional checks:
-
-```sh
-npm run audit:cpp      # Cppcheck firmware analysis; requires Cppcheck installed
-npm run audit:mem      # Synthetic Node heap smoke check (not browser MemLab)
+bash qmk_firmware/tests/host/run.sh  # Host-compiled firmware behavior tests
 ```
 
 `npm run build:win` builds the Windows installer and portable ZIP into `dist_electron/`; for a release-quality Windows package, use a Windows runner or the GitHub Actions packaging workflow. The repository CI also runs dependency auditing, firmware checks, and packaged-app smoke tests.
@@ -74,7 +67,6 @@ npm run audit:mem      # Synthetic Node heap smoke check (not browser MemLab)
 ## Firmware
 
 - [`qmk_firmware/grid_macro_1/`](qmk_firmware/grid_macro_1/) is the QMK/VIA keyboard-definition fragment used by the current HID configurator. It is **not** a complete QMK checkout. Its README explains the pinned build workflow and local build steps.
-- [`firmware/`](firmware/) contains CircuitPython and Arduino firmware sources. See its README for those alternatives.
 
 Before flashing a physical board, read the [hardware preparation checklist](HARDWARE_PREPARATION_CHECKLIST.md). CI compilation and automated protocol tests do not verify a board's wiring or electrical behavior; the current repository work has not validated a physical device. Confirm the board revision, pinout, USB identity, and recovery procedure against authoritative hardware documentation first.
 
@@ -83,8 +75,8 @@ Before flashing a physical board, read the [hardware preparation checklist](HARD
 | Path | Contents |
 | --- | --- |
 | `src/` | React/TypeScript configurator, profile logic, device protocol, and action handling |
-| `electron/` | Desktop shell, safe IPC bridge, Windows action execution, app discovery, and firmware validation |
-| `firmware/` | CircuitPython and Arduino firmware sources |
+| `electron/` | Desktop shell, Cheat Sheet, IPC bridge, action execution, and firmware validation |
+| `native/rounded-blur/` | Windows Composition rounded backdrop source and license |
 | `qmk_firmware/grid_macro_1/` | QMK/VIA keyboard definition and keymaps |
 | `website/` | Public download landing page and latest-release link resolver |
 | `windows-installer/` | Editable and compiled NSIS installer artwork |
@@ -94,8 +86,7 @@ Before flashing a physical board, read the [hardware preparation checklist](HARD
 
 - [Windows app and firmware guide](WINDOWS_APP_AND_FIRMWARE_GUIDE.md)
 - [Hardware preparation and first-flash checklist](HARDWARE_PREPARATION_CHECKLIST.md)
-- [Quality assessment](QUALITY_ASSESSMENT.md)
-- [Firmware setup notes](firmware/README.md)
+- [Original product specification](docs/MICRO_PAD_MASTER_SPEC.md) (historical design baseline, not current implementation status)
 - [QMK/VIA build and sync notes](qmk_firmware/grid_macro_1/README.md)
 
 ## License

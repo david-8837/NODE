@@ -3,6 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import App from '../src/App';
+import { installConnectedDevice, removeConnectedDevice } from './helpers/connectedDevice';
 import { PROFILE_FILE_STORAGE_KEY } from '../src/profileFiles';
 
 let container: HTMLDivElement;
@@ -27,6 +28,7 @@ async function openPresets() {
 }
 
 beforeEach(async () => {
+  installConnectedDevice();
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   window.localStorage.clear();
   container = document.createElement('div');
@@ -38,6 +40,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  removeConnectedDevice();
   await act(async () => root.unmount());
   container.remove();
   delete (window as Window & { __MACRO_ICONS__?: unknown }).__MACRO_ICONS__;

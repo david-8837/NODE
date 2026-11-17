@@ -12,6 +12,8 @@ on:
     paths:
       - '.github/workflows/windows-installer.yml'
       - 'electron/**'
+      - 'native/rounded-blur/**'
+      - 'scripts/build-rounded-blur.cjs'
       - 'src/**'
       - 'native-executor.ts'
       - 'index.html'
@@ -40,6 +42,9 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Set up Rust for rounded Windows blur
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
         run: npm ci
 
@@ -47,7 +52,7 @@ jobs:
         run: npm run lint
 
       - name: Run tests
-        run: npm test
+        run: npx vitest run --reporter=default --reporter=github-actions
 
       - name: Build installer and ZIP
         run: npm run build:win
@@ -238,18 +243,41 @@ jobs:
           $installer = Get-ChildItem -Path 'dist_electron' -Filter '*.exe' -File | Select-Object -First 1
           $portableZip = Get-ChildItem -Path 'dist_electron' -Filter '*.zip' -File | Select-Object -First 1
           if (-not $installer -or -not $portableZip) { throw 'Expected installer and ZIP assets before publishing' }
-          $assets = @($installer.FullName, $portableZip.FullName)
 
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag @assets --clobber
+          # This job runs on both `push: tags` and `release: published`, so publishing
+          # a release re-runs it for a tag that was already built and uploaded. GitHub
+          # refuses to replace assets on an already-published release, so blindly
+          # re-uploading with --clobber failed the whole job even though the release
+          # was correct. A tag pins one commit, so assets already attached to it are
+          # by definition the right ones: upload only what is genuinely missing and
+          # treat an already-complete release as success.
+          $existingNames = @()
+          $releaseJson = gh release view $tag --json assets 2>$null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          if ($releaseExists -and $releaseJson) {
+            $existingNames = @((($releaseJson | ConvertFrom-Json).assets) | ForEach-Object { $_.name })
+          }
+
+          $missing = @(@($installer, $portableZip) | Where-Object { $existingNames -notcontains $_.Name })
+          if ($missing.Count -eq 0) {
+            Write-Host "Release $tag already carries both Windows assets; nothing to upload."
+            exit 0
+          }
+          $assets = @($missing | ForEach-Object { $_.FullName })
+
+          if ($releaseExists) {
+            gh release upload $tag @assets
           } else {
-            gh release create $tag @assets --verify-tag --title "NØDE Grid Macro 1 Studio $tag" --generate-notes
+            gh release create $tag @assets --verify-tag --prerelease --title "NODE studio $tag" --generate-notes
             if ($LASTEXITCODE -ne 0) {
-              gh release upload $tag @assets --clobber
+              gh release upload $tag @assets
             }
           }
           if ($LASTEXITCODE -ne 0) { throw "Could not publish Windows release $tag" }
+          # Physical hardware verification is still pending, so tagged builds must
+          # never become the repository's full "Latest" release.
+          gh release edit $tag --prerelease
+          if ($LASTEXITCODE -ne 0) { throw "Could not mark Windows release $tag as a pre-release" }
 
       - name: Upload Windows packages and visual check
         uses: actions/upload-artifact@v4

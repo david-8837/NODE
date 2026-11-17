@@ -1,5 +1,8 @@
+import { referencesAtOrAfter } from './referenceSafety';
+import { cheatSheetCommand, cheatSheetSnapshot, createCheatSheetTriggerHandler } from './cheatSheet';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
+import DeviceConnectionGate from './DeviceConnectionGate';
 import {
   APP_READY_EVENT,
   getEntranceMotionProps,
@@ -43,6 +46,8 @@ import {
 } from './appSettings';
 import type {
   DeviceLayerStateEvent,
+  DeviceRgbConfig,
+  DeviceRgbStateEvent,
   HardwareTriggerEvent,
   QmkViaStatus,
 } from './qmkViaBridge';
@@ -60,7 +65,6 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
-  Check,
   X,
   Search,
 } from 'lucide-react';
@@ -293,18 +297,14 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
       { id: 'lbracket', top: '{', main: '[', listLabel: '[', macropadLabel: '[' },
       { id: 'rbracket', top: '}', main: ']', listLabel: ']', macropadLabel: ']' },
       { id: 'backslash', top: '|', main: '\\', listLabel: '\\', macropadLabel: '\\' },
-      { id: 'nuhs', main: 'NUHS', listLabel: 'NUHS', macropadLabel: '#' },
       { id: 'semicolon', top: ':', main: ';', listLabel: ';', macropadLabel: ';' },
       { id: 'quote', top: '"', main: "'", listLabel: "'", macropadLabel: "'" },
       { id: 'grave', top: '~', main: '`', listLabel: '`', macropadLabel: '`' },
       { id: 'comma', top: '<', main: ',', listLabel: ',', macropadLabel: ',' },
       { id: 'plus-glyph', main: '+', listLabel: '+', macropadLabel: '+' },
-      { id: 'hyphen-glyph', main: '-', listLabel: '-', macropadLabel: '-' },
-      { id: 'eq-glyph', main: '=', listLabel: '=', macropadLabel: '=' },
       { id: 'ast-glyph', main: '*', listLabel: '*', macropadLabel: '*' },
       { id: 'period', top: '>', main: '.', listLabel: '.', macropadLabel: '.' },
       { id: 'slash', top: '?', main: '/', listLabel: '/', macropadLabel: '/' },
-      { id: 'pipe2', top: '|', main: '\\', listLabel: '\\', macropadLabel: '\\' },
     ],
   },
   {
@@ -327,12 +327,6 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
       { id: 'lock', main: 'lock', macropadLabel: 'lock' },
       { id: 'scrolllock', main: 'scroll lock', macropadLabel: 'scrl' },
       { id: 'numlock', main: 'num lock', macropadLabel: 'num' },
-      {
-        id: 'lscrolllock',
-        main: 'locking\nscroll lock',
-        listLabel: 'locking scroll lock',
-        macropadLabel: 'lscr',
-      },
       { id: 'prtsc', main: 'print\nscreen', listLabel: 'print screen', macropadLabel: 'prts' },
       { id: 'pause', main: 'pause', macropadLabel: 'paus' },
       { id: 'insert', main: 'insert', macropadLabel: 'ins' },
@@ -360,24 +354,24 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
     title: 'Number pad',
     listPreview: '[ /, *, -, +, num enter, 1... ]',
     items: [
-      { id: 'num-div', main: '/', macropadLabel: '/' },
-      { id: 'num-mul', main: '*', macropadLabel: '*' },
-      { id: 'num-sub', main: '-', macropadLabel: '-' },
-      { id: 'num-add', main: '+', macropadLabel: '+' },
+      { id: 'num-div', main: '/', listLabel: 'num /', macropadLabel: '/' },
+      { id: 'num-mul', main: '*', listLabel: 'num *', macropadLabel: '*' },
+      { id: 'num-sub', main: '-', listLabel: 'num -', macropadLabel: '-' },
+      { id: 'num-add', main: '+', listLabel: 'num +', macropadLabel: '+' },
       { id: 'num-ent', main: 'num enter', macropadLabel: 'nent' },
-      { id: 'num-1', main: '1', macropadLabel: '1' },
-      { id: 'num-2', main: '2', macropadLabel: '2' },
-      { id: 'num-3', main: '3', macropadLabel: '3' },
-      { id: 'num-4', main: '4', macropadLabel: '4' },
-      { id: 'num-5', main: '5', macropadLabel: '5' },
-      { id: 'num-6', main: '6', macropadLabel: '6' },
-      { id: 'num-7', main: '7', macropadLabel: '7' },
-      { id: 'num-8', main: '8', macropadLabel: '8' },
-      { id: 'num-9', main: '9', macropadLabel: '9' },
-      { id: 'num-0', main: '0', macropadLabel: '0' },
-      { id: 'num-dot', main: '.', macropadLabel: '.' },
-      { id: 'num-eq', main: '=', macropadLabel: '=' },
-      { id: 'num-comma', main: ',', macropadLabel: ',' },
+      { id: 'num-1', main: '1', listLabel: 'num 1', macropadLabel: '1' },
+      { id: 'num-2', main: '2', listLabel: 'num 2', macropadLabel: '2' },
+      { id: 'num-3', main: '3', listLabel: 'num 3', macropadLabel: '3' },
+      { id: 'num-4', main: '4', listLabel: 'num 4', macropadLabel: '4' },
+      { id: 'num-5', main: '5', listLabel: 'num 5', macropadLabel: '5' },
+      { id: 'num-6', main: '6', listLabel: 'num 6', macropadLabel: '6' },
+      { id: 'num-7', main: '7', listLabel: 'num 7', macropadLabel: '7' },
+      { id: 'num-8', main: '8', listLabel: 'num 8', macropadLabel: '8' },
+      { id: 'num-9', main: '9', listLabel: 'num 9', macropadLabel: '9' },
+      { id: 'num-0', main: '0', listLabel: 'num 0', macropadLabel: '0' },
+      { id: 'num-dot', main: '.', listLabel: 'num .', macropadLabel: '.' },
+      { id: 'num-eq', main: '=', listLabel: 'num =', macropadLabel: '=' },
+      { id: 'num-comma', main: ',', listLabel: 'num ,', macropadLabel: ',' },
     ],
   },
   {
@@ -416,7 +410,6 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
         macropadLabel: 'pwr',
       },
       { id: 'slp', main: 'sleep', macropadLabel: 'slp' },
-      { id: 'stop-ex', main: 'stop', macropadLabel: 'stop' },
       { id: 'brt-up', main: 'bright up', macropadLabel: 'brt+' },
       {
         id: 'brt-dn',
@@ -426,96 +419,7 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
       },
     ],
   },
-  {
-    title: 'Layer Keys',
-    listPreview: '[ Layer 1, Layer 2, Layer 3, Layer 4, La...',
-    items: [
-      { id: 'lyr-1', main: 'Layer 1', macropadLabel: 'L1' },
-      { id: 'lyr-2', main: 'Layer 2', macropadLabel: 'L2' },
-      { id: 'lyr-3', main: 'Layer 3', macropadLabel: 'L3' },
-      { id: 'lyr-4', main: 'Layer 4', macropadLabel: 'L4' },
-      { id: 'lyr-5', main: 'Layer 5', macropadLabel: 'L5' },
-      { id: 'lyr-6', main: 'Layer 6', macropadLabel: 'L6' },
-      {
-        id: 'tlyr-1',
-        main: 'Temp Layer\n1',
-        listLabel: 'Temp Layer 1',
-        macropadLabel: 'TL1',
-      },
-      {
-        id: 'tlyr-2',
-        main: 'Temp Layer\n2',
-        listLabel: 'Temp Layer 2',
-        macropadLabel: 'TL2',
-      },
-      {
-        id: 'tlyr-3',
-        main: 'Temp Layer\n3',
-        listLabel: 'Temp Layer 3',
-        macropadLabel: 'TL3',
-      },
-      {
-        id: 'tlyr-4',
-        main: 'Temp Layer\n4',
-        listLabel: 'Temp Layer 4',
-        macropadLabel: 'TL4',
-      },
-      {
-        id: 'tlyr-5',
-        main: 'Temp Layer\n5',
-        listLabel: 'Temp Layer 5',
-        macropadLabel: 'TL5',
-      },
-      {
-        id: 'tlyr-6',
-        main: 'Temp Layer\n6',
-        listLabel: 'Temp Layer 6',
-        macropadLabel: 'TL6',
-      },
-    ],
-  },
-  {
-    title: 'Profile Keys',
-    listPreview: '[ Profile 1, Profile 2, Profile 3, Profile ...',
-    items: [
-      { id: 'prf-1', main: 'Profile 1', macropadLabel: 'P1' },
-      { id: 'prf-2', main: 'Profile 2', macropadLabel: 'P2' },
-      { id: 'prf-3', main: 'Profile 3', macropadLabel: 'P3' },
-      { id: 'prf-4', main: 'Profile 4', macropadLabel: 'P4' },
-      { id: 'prf-5', main: 'Profile 5', macropadLabel: 'P5' },
-      { id: 'prf-6', main: 'Profile 6', macropadLabel: 'P6' },
-    ],
-  },
-  {
-    title: 'Internal',
-    listPreview: '[ Show Cheat-Sheet, Show Cheat-Sheet ...',
-    items: [
-      {
-        id: 'cs-show',
-        main: 'Show\nCheat-\nSheet',
-        listLabel: 'Show Cheat-Sheet',
-        macropadLabel: 'CS',
-      },
-      {
-        id: 'cs-hold',
-        main: 'Show\nCheat-\nSheet Hold',
-        listLabel: 'Show Cheat-Sheet Hold',
-        macropadLabel: 'CSH',
-      },
-      {
-        id: 'cs-hide',
-        main: 'Hide\nCheat-\nSheet',
-        listLabel: 'Hide Cheat-Sheet',
-        macropadLabel: 'HCS',
-      },
-      {
-        id: 'cs-tog',
-        main: 'Toggle\nCheat-\nSheet',
-        listLabel: 'Toggle Cheat-Sheet',
-        macropadLabel: 'TCS',
-      },
-    ],
-  },
+
 ];
 
 export const INITIAL_LAYER_1: LayerKeymap = {
@@ -1250,15 +1154,268 @@ export default function App() {
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
   const [deviceActiveLayer, setDeviceActiveLayer] = useState<number>(0);
+  const [deviceActiveProfileSlot, setDeviceActiveProfileSlot] = useState<number>(0);
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
   const lastSyncedConfigKeyRef = useRef('');
+  // Physical HUD labels and trigger lookup must describe the last successfully
+  // synced keymap, not unsaved edits currently in the editor.
+  const syncedCheatProfilesRef = useRef<Record<number, ProfileData>>({});
+  const [cheatSyncRevision, setCheatSyncRevision] = useState(0);
+  // Kept outside the event subscription so profile/layer changes do not lose
+  // the release corresponding to a held physical key.
+  const cheatSheetTriggersRef = useRef<ReturnType<typeof createCheatSheetTriggerHandler> | null>(null);
+  if (!cheatSheetTriggersRef.current) {
+    cheatSheetTriggersRef.current = createCheatSheetTriggerHandler((command, token) => {
+      void window.electronAPI?.commandCheatSheet?.(command, token);
+    });
+  }
 
   const hydratedRgbConnectionRef = useRef<boolean>(false);
 
+  /**
+   * The firmware is the source of truth for the active layer. This is the only
+   * place that adopts a hardware layer into the editor, and it never sends a
+   * command back, which is what keeps the two directions from looping.
+   */
+  // Latest layer the user asked for. Only the newest intent is ever sent, so
+  // rapid clicking coalesces instead of queueing a burst of stale commands.
+  const layerIntentRef = useRef<number | null>(null);
+  const layerIntentSeqRef = useRef(0);
+  const layerDrainRef = useRef<Promise<void> | null>(null);
+  const deviceActiveLayerRef = useRef(0);
+  // Layers in the profile being edited. Firmware can report a layer this profile
+  // does not have; the editor clamps to a real layer so an assignment can never
+  // target a nonexistent index while the preview silently falls back to layer 1.
+  const profileLayerCountRef = useRef(1);
+  // Profile-slot mirror of the layer intent queue. While a user-selected profile
+  // switch is in flight, stale firmware reports must not bounce the UI back.
+  const profileIntentRef = useRef<number | null>(null);
+  const profileIntentSeqRef = useRef(0);
+  const profileDrainRef = useRef<Promise<void> | null>(null);
+  const deviceActiveProfileSlotRef = useRef(0);
+  // Lets the rescan interval read the latest state without re-subscribing.
+  const deviceStatusRef = useRef<QmkViaStatus>(deviceStatus);
+  deviceStatusRef.current = deviceStatus;
+  const applyHardwareLayer = useCallback((layer: number) => {
+    const available = Math.max(1, Math.min(MAX_LAYER_COUNT, profileLayerCountRef.current));
+    const reported = Math.min(MAX_LAYER_COUNT - 1, Math.max(0, Math.round(layer)));
+    deviceActiveLayerRef.current = reported;
+    setDeviceActiveLayer(reported);
+    // Retain the real firmware state for the HUD, but never edit a missing layer.
+    setActiveLayerIndex(Math.min(available - 1, reported));
+  }, []);
+
+  /**
+   * Profile-level operations realign the editor to the confirmed hardware layer,
+   * clamped to the layers this profile actually has, instead of forcing layer 1.
+   * Activating the profile on the firmware is handled by requestHardwareProfile;
+   * changing profile is not itself a request to change layer.
+   */
+  const alignEditorToHardwareLayer = useCallback((layerCount: number) => {
+    const available = Math.max(1, Math.min(MAX_LAYER_COUNT, layerCount));
+    setActiveLayerIndex(Math.min(deviceActiveLayerRef.current, available - 1));
+  }, []);
+
+  /**
+   * User picked a layer in the app. Ask the firmware to switch and wait for its
+   * confirmation instead of changing the UI optimistically, so the highlighted
+   * layer can never claim a state the hardware did not reach.
+   *
+   * Raw HID allows one report in flight, so requests are drained serially and
+   * coalesced to the newest intent. A reply is always adopted (it is the newest
+   * authoritative state), and if it disagrees with the outstanding intent the
+   * loop sends one more command rather than leaving UI and hardware split.
+   */
+  const requestHardwareLayer = useCallback(async (layer: number): Promise<boolean> => {
+    const bridge = window.macropad;
+    if (!bridge || deviceStatusRef.current.state !== 'connected') return false;
+    const target = Math.min(MAX_LAYER_COUNT - 1, Math.max(0, Math.round(layer)));
+    const seq = ++layerIntentSeqRef.current;
+    layerIntentRef.current = target;
+
+    let drain = layerDrainRef.current;
+    if (!drain) {
+      let finish!: () => void;
+      drain = new Promise<void>((resolve) => { finish = resolve; });
+      layerDrainRef.current = drain;
+      const activeDrain = drain;
+      void (async () => {
+        try {
+          while (layerIntentRef.current !== null) {
+            const next = layerIntentRef.current;
+            layerIntentRef.current = null;
+            // Never talk to a device that went away mid-request.
+            if (deviceStatusRef.current.state !== 'connected') return;
+            // Already there (e.g. a physical key just selected it): no command.
+            if (deviceActiveLayerRef.current === next) continue;
+            const result = await bridge.request({ cmd: 'select_layer', layer: next });
+            if (deviceStatusRef.current.state !== 'connected') return;
+            if (!result?.ok) return;
+            if (typeof result.deviceActiveLayer === 'number') {
+              applyHardwareLayer(result.deviceActiveLayer);
+            }
+          }
+        } catch {
+          // Transport failure: the status listener drives the gate, and the UI
+          // keeps the last confirmed layer rather than guessing.
+        } finally {
+          layerIntentRef.current = null;
+          if (layerDrainRef.current === activeDrain) layerDrainRef.current = null;
+          finish();
+        }
+      })();
+    }
+
+    await drain;
+    // A newer click superseded this one; its own caller reports the outcome.
+    if (layerIntentSeqRef.current !== seq) return true;
+    return deviceActiveLayerRef.current === target;
+  }, [applyHardwareLayer]);
+
+  /**
+   * User picked a profile in the app. Tell the firmware to activate that EEPROM
+   * slot so physical keys, layer reports and the editor agree. Without this the
+   * device stayed on the old slot: the next layer report bounced the editor back
+   * and other profiles could not be edited reliably. Requests drain serially and
+   * coalesce to the newest intent, exactly like the layer queue.
+   */
+  const requestHardwareProfile = useCallback(async (slot: number): Promise<boolean> => {
+    const bridge = window.macropad;
+    if (!bridge || deviceStatusRef.current.state !== 'connected') return false;
+    const target = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, Math.round(slot)));
+    const seq = ++profileIntentSeqRef.current;
+    profileIntentRef.current = target;
+
+    let drain = profileDrainRef.current;
+    if (!drain) {
+      let finish!: () => void;
+      drain = new Promise<void>((resolve) => { finish = resolve; });
+      profileDrainRef.current = drain;
+      const activeDrain = drain;
+      void (async () => {
+        try {
+          while (profileIntentRef.current !== null) {
+            const next = profileIntentRef.current;
+            if (deviceStatusRef.current.state !== 'connected') return;
+            if (deviceActiveProfileSlotRef.current === next) {
+              profileIntentRef.current = null;
+              continue;
+            }
+            const result = await bridge.request({
+              cmd: 'select_profile',
+              profileSlot: next,
+              saveCurrentProfile: true,
+            });
+            if (deviceStatusRef.current.state !== 'connected') return;
+            if (!result?.ok) return;
+            if (typeof result.activeProfileSlot === 'number') {
+              const confirmedSlot = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, result.activeProfileSlot));
+              deviceActiveProfileSlotRef.current = confirmedSlot;
+              setDeviceActiveProfileSlot(confirmedSlot);
+            }
+            if (typeof result.deviceActiveLayer === 'number') {
+              applyHardwareLayer(result.deviceActiveLayer);
+            }
+            if (profileIntentRef.current === next) profileIntentRef.current = null;
+          }
+        } catch {
+          // Transport failure: the status listener drives the gate.
+        } finally {
+          profileIntentRef.current = null;
+          if (profileDrainRef.current === activeDrain) profileDrainRef.current = null;
+          finish();
+        }
+      })();
+    }
+
+    await drain;
+    if (profileIntentSeqRef.current !== seq) return true;
+    return deviceActiveProfileSlotRef.current === target;
+  }, [applyHardwareLayer]);
+
+  /** Switch the editor to a profile and ask the firmware to activate that slot. */
+  const selectProfileInApp = useCallback((idx: number, layerCount: number) => {
+    setActiveProfileIndex(idx);
+    alignEditorToHardwareLayer(layerCount);
+    void requestHardwareProfile(idx);
+  }, [alignEditorToHardwareLayer, requestHardwareProfile]);
+
+  /** Adopt RGB values reported by the firmware into the editor. */
+  const hydrateRgbFromDevice = useCallback((remoteRgb: DeviceRgbConfig) => {
+    const modeMap = ['Off', 'Solid', 'Rainbow', 'Breath'] as const;
+    setLayerLedConfigs((prev) =>
+      prev.map((currentCfg, idx) => {
+        const c = remoteRgb.layerColors[idx];
+        const rawMode = remoteRgb.layerModes?.[idx];
+        const preset =
+          rawMode !== undefined && rawMode >= 0 && rawMode <= 3
+            ? modeMap[rawMode]
+            : remoteRgb.enabled
+              ? 'Solid'
+              : 'Off';
+        const rawSpeed = remoteRgb.layerSpeeds?.[idx];
+        const speed =
+          typeof rawSpeed === 'number' && rawSpeed >= 0 && rawSpeed <= 100
+            ? rawSpeed
+            : currentCfg.speed;
+        if (!c) {
+          return { ...currentCfg, preset, speed };
+        }
+        const maxChannel = Math.max(c.r, c.g, c.b);
+        if (maxChannel === 0) {
+          return {
+            ...currentCfg,
+            preset,
+            speed,
+            light: preset === 'Off' ? currentCfg.light : 0,
+          };
+        }
+        const scale = 255 / maxChannel;
+        const nr = Math.min(255, Math.round(c.r * scale));
+        const ng = Math.min(255, Math.round(c.g * scale));
+        const nb = Math.min(255, Math.round(c.b * scale));
+        const colorHex = `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`.toUpperCase();
+        const rNorm = nr / 255;
+        const gNorm = ng / 255;
+        const bNorm = nb / 255;
+        const cMin = Math.min(rNorm, gNorm, bNorm);
+        const delta = 1 - cMin;
+        let hue = currentCfg.hue;
+        if (delta > 0.0001) {
+          if (rNorm === 1) hue = Math.round(((gNorm - bNorm) / delta) * 60);
+          else if (gNorm === 1) hue = Math.round((((bNorm - rNorm) / delta) + 2) * 60);
+          else hue = Math.round((((rNorm - gNorm) / delta) + 4) * 60);
+          if (hue < 0) hue += 360;
+        }
+        return {
+          ...currentCfg,
+          preset,
+          speed,
+          light: Math.round((maxChannel / 255) * 100),
+          hue,
+          colorHex,
+        };
+      }) as [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig]
+    );
+  }, []);
+
   const applyConnectedStatus = useCallback((status: QmkViaStatus) => {
+    // Update the ref synchronously: a disconnect must block in-flight layer
+    // requests immediately, not only after React re-renders.
+    deviceStatusRef.current = status;
     setDeviceStatus(status);
+    if (status.state !== 'connected') {
+      // Drop any queued intent so reconnecting cannot replay a stale switch.
+      layerIntentRef.current = null;
+    }
     if (typeof status.deviceActiveLayer === 'number') {
-      setDeviceActiveLayer(Math.min(MAX_LAYER_COUNT - 1, Math.max(0, status.deviceActiveLayer)));
+      applyHardwareLayer(status.deviceActiveLayer);
+    }
+    if (typeof status.activeProfileSlot === 'number') {
+      const slot = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, status.activeProfileSlot));
+      if (slot !== deviceActiveProfileSlotRef.current) cheatSheetTriggersRef.current?.cancel();
+      deviceActiveProfileSlotRef.current = slot;
+      setDeviceActiveProfileSlot(slot);
     }
     if (status.state !== 'connected') {
       hydratedRgbConnectionRef.current = false;
@@ -1266,69 +1423,14 @@ export default function App() {
     }
     if (status.rgbConfig && !hydratedRgbConnectionRef.current) {
       hydratedRgbConnectionRef.current = true;
-      const remoteRgb = status.rgbConfig;
-      const modeMap = ['Off', 'Solid', 'Rainbow', 'Breath'] as const;
-      setLayerLedConfigs((prev) =>
-        prev.map((currentCfg, idx) => {
-          const c = remoteRgb.layerColors[idx];
-          const rawMode = remoteRgb.layerModes?.[idx];
-          const preset =
-            rawMode !== undefined && rawMode >= 0 && rawMode <= 3
-              ? modeMap[rawMode]
-              : remoteRgb.enabled
-                ? 'Solid'
-                : 'Off';
-          const rawSpeed = remoteRgb.layerSpeeds?.[idx];
-          const speed =
-            typeof rawSpeed === 'number' && rawSpeed >= 0 && rawSpeed <= 100
-              ? rawSpeed
-              : currentCfg.speed;
-          if (!c) {
-            return { ...currentCfg, preset, speed };
-          }
-          const maxChannel = Math.max(c.r, c.g, c.b);
-          if (maxChannel === 0) {
-            return {
-              ...currentCfg,
-              preset,
-              speed,
-              light: preset === 'Off' ? currentCfg.light : 0,
-            };
-          }
-          const scale = 255 / maxChannel;
-          const nr = Math.min(255, Math.round(c.r * scale));
-          const ng = Math.min(255, Math.round(c.g * scale));
-          const nb = Math.min(255, Math.round(c.b * scale));
-          const colorHex = `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`.toUpperCase();
-          const rNorm = nr / 255;
-          const gNorm = ng / 255;
-          const bNorm = nb / 255;
-          const cMin = Math.min(rNorm, gNorm, bNorm);
-          const delta = 1 - cMin;
-          let hue = currentCfg.hue;
-          if (delta > 0.0001) {
-            if (rNorm === 1) hue = Math.round(((gNorm - bNorm) / delta) * 60);
-            else if (gNorm === 1) hue = Math.round((((bNorm - rNorm) / delta) + 2) * 60);
-            else hue = Math.round((((rNorm - gNorm) / delta) + 4) * 60);
-            if (hue < 0) hue += 360;
-          }
-          return {
-            ...currentCfg,
-            preset,
-            speed,
-            light: Math.round((maxChannel / 255) * 100),
-            hue,
-            colorHex,
-          };
-        }) as [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig]
-      );
+      hydrateRgbFromDevice(status.rgbConfig);
     }
-  }, []);
+  }, [hydrateRgbFromDevice, applyHardwareLayer]);
 
   useEffect(() => {
     const bridge = window.macropad;
     if (!bridge) {
-      setDeviceStatus({ state: 'unavailable', error: 'QMK/VIA device bridge is unavailable' });
+      applyConnectedStatus({ state: 'unavailable', error: 'QMK/VIA device bridge is unavailable' });
       return;
     }
 
@@ -1342,8 +1444,22 @@ export default function App() {
       applyConnectedStatus(status);
     });
 
+    // Fallback re-detection while the gate is showing. The HID 'connect' event
+    // covers most replugs, but not every platform emits it reliably. getStatus()
+    // only opens already-authorised devices, so this never raises a permission
+    // prompt and stops as soon as the device is connected.
+    const rescan = setInterval(() => {
+      if (!active) return;
+      const state = deviceStatusRef.current.state;
+      if (state === 'connected' || state === 'connecting' || state === 'unavailable') return;
+      void bridge.getStatus().then((status) => {
+        if (active) applyConnectedStatus(status);
+      });
+    }, 2000);
+
     return () => {
       active = false;
+      clearInterval(rescan);
       unsubscribe();
     };
   }, [applyConnectedStatus]);
@@ -1539,9 +1655,13 @@ export default function App() {
   };
 
   const currentProfile = profiles[activeProfileIndex] || profiles[0];
+  profileLayerCountRef.current = currentProfile.layers.length;
+  // Never edit a layer index the profile does not have, even if a stale hardware
+  // report lands between renders. The preview and mutations use the same index.
+  const effectiveLayerIndex = Math.min(activeLayerIndex, currentProfile.layers.length - 1);
   const currentLayer =
-    currentProfile.layers[activeLayerIndex] || currentProfile.layers[0];
-  const currentLayerNameKey = `${currentProfile.id}-${activeLayerIndex}`;
+    currentProfile.layers[effectiveLayerIndex] || currentProfile.layers[0];
+  const currentLayerNameKey = `${currentProfile.id}-${effectiveLayerIndex}`;
   const currentLayerName = layerNames[currentLayerNameKey] ?? '';
 
   const showToast = (msg: string) => {
@@ -1577,6 +1697,7 @@ export default function App() {
     const bridge = window.macropad;
     if (!bridge || deviceStatus.state !== 'connected') {
       lastSyncedConfigKeyRef.current = '';
+      syncedCheatProfilesRef.current = {};
       setDeviceSyncReady(false);
       return;
     }
@@ -1600,13 +1721,17 @@ export default function App() {
             );
             setProfiles(nextProfiles);
             setActiveProfileIndex(saved.activeProfileIndex);
-            setActiveLayerIndex(0);
+            deviceActiveProfileSlotRef.current = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, saved.activeProfileIndex));
+            setDeviceActiveProfileSlot(deviceActiveProfileSlotRef.current);
+            alignEditorToHardwareLayer((nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0])?.layers.length ?? 1);
             setCustomItemsByTab(normalizeCustomItemsForEditor(
               saved.customItems as unknown as CustomItemsByTab
             ));
             const selected = nextProfiles[saved.activeProfileIndex] ?? nextProfiles[0];
+            syncedCheatProfilesRef.current[saved.activeProfileIndex] = selected;
+            setCheatSyncRevision((revision) => revision + 1);
             lastSyncedConfigKeyRef.current = `slot:${saved.activeProfileIndex}:${JSON.stringify(
-              buildViaConfiguration(selected, presetOs, { enableHostTriggers: true }).config
+              buildViaConfiguration(selected, presetOs, { enableHostTriggers: true, profileCount: saved.profiles.length }).config
             )}`;
             showToast('Loaded keymap profile from Grid Macro 1');
           } catch {
@@ -1625,6 +1750,20 @@ export default function App() {
     };
   }, [deviceStatus.state, deviceStatus.device, deviceStatus.fw]);
 
+  useEffect(() => {
+    const connected = deviceStatus.state === 'connected';
+    const slot = connected ? deviceActiveProfileSlot : activeProfileIndex;
+    const layer = connected ? deviceActiveLayer : effectiveLayerIndex;
+    const profile = connected ? syncedCheatProfilesRef.current[slot] : profiles[slot];
+    void window.electronAPI?.updateCheatSheet?.(cheatSheetSnapshot(profile, layer));
+  }, [profiles, deviceStatus.state, deviceActiveProfileSlot, deviceActiveLayer, activeProfileIndex, effectiveLayerIndex, cheatSyncRevision]);
+
+  useEffect(() => {
+    if (deviceStatus.state !== 'connected') {
+      cheatSheetTriggersRef.current?.cancel();
+    }
+  }, [deviceStatus.state]);
+
   // Listen for physical device layer changes and hardware host-action triggers
   useEffect(() => {
     const bridge = window.macropad;
@@ -1633,33 +1772,50 @@ export default function App() {
     const triggerController = createHardwareTriggerController(
       (targetLayer) => {
         if (targetLayer >= currentProfile.layers.length) return false;
-        setDeviceActiveLayer(targetLayer);
+        // Same single adoption point as firmware telemetry, so the preview and
+        // the highlighted layer can never disagree with the reported layer.
+        void requestHardwareLayer(targetLayer);
       },
       showToast,
-      window
+      window,
+      undefined,
+      (targetProfile) => {
+        if (!profiles[targetProfile]) return false;
+        selectProfileInApp(targetProfile, profiles[targetProfile].layers.length);
+      }
     );
 
     const unsubscribe = bridge.onEvent((rawEvent) => {
       if (!isRecordValue(rawEvent)) return;
+      if (rawEvent.type === 'rgb_state') {
+        // RGB was changed on the device (FN keys / encoder). Adopt it so the
+        // editor does not push stale values back over the user's edit.
+        const rgbEvent = rawEvent as unknown as DeviceRgbStateEvent;
+        if (rgbEvent.rgbConfig) hydrateRgbFromDevice(rgbEvent.rgbConfig);
+        return;
+      }
       if (rawEvent.type === 'layer_state') {
         const layerEvent = rawEvent as unknown as DeviceLayerStateEvent;
+        if (typeof layerEvent.activeProfileSlot === 'number' && profiles[layerEvent.activeProfileSlot]) {
+          profileLayerCountRef.current = profiles[layerEvent.activeProfileSlot].layers.length;
+        }
         if (typeof layerEvent.deviceActiveLayer === 'number') {
-          setDeviceActiveLayer(Math.min(MAX_LAYER_COUNT - 1, Math.max(0, layerEvent.deviceActiveLayer)));
+          applyHardwareLayer(layerEvent.deviceActiveLayer);
+        }
+        if (typeof layerEvent.activeProfileSlot === 'number') {
+          const reportedSlot = Math.min(MAX_PROFILE_COUNT - 1, Math.max(0, layerEvent.activeProfileSlot));
+          if (reportedSlot !== deviceActiveProfileSlotRef.current) cheatSheetTriggersRef.current?.cancel();
+          deviceActiveProfileSlotRef.current = reportedSlot;
+          setDeviceActiveProfileSlot(reportedSlot);
         }
         if (
+          profileIntentRef.current === null &&
           typeof layerEvent.activeProfileSlot === 'number' &&
           layerEvent.activeProfileSlot >= 0 &&
           layerEvent.activeProfileSlot < profiles.length &&
           layerEvent.activeProfileSlot !== activeProfileIndex
         ) {
           const targetSlot = layerEvent.activeProfileSlot;
-          const targetProfile = profiles[targetSlot];
-          if (targetProfile) {
-            const { config: targetConfig } = buildViaConfiguration(targetProfile, presetOs, {
-              enableHostTriggers: true,
-            });
-            lastSyncedConfigKeyRef.current = `slot:${targetSlot}:${JSON.stringify(targetConfig)}`;
-          }
           setActiveProfileIndex(targetSlot);
           showToast(
             `Switched to ${profiles[targetSlot]?.name || `Profile ${targetSlot + 1}`} from device`
@@ -1669,7 +1825,10 @@ export default function App() {
       }
       if (rawEvent.type === 'hardware_trigger') {
         const trig = rawEvent as unknown as HardwareTriggerEvent;
-        const activeProf = profiles[activeProfileIndex] ?? profiles[0];
+        // A release belongs to the original press, even if profile/layer changed.
+        if (!trig.pressed && cheatSheetTriggersRef.current?.handle(trig.slotId, false)) return;
+        const syncedProfile = syncedCheatProfilesRef.current[trig.profileSlot];
+        const activeProf = syncedProfile ?? profiles[trig.profileSlot];
         if (!activeProf) return;
         const targetLayer =
           activeProf.layers[trig.layer] ??
@@ -1686,6 +1845,15 @@ export default function App() {
             assignment = { ...keyEntry, id: keyEntry.actionId };
           }
         }
+        if (cheatSheetCommand(assignment?.binding)) {
+          // Do not guess a HUD assignment while a keymap is being written.
+          if (!syncedProfile) return;
+          if (trig.pressed) {
+            // Send the confirmed device profile/layer before making the window visible.
+            void window.electronAPI?.updateCheatSheet?.(cheatSheetSnapshot(syncedProfile, deviceActiveLayerRef.current));
+          }
+        }
+        if (cheatSheetTriggersRef.current?.handle(trig.slotId, trig.pressed, assignment?.binding)) return;
         triggerController.handleSlotEvent(trig.slotId, trig.pressed, assignment);
       }
     });
@@ -1694,7 +1862,17 @@ export default function App() {
       unsubscribe();
       triggerController.cancelAll();
     };
-  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, presetOs]);
+  }, [profiles, activeProfileIndex, currentProfile, deviceActiveLayer, hydrateRgbFromDevice, applyHardwareLayer, requestHardwareLayer, selectProfileInApp]);
+
+  // Keep the firmware's active EEPROM slot aligned with the profile being edited.
+  // This covers initial connect (the saved profile may differ from the device's
+  // current slot) and any drift, without fighting an in-flight user selection.
+  useEffect(() => {
+    if (deviceStatus.state !== 'connected' || !deviceSyncReady) return;
+    if (profileIntentRef.current !== null) return;
+    if (deviceActiveProfileSlotRef.current === activeProfileIndex) return;
+    void requestHardwareProfile(activeProfileIndex);
+  }, [deviceStatus.state, deviceSyncReady, activeProfileIndex, deviceActiveProfileSlot, requestHardwareProfile]);
 
   // Listen for native Electron menu hardware actions when running inside desktop shell
   useEffect(() => {
@@ -1724,10 +1902,20 @@ export default function App() {
 
     const { config, warnings: configWarnings } = buildViaConfiguration(currentProfile, presetOs, {
       enableHostTriggers: true,
+      profileCount: profiles.length,
     });
     if (config.layers.length === 0) return;
     const configKey = `slot:${activeProfileIndex}:${JSON.stringify(config)}`;
-    if (configKey === lastSyncedConfigKeyRef.current) return;
+    if (configKey === lastSyncedConfigKeyRef.current) {
+      // Host-trigger keycodes can stay identical when their desktop action or
+      // display label changes. Refresh the verified slot's metadata without a
+      // redundant device write, so execution and the HUD do not use stale data.
+      if (syncedCheatProfilesRef.current[activeProfileIndex] !== currentProfile) {
+        syncedCheatProfilesRef.current[activeProfileIndex] = currentProfile;
+        setCheatSyncRevision((revision) => revision + 1);
+      }
+      return;
+    }
 
     let cancelled = false;
     const syncTimer = window.setTimeout(() => {
@@ -1763,6 +1951,12 @@ export default function App() {
           }
           if (cancelled || configKey === lastSyncedConfigKeyRef.current) return;
 
+          // A live keymap rewrite can change the keycode before a held key's
+          // release is reported. Fail closed rather than leaving a stuck HUD.
+          cheatSheetTriggersRef.current?.cancel();
+          // During a multi-key write, neither the old nor new image is guaranteed.
+          delete syncedCheatProfilesRef.current[activeProfileIndex];
+          setCheatSyncRevision((revision) => revision + 1);
           const synced = await bridge.request({
             cmd: 'set_config',
             config,
@@ -1777,6 +1971,8 @@ export default function App() {
           }
 
           lastSyncedConfigKeyRef.current = configKey;
+          syncedCheatProfilesRef.current[activeProfileIndex] = currentProfile;
+          setCheatSyncRevision((revision) => revision + 1);
           const state = JSON.stringify({
             v: 1,
             profiles,
@@ -1906,13 +2102,13 @@ export default function App() {
 
     if (deviceStatus.state === 'connected') {
       await bridge.disconnect();
-      setDeviceStatus({ state: 'disconnected' });
+      applyConnectedStatus({ state: 'disconnected' });
       return;
     }
 
     try {
       const nextStatus = await bridge.connect();
-      setDeviceStatus(nextStatus);
+      applyConnectedStatus(nextStatus);
       if (nextStatus.state !== 'connected' && nextStatus.error) {
         showToast(nextStatus.error);
       }
@@ -1932,8 +2128,7 @@ export default function App() {
       return;
     }
     setProfiles(JSON.parse(JSON.stringify(INITIAL_PROFILES)) as ProfileData[]);
-    setActiveProfileIndex(0);
-    setActiveLayerIndex(0);
+    selectProfileInApp(0, INITIAL_PROFILES[0]?.layers.length ?? 1);
     setCustomItemsByTab({ Action: [], 'Multi-A': [], 'Smart-A': [] });
     setHistory([]);
     setRedoStack([]);
@@ -1969,7 +2164,8 @@ export default function App() {
         : p
     );
     pushState(nextProfiles);
-    setActiveLayerIndex(currentProfile.layers.length);
+    // Editing the new layer selects it on the device as well.
+    void requestHardwareLayer(currentProfile.layers.length);
     setLayerToolbarOpen(true);
     setLayerDeleteConfirm(false);
   };
@@ -1985,13 +2181,19 @@ export default function App() {
       setLayerToolbarOpen(false);
       return;
     }
+    const retainedLayers = currentProfile.layers.filter((_, i) => i !== layerIdx);
+    if (referencesAtOrAfter(retainedLayers, 'layer', layerIdx) || referencesAtOrAfter(customItemsByTab, 'layer', layerIdx)) {
+      showToast('Clear layer references to this and later layers before deleting, to avoid retargeting assignments');
+      setLayerDeleteConfirm(false);
+      return;
+    }
     const nextProfiles = profiles.map((p, idx) =>
       idx === activeProfileIndex
         ? { ...p, layers: p.layers.filter((_, i) => i !== layerIdx) }
         : p
     );
     pushState(nextProfiles);
-    setActiveLayerIndex(Math.max(0, activeLayerIndex - 1));
+    void requestHardwareLayer(Math.max(0, activeLayerIndex - 1));
     setLayerDeleteConfirm(false);
   };
 
@@ -2002,7 +2204,7 @@ export default function App() {
     const nextProfiles = profiles.map((p, pIdx) => {
       if (pIdx !== activeProfileIndex) return p;
       const nextLayers = p.layers.map((layer, lIdx) => {
-        if (lIdx !== activeLayerIndex) return layer;
+        if (lIdx !== effectiveLayerIndex) return layer;
         return {
           ...layer,
           [slotId]: {
@@ -2023,6 +2225,15 @@ export default function App() {
     tabOverride?: MappingTabId
   ) => {
     const effectiveTab = tabOverride || mappingTab;
+    if (effectiveTab === 'Basic') {
+      const layerTarget = item.id.match(/^(?:t?lyr)-(\d+)$/);
+      const profileTarget = item.id.match(/^prf-(\d+)$/);
+      if ((layerTarget && Number(layerTarget[1]) > currentProfile.layers.length) ||
+          (profileTarget && Number(profileTarget[1]) > profiles.length)) {
+        showToast('This layer or profile no longer exists');
+        return;
+      }
+    }
     const actionTypeMap: Record<MappingTabId, KeyAssignment['actionType']> = {
       Basic: 'Basic input',
       Action: 'Shortcut',
@@ -2074,7 +2285,7 @@ export default function App() {
     const nextProfiles = profiles.map((p, pIdx) => {
       if (pIdx !== activeProfileIndex) return p;
       const nextLayers = p.layers.map((layer, lIdx) => {
-        if (lIdx !== activeLayerIndex) return layer;
+        if (lIdx !== effectiveLayerIndex) return layer;
         const copy: LayerKeymap = JSON.parse(JSON.stringify(layer));
 
         if (subA && subB) {
@@ -2788,6 +2999,23 @@ export default function App() {
     subAction?: EncoderSubActionId
   ) => {
     if (e.button !== 0) return;
+    if (simulationMode && !subAction && slotId !== GRID_MACRO_ENCODER_SLOT &&
+        cheatSheetCommand(currentLayer[slotId]?.binding) === 'hold-start') {
+      const command = window.electronAPI?.commandCheatSheet;
+      if (!command) return;
+      void window.electronAPI?.updateCheatSheet?.(cheatSheetSnapshot(currentProfile, effectiveLayerIndex));
+      void command('hold-start', 'simulation');
+      const pointerId = e.pointerId;
+      const release = (event: PointerEvent) => {
+        if (event.pointerId !== pointerId) return;
+        window.removeEventListener('pointerup', release);
+        window.removeEventListener('pointercancel', release);
+        void command('hold-end', 'simulation');
+      };
+      window.addEventListener('pointerup', release);
+      window.addEventListener('pointercancel', release);
+      return;
+    }
     // Drag encoder bindings from their CW / Press / CCW capsule, not the knob body.
     if (slotId === GRID_MACRO_ENCODER_SLOT && !subAction) return;
 
@@ -2850,13 +3078,26 @@ export default function App() {
           showToast(`Layer ${targetLayer + 1} is not available on this profile`);
           return false;
         }
-        setActiveLayerIndex(targetLayer);
+        // A simulated layer action must move the real device too; the confirmed
+        // reply is what updates the highlight and preview.
+        if (deviceStatusRef.current.state === 'connected') {
+          void requestHardwareLayer(targetLayer);
+        } else {
+          setActiveLayerIndex(targetLayer);
+        }
         setSelectedKey(null);
         setSelectedEncoderSub(null);
         setMappingDrawerOpen(false);
       },
       showToast,
-      window
+      window,
+      { onProfileChange: (targetProfile) => {
+        if (!profiles[targetProfile]) {
+          showToast(`Profile ${targetProfile + 1} is not available`);
+          return false;
+        }
+        selectProfileInApp(targetProfile, profiles[targetProfile].layers.length);
+      } }
     );
   };
 
@@ -2866,7 +3107,7 @@ export default function App() {
       if (slotId === GRID_MACRO_ENCODER_SLOT) {
         setEncoderAngle((angle) => (angle + 30) % 360);
         runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
-      } else {
+      } else if (cheatSheetCommand(currentLayer[slotId]?.binding) !== 'hold-start') {
         runSimulationAction(currentLayer[slotId]);
       }
       return;
@@ -3302,7 +3543,7 @@ export default function App() {
       'Smart-A': mergePresetItems(current['Smart-A'], preset.actionItems['Smart-A']),
     }));
     pushState(nextProfiles);
-    setActiveLayerIndex(nextLayerIndex);
+    void requestHardwareLayer(nextLayerIndex);
     setPreviewPreset(null);
     setActiveNav('Keymap');
     const savedActionCount = preset.actionItems.Action.length + preset.actionItems['Multi-A'].length;
@@ -3484,8 +3725,7 @@ export default function App() {
     };
     const next = [...profiles, duplicated];
     pushState(next);
-    setActiveProfileIndex(next.length - 1);
-    setActiveLayerIndex(0);
+    selectProfileInApp(next.length - 1, duplicated.layers.length);
     showToast(`Duplicated "${source.name}"`);
   };
 
@@ -3518,8 +3758,7 @@ export default function App() {
     };
     const next = [...profiles, nextProf];
     pushState(next);
-    setActiveProfileIndex(next.length - 1);
-    setActiveLayerIndex(0);
+    selectProfileInApp(next.length - 1, nextProf.layers.length);
     setDeletingProfileId(null);
   };
 
@@ -3539,17 +3778,20 @@ export default function App() {
         layers: [JSON.parse(JSON.stringify(INITIAL_LAYER_1))],
       };
       pushState([resetProf]);
-      setActiveProfileIndex(0);
-      setActiveLayerIndex(0);
+      selectProfileInApp(0, resetProf.layers.length);
       setDeletingProfileId(null);
       return;
     }
     const next = profiles.filter((_, i) => i !== idx);
+    if (referencesAtOrAfter(next, 'profile', idx) || referencesAtOrAfter(customItemsByTab, 'profile', idx)) {
+      showToast('Clear references to this and later profiles before deleting, to avoid retargeting assignments');
+      setDeletingProfileId(null);
+      return;
+    }
     pushState(next);
-    setActiveProfileIndex((prev) =>
-      prev >= next.length ? Math.max(0, next.length - 1) : prev
-    );
-    setActiveLayerIndex(0);
+    lastSyncedConfigKeyRef.current = '';
+    const nextIdx = activeProfileIndex > idx ? activeProfileIndex - 1 : Math.min(activeProfileIndex, next.length - 1);
+    selectProfileInApp(nextIdx, (next[nextIdx] ?? next[0])?.layers.length ?? 1);
     setDeletingProfileId(null);
   };
 
@@ -3624,8 +3866,11 @@ export default function App() {
           merged.customItems as unknown as CustomItemsByTab
         )
       );
-      setActiveProfileIndex(merged.activeProfileIndex);
-      setActiveLayerIndex(0);
+      selectProfileInApp(
+        merged.activeProfileIndex,
+        ((merged.profiles as unknown as ProfileData[])[merged.activeProfileIndex]
+          ?? (merged.profiles as unknown as ProfileData[])[0])?.layers.length ?? 1
+      );
       setProfileMenuOpen(false);
       setDeletingProfileId(null);
       showToast(
@@ -3657,7 +3902,33 @@ export default function App() {
     ? isPresetInstalledInProfile(currentProfile, previewPreset.id)
     : false;
 
-  const filteredBasicSections = BASIC_KEY_SECTIONS.map((sec) => ({
+  const basicKeySections: BasicSection[] = [
+    ...BASIC_KEY_SECTIONS,
+    {
+      title: 'Layer Keys',
+      listPreview: '[ ' + currentProfile.layers.map((_, i) => `Layer ${i + 1}`).join(', ') + ' ]',
+      items: currentProfile.layers.flatMap((_, i) => [
+        { id: `lyr-${i + 1}`, main: `Layer ${i + 1}`, macropadLabel: `L${i + 1}` },
+        { id: `tlyr-${i + 1}`, main: `Temp Layer\n${i + 1}`, listLabel: `Temp Layer ${i + 1}`, macropadLabel: `TL${i + 1}` },
+      ]),
+    },
+    {
+      title: 'Profile Keys',
+      listPreview: '[ ' + profiles.map((_, i) => `Profile ${i + 1}`).join(', ') + ' ]',
+      items: profiles.map((_, i) => ({ id: `prf-${i + 1}`, main: `Profile ${i + 1}`, macropadLabel: `P${i + 1}` })),
+    },
+    ...(window.electronAPI?.commandCheatSheet ? [{
+      title: 'Internal',
+      listPreview: '[ Show, Hold, Hide, Toggle Cheat-Sheet ]',
+      items: [
+        { id: 'cs-show', main: 'Show\nCheat-Sheet', listLabel: 'Show Cheat-Sheet', macropadLabel: 'CS' },
+        { id: 'cs-hold', main: 'Hold\nCheat-Sheet', listLabel: 'Show Cheat-Sheet Hold', macropadLabel: 'CSH' },
+        { id: 'cs-hide', main: 'Hide\nCheat-Sheet', listLabel: 'Hide Cheat-Sheet', macropadLabel: 'HCS' },
+        { id: 'cs-tog', main: 'Toggle\nCheat-Sheet', listLabel: 'Toggle Cheat-Sheet', macropadLabel: 'TCS' },
+      ],
+    }] : []),
+  ];
+  const filteredBasicSections = basicKeySections.map((sec) => ({
     ...sec,
     items: sec.items.filter(
       (item) =>
@@ -3669,6 +3940,18 @@ export default function App() {
         sec.title.toLowerCase().includes(mappingSearch.toLowerCase())
     ),
   })).filter((sec) => sec.items.length > 0);
+
+  // Editing stays locked until the firmware has answered. Returning here means
+  // the configurator below is never mounted, so no control can reach a device
+  // that is absent. Profile state lives above this branch and is preserved.
+  if (deviceStatus.state !== 'connected') {
+    return (
+      <DeviceConnectionGate
+        status={deviceStatus}
+        onRetry={handleToggleDeviceConnection}
+      />
+    );
+  }
 
   return (
     <div className="app-shell h-screen w-full bg-[#efefef] flex flex-col select-none relative overflow-hidden">
@@ -3693,10 +3976,10 @@ export default function App() {
               setMappingStackExpanded(false);
             }}
             className="flex items-center gap-[3px] text-white hover:opacity-90 transition-opacity focus:outline-none cursor-pointer px-[10px]"
-            title="NØDE Studio"
+            title="NODE studio"
           >
             <span className="font-bold text-[13px] tracking-[0.16em] text-white select-none leading-none">
-              NØDE
+              NODE
             </span>
           </button>
 
@@ -3783,7 +4066,6 @@ export default function App() {
         <button
           type="button"
           onClick={handleToggleDeviceConnection}
-          disabled={deviceStatus.state === 'connecting'}
           aria-label={
             deviceStatus.state === 'connected'
               ? 'Disconnect Grid Macro 1'
@@ -4077,8 +4359,7 @@ export default function App() {
                                   {/* Profile Pill (Blue in our theme when active, White when inactive) */}
                                   <div
                                     onClick={() => {
-                                      setActiveProfileIndex(idx);
-                                      setActiveLayerIndex(0);
+                                      selectProfileInApp(idx, prof.layers.length);
                                       setDeletingProfileId(null);
                                     }}
                                     className={`flex-1 h-[27px] min-w-0 px-[10px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center gap-[6px] text-[11px] font-medium transition-all cursor-text ${
@@ -4108,8 +4389,7 @@ export default function App() {
                                         handleUpdateProfileName(idx, event.target.value)
                                       }
                                       onFocus={() => {
-                                        setActiveProfileIndex(idx);
-                                        setActiveLayerIndex(0);
+                                        selectProfileInApp(idx, prof.layers.length);
                                         setDeletingProfileId(null);
                                       }}
                                       aria-label={`Rename profile ${prof.name || idx + 1}`}
@@ -4301,13 +4581,23 @@ export default function App() {
                               return !open;
                             });
                           } else {
-                            setActiveLayerIndex(idx);
-                            setLedEditingLayerIdx(idx);
                             setLayerToolbarOpen(true);
                             setLayerDeleteConfirm(false);
+                            // Ask the hardware to switch; the confirmed layer_state
+                            // event moves the highlight and the preview. Changing
+                            // them here would show a layer the device never reached.
+                            void requestHardwareLayer(idx).then((confirmed) => {
+                              if (!confirmed) {
+                                showToast(`Layer ${idx + 1} was not confirmed by the Micro Pad`);
+                              }
+                            });
                           }
                         }}
                         title={`Layer ${idx + 1}`}
+                        // The active layer is the one the firmware confirmed, so
+                        // expose it semantically instead of only through colour.
+                        aria-pressed={isActive}
+                        data-active-layer={isActive ? 'true' : 'false'}
                         className={`w-[26px] h-[26px] rounded-full border-[1.5px] text-[11.5px] font-medium flex items-center justify-center transition-colors duration-200 tabular-nums cursor-pointer ${
                           isActive
                             ? layerToolbarOpen
@@ -4557,7 +4847,14 @@ export default function App() {
                                     onClick={() => {
                                       setLedEditingLayerIdx(lIdx);
                                       if (lIdx < currentProfile.layers.length) {
-                                        setActiveLayerIndex(lIdx);
+                                        // Previewing a layer's lighting also selects
+                                        // it on the device, so the LED you see is the
+                                        // LED the hardware is actually showing.
+                                        void requestHardwareLayer(lIdx).then((confirmed) => {
+                                          if (!confirmed) {
+                                            showToast(`Layer ${lIdx + 1} was not confirmed by the Micro Pad`);
+                                          }
+                                        });
                                       }
                                     }}
                                     className={`h-[26px] rounded-full px-[6px] flex items-center justify-center gap-[4px] text-[10px] font-medium border-[1.5px] transition-all cursor-pointer ${
@@ -5765,7 +6062,7 @@ export default function App() {
 
                                         {/* Accordion Categories with Blue Hover & Active */}
                                         <div className="max-h-[268px] overflow-y-auto list-accordion-scroll divide-y divide-[#eeeeee]">
-                                          {BASIC_KEY_SECTIONS.map((sec) => {
+                                          {basicKeySections.filter((sec) => sec.title !== 'Internal').map((sec) => {
                                             const matchingItems = sec.items.filter(
                                               (it) => {
                                                 if (!gestureKeySearch.trim())
@@ -6543,7 +6840,7 @@ export default function App() {
                                               </div>
 
                                               <div className="max-h-[220px] overflow-y-auto list-accordion-scroll divide-y divide-[#eeeeee]">
-                                                {BASIC_KEY_SECTIONS.map((sec) => {
+                                                {basicKeySections.filter((sec) => sec.title !== 'Internal').map((sec) => {
                                                   const matchingItems =
                                                     sec.items.filter((it) => {
                                                       if (
@@ -7881,7 +8178,7 @@ export default function App() {
           </div>
 
           <footer className="pb-[18px] text-[9.5px] text-[#555555] text-center">
-            © 2026 NØDE Studio
+            © 2026 NODE studio
           </footer>
         </motion.main>
       )}
@@ -9119,85 +9416,6 @@ function KeycapButton({
         </span>
       )}
     </motion.button>
-  );
-}
-
-interface KnobControlProps {
-  selected: boolean;
-  angle: number;
-  title: string;
-  onClick: () => void;
-}
-
-function KnobControl({
-  selected,
-  angle,
-  title,
-  onClick,
-}: KnobControlProps) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={`w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-        selected
-          ? 'bg-[#0051ff] border-[#0051ff] shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
-          : 'border-transparent hover:border-[#0051ff] hover:z-10'
-      }`}
-    >
-      <svg
-        width="39"
-        height="39"
-        viewBox="0 0 40 40"
-        className="transition-transform duration-150 pointer-events-none"
-        style={{ transform: `rotate(${angle}deg)` }}
-      >
-        <circle
-          cx="20"
-          cy="20"
-          r="19"
-          fill={selected ? '#0051ff' : '#2f2f2f'}
-          stroke={selected ? '#0051ff' : '#3b3b3b'}
-          strokeWidth="0.9"
-        />
-        <line
-          x1="7.2"
-          y1="7.2"
-          x2="15.2"
-          y2="15.2"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="32.8"
-          y1="7.2"
-          x2="24.8"
-          y2="15.2"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="7.2"
-          y1="32.8"
-          x2="15.2"
-          y2="24.8"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="32.8"
-          y1="32.8"
-          x2="24.8"
-          y2="24.8"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-      </svg>
-    </button>
   );
 }
 

@@ -60,13 +60,15 @@ describe('Production React source regression checks', () => {
     expect(viteConfig).toContain('test: /node_modules/');
   });
 
-  it('shows a brief NØDE-branded loading screen until the app is ready', () => {
+  it('shows a brief NODE studio-branded loading screen until the app is ready', () => {
     expect(htmlContent).toContain('id="app-loading-screen"');
     expect(htmlContent).toContain('role="status"');
     expect(htmlContent).toContain('src="/src/loadingScreen.ts"');
     expect(htmlContent).toContain('/src/loadingScreen.css');
-    expect(htmlContent).toContain('NØDE');
-    expect(htmlContent).toContain('GRID MACRO 1 STUDIO');
+    expect(htmlContent).toContain('<title>NODE studio</title>');
+    expect(htmlContent).toContain('<strong>NODE</strong>');
+    expect(htmlContent).toContain('<span>studio</span>');
+    expect(htmlContent).not.toContain('GRID MACRO 1 STUDIO');
     expect(htmlContent).toContain('Preparing your workspace');
     expect((htmlContent.match(/class="node-loading-key(?: is-active)?"/g) ?? [])).toHaveLength(9);
     expect(loadingScript).toContain('const minimumVisibleMs = 350');
@@ -198,6 +200,8 @@ describe('Production React source regression checks', () => {
     expect(packageConfig.scripts['desktop:dev']).toContain('electron .');
     expect(packageConfig.scripts['build:win']).toContain('electron-builder --win');
     expect(packageConfig.build.appId).toBe('com.node.gridmacro1');
+    expect(packageConfig.build.productName).toBe('NODE studio');
+    expect(packageConfig.build.nsis.shortcutName).toBe('NODE studio');
     expect(packageConfig.build.directories.output).toBe('dist_electron');
     expect(packageConfig.build.files).toContain('electron/**/*');
     expect(packageConfig.build.files).toContain('dist/**/*');
@@ -227,7 +231,8 @@ describe('Production React source regression checks', () => {
       path.join(process.cwd(), 'windows-installer/installer-sidebar.svg'),
       'utf8'
     );
-    expect(installerSidebarSource).toContain('NØDE');
+    expect(installerSidebarSource).toContain('NODE');
+    expect(installerSidebarSource).toContain('studio');
     expect(installerSidebarSource).toContain('NINE KEYS.');
   });
 

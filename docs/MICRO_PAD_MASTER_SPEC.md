@@ -1,6 +1,7 @@
 # Micro Pad V1 — Master Product & System Specification
 
-**Document Status:** Baseline Master Specification (Phase 0 Audit)  
+**Document Status:** Historical design baseline (Phase 0). This describes goals, not verified current behavior; consult the README and source for the current implementation.
+
 **Product Name:** Micro Pad V1 / NØDE Grid Macro 1 Studio  
 **Target MCU:** Waveshare RP2040-Zero  
 

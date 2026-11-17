@@ -2,8 +2,16 @@
 
 const { spawn: nodeSpawn, execFile: nodeExecFile } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const readline = require('node:readline');
+
+/**
+ * CreateProcess caps a command line at 32,767 UTF-16 characters; libuv reports an
+ * over-long one as ENAMETOOLONG. Kept well below the cap so argument quoting and
+ * a long temp path can never push the worker spawn over it.
+ */
+const MAX_WORKER_COMMAND_LINE = 8192;
 
 const MAX_ACTION_TEXT = 32 * 1024;
 const MAX_SEQUENCE_STEPS = 256;
@@ -76,6 +84,10 @@ const KEY_ALIASES = Object.freeze({
   right: 0x27,
   arrowright: 0x27,
   'arrow right': 0x27,
+  'right arrow': 0x27,
+  'left arrow': 0x25,
+  'up arrow': 0x26,
+  'down arrow': 0x28,
   tilde: 0xc0,
   backtick: 0xc0,
   '`': 0xc0,
@@ -103,6 +115,7 @@ const KEY_ALIASES = Object.freeze({
   comma: 0xbc,
   '.': 0xbe,
   period: 0xbe,
+  lock: 0x14,
   capslock: 0x14,
   'caps lock': 0x14,
   numlock: 0x90,
@@ -147,6 +160,7 @@ const KEY_ALIASES = Object.freeze({
   stop: 0xb2,
   'media stop': 0xb2,
   power: 0x5e,
+  'power down': 0x5e,
   sleep: 0x5f,
   wake: 0x63,
   'browser back': 0xa6,
@@ -269,7 +283,7 @@ function parseKeyCombo(rawValue) {
     }
     if (Object.prototype.hasOwnProperty.call(KEY_ALIASES, name)) {
       const vk = KEY_ALIASES[name];
-      output.push({ vk, name, extended: EXTENDED_KEYS.has(vk) });
+      output.push({ vk, name, extended: name === 'num enter' || EXTENDED_KEYS.has(vk) });
       return { ok: true };
     }
     if (/^f(?:[1-9]|1[0-2])$/.test(name)) {
@@ -351,7 +365,10 @@ function parseKeyCombo(rawValue) {
       const result = appendPrintable(directName, parsed);
       if (!result.ok) return result;
     } else {
-      const groups = (plusChord ? plusChord[1] : expression).split('+');
+      const groups = (plusChord ? plusChord[1] : expression)
+        .replace(/num\s*\+/gi, 'num __plus__')
+        .split('+')
+        .map((group) => group.replace(/__plus__/gi, '+'));
       for (const group of groups) {
         if (!group.trim()) return { ok: false, error: `Unsupported key: ${group}` };
         const result = appendGroup(group, parsed);
@@ -501,7 +518,9 @@ $ProgressPreference = 'SilentlyContinue'
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -571,20 +590,86 @@ public static class NodeStudioNativeInput {
         }
     }
 
-    public static void SendUnicodeChar(ushort codeUnit) {
+    private static void AppendVirtualKey(List<INPUT> inputs, ushort virtualKey) {
+        INPUT down = new INPUT();
+        down.type = 1;
+        down.U.ki = new KEYBDINPUT { wVk = virtualKey, wScan = 0, dwFlags = 0u, time = 0, dwExtraInfo = UIntPtr.Zero };
+        INPUT up = new INPUT();
+        up.type = 1;
+        up.U.ki = new KEYBDINPUT { wVk = virtualKey, wScan = 0, dwFlags = 0x0002u, time = 0, dwExtraInfo = UIntPtr.Zero };
+        inputs.Add(down);
+        inputs.Add(up);
+    }
+
+    private static void AppendUnicodeUnit(List<INPUT> inputs, ushort codeUnit) {
         INPUT down = new INPUT();
         down.type = 1;
         down.U.ki = new KEYBDINPUT { wVk = 0, wScan = codeUnit, dwFlags = 0x0004u, time = 0, dwExtraInfo = UIntPtr.Zero };
         INPUT up = new INPUT();
         up.type = 1;
         up.U.ki = new KEYBDINPUT { wVk = 0, wScan = codeUnit, dwFlags = 0x0006u, time = 0, dwExtraInfo = UIntPtr.Zero };
-        INPUT[] inputs = new INPUT[] { down, up };
-        uint sent = SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
-        if (sent != 2) {
+        inputs.Add(down);
+        inputs.Add(up);
+    }
+
+    private static void FlushInputs(List<INPUT> inputs) {
+        if (inputs.Count == 0) return;
+        INPUT[] array = inputs.ToArray();
+        inputs.Clear();
+        uint sent = SendInput((uint)array.Length, array, Marshal.SizeOf(typeof(INPUT)));
+        if (sent != (uint)array.Length) {
             int error = Marshal.GetLastWin32Error();
             throw new Win32Exception(error, "Windows SendInput rejected Unicode text. The target may be elevated or the input desktop may be unavailable.");
         }
     }
+
+    /// <summary>
+    /// Split into user-perceived characters so surrogate pairs are never separated.
+    /// Used by the paced path; the default path sends the whole string at once.
+    /// </summary>
+    public static string[] SplitCodePoints(string text) {
+        var parts = new List<string>();
+        if (string.IsNullOrEmpty(text)) return parts.ToArray();
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        while (enumerator.MoveNext()) parts.Add((string)enumerator.Current);
+        return parts.ToArray();
+    }
+
+    /// <summary>
+    /// Insert a whole string as ONE SendInput call.
+    ///
+    /// SendInput guarantees no other input is inserted between the events of a
+    /// single call. The previous implementation issued one SendInput per
+    /// character, so events from another press (or the physical keyboard) could
+    /// interleave mid-string, which is what mixed and duplicated the text during
+    /// rapid repeated presses. Batching removes that window without adding delay.
+    ///
+    /// Newlines and tabs must be real virtual keys: injecting U+000A/U+0009 as
+    /// Unicode does not produce a line break or tab in many editors.
+    /// </summary>
+    public static void SendUnicodeText(string text) {
+        if (string.IsNullOrEmpty(text)) return;
+        var inputs = new List<INPUT>(text.Length * 2);
+        for (int i = 0; i < text.Length; i++) {
+            char c = text[i];
+            if (c == '\r') {
+                if (i + 1 < text.Length && text[i + 1] == '\n') i++;
+                AppendVirtualKey(inputs, 0x0D);
+                continue;
+            }
+            if (c == '\n') { AppendVirtualKey(inputs, 0x0D); continue; }
+            if (c == '\t') { AppendVirtualKey(inputs, 0x09); continue; }
+            // Surrogate halves are appended adjacently inside the same call so
+            // Windows reassembles them into one non-BMP character.
+            AppendUnicodeUnit(inputs, c);
+            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1])) {
+                i++;
+                AppendUnicodeUnit(inputs, text[i]);
+            }
+        }
+        FlushInputs(inputs);
+    }
+
 }
 
 public sealed class NodeStudioInputReader {
@@ -757,10 +842,19 @@ while ($true) {
             } elseif ($opKind -eq 'text') {
                 $text = [string]$op.text
                 $interval = [int]$op.interKeyDelayMs
-                foreach ($character in $text.ToCharArray()) {
+                if ($interval -gt 0) {
+                    # Explicit user pacing: send one whole character at a time so
+                    # surrogate pairs stay intact, checking for cancel between them.
+                    foreach ($element in [NodeStudioNativeInput]::SplitCodePoints($text)) {
+                        Read-ControlLines
+                        [NodeStudioNativeInput]::SendUnicodeText([string]$element)
+                        Wait-Cancelable $interval
+                    }
+                } else {
+                    # Default: one atomic SendInput for the entire string, so no
+                    # other input can interleave between its characters.
                     Read-ControlLines
-                    [NodeStudioNativeInput]::SendUnicodeChar([uint16][char]$character)
-                    if ($interval -gt 0) { Wait-Cancelable $interval }
+                    [NodeStudioNativeInput]::SendUnicodeText($text)
                 }
             } elseif ($opKind -eq 'wait') {
                 Wait-Cancelable ([int]$op.durationMs)
@@ -798,8 +892,49 @@ function createWindowsInputAdapter({
   let generation = 0;
   let closed = false;
   let recentStderr = '';
+  let workerScriptDir = null;
+  let workerScriptPath = null;
   const pending = new Map();
   const heldKeys = new Map();
+
+  /**
+   * The worker script used to be passed inline via -EncodedCommand. UTF-16LE plus
+   * base64 inflates it ~2.67x, and once the atomic-text fix grew the script the
+   * command line reached 37,210 characters -- past the 32,767 CreateProcess cap.
+   * libuv then failed the spawn with ENAMETOOLONG, which broke *every* keystroke
+   * and text action while execFile-based App/Web/CMD actions kept working.
+   *
+   * Delivering the script as a file keeps the command line a few hundred
+   * characters no matter how large the script grows. mkdtemp gives a private,
+   * unpredictable directory so the path cannot be pre-created or symlinked by
+   * another local user.
+   */
+  const ensureWorkerScriptFile = () => {
+    if (workerScriptPath) return workerScriptPath;
+    workerScriptDir = fs.mkdtempSync(path.join(os.tmpdir(), 'node-studio-input-'));
+    const file = path.join(workerScriptDir, 'worker.ps1');
+    // BOM so Windows PowerShell 5.1 reads UTF-8 rather than the ANSI code page.
+    fs.writeFileSync(file, `\ufeff${POWERSHELL_WORKER_SCRIPT}`, { encoding: 'utf8', mode: 0o600 });
+    workerScriptPath = file;
+    return file;
+  };
+
+  const cleanupWorkerScript = () => {
+    if (!workerScriptDir) return;
+    const dir = workerScriptDir;
+    workerScriptDir = null;
+    workerScriptPath = null;
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  };
+
+  const buildWorkerArgs = (scriptFile) => {
+    const args = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptFile];
+    const length = ['powershell.exe', ...args].join(' ').length;
+    if (length > MAX_WORKER_COMMAND_LINE) {
+      throw new Error(`The Windows input worker command line is too long (${length} characters)`);
+    }
+    return args;
+  };
 
   const rejectPending = (error) => {
     for (const request of pending.values()) {
@@ -854,10 +989,9 @@ function createWindowsInputAdapter({
     let settled = false;
     let startupTimer;
     try {
-      const encodedScript = Buffer.from(POWERSHELL_WORKER_SCRIPT, 'utf16le').toString('base64');
       child = spawnProcess(
         'powershell.exe',
-        ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedScript],
+        buildWorkerArgs(ensureWorkerScriptFile()),
         { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
       );
     } catch (error) {
@@ -1021,12 +1155,38 @@ function createWindowsInputAdapter({
       try { currentChild.kill(); } catch {}
     }
     await inputQueue.catch(() => undefined);
+    cleanupWorkerScript();
   };
 
-  return { sendOperations, cancelAll, close };
+  // Start the persistent PowerShell worker ahead of the first keystroke. Without
+  // this, the first Multi-Action after enabling simulation pays the interpreter
+  // startup cost (hundreds of ms) on top of the gesture time.
+  const prewarm = () => ensureWorker().then(() => ({ success: true }), (error) => ({
+    success: false,
+    error: String(error?.message || error),
+  }));
+
+  return { sendOperations, cancelAll, close, prewarm };
 }
 
-function parseCommandLine(value, platform = process.platform) {
+/**
+ * Commands that may run through cmd.exe. Deliberately limited to read-only /
+ * informational tools: nothing here can modify the registry, disks, services,
+ * boot config, or other processes. Interpreters and destructive tools stay in
+ * BLOCKED_COMMANDS and are rejected even when nested inside `cmd /c`.
+ */
+const SAFE_SHELL_COMMANDS = new Set([
+  'ipconfig', 'systeminfo', 'whoami', 'hostname', 'ver', 'echo', 'ping',
+  'tracert', 'nslookup', 'getmac', 'netstat', 'tasklist', 'driverquery', 'where',
+]);
+
+/** Windows shell builtins that have no .exe and therefore cannot be spawned. */
+const SHELL_BUILTINS = new Set([
+  'start', 'dir', 'copy', 'xcopy', 'move', 'ren', 'rename', 'md', 'mkdir',
+  'type', 'set', 'cd', 'chdir', 'cls', 'title', 'assoc', 'ftype', 'call', 'exit',
+]);
+
+function tokenizeCommandLine(value) {
   if (typeof value !== 'string' || !value.trim()) throw new Error('Empty command');
   if (value.length > 4096) throw new Error('Command line is too long');
   if (/[\u0000-\u001f\u007f;&|<>`$%]/.test(value)) {
@@ -1066,13 +1226,94 @@ function parseCommandLine(value, platform = process.platform) {
   if (quote) throw new Error('Command contains an unmatched quote');
   if (tokenStarted) parts.push(current);
   if (parts.length === 0) throw new Error('Empty command');
-
-  const pathApi = platform === 'win32' ? path.win32 : path;
-  const executable = parts[0].toLowerCase();
-  if (BLOCKED_COMMANDS.has(executable) || BLOCKED_COMMANDS.has(pathApi.basename(executable).toLowerCase())) {
-    throw new Error(`Command "${parts[0]}" is blocked for safety`);
-  }
   return parts;
+}
+
+function assertCommandNotBlocked(name, platform = process.platform) {
+  const pathApi = platform === 'win32' ? path.win32 : path;
+  const executable = String(name).toLowerCase();
+  if (BLOCKED_COMMANDS.has(executable) || BLOCKED_COMMANDS.has(pathApi.basename(executable).toLowerCase())) {
+    throw new Error(`Command "${name}" is blocked for safety`);
+  }
+}
+
+function parseCommandLine(value, platform = process.platform) {
+  const parts = tokenizeCommandLine(value);
+  assertCommandNotBlocked(parts[0], platform);
+  return parts;
+}
+
+/**
+ * Translate `start <target>` into a direct executable launch.
+ *
+ * `start` is a cmd.exe builtin with no .exe on disk, so spawning it directly
+ * fails with ENOENT. Rather than opening a shell, resolve the target with the
+ * same validated resolver the App action uses and launch it without a shell.
+ */
+function resolveStartInvocation(args, platform, options) {
+  let target = args[0];
+  // `start "" calc` passes an empty window title first; drop it.
+  if (target === '' && args.length > 1) target = args[1];
+  if (!target || !String(target).trim()) {
+    throw new Error('Usage: start <application>. Example: start calc');
+  }
+  if (/^https?:\/\//i.test(target)) {
+    throw new Error('Use a Website Smart Action to open URLs, not "start".');
+  }
+  const executable = resolveApplicationPath(target, { platform, ...options });
+  assertCommandNotBlocked(executable, platform);
+  return { kind: 'launch', command: executable, args: [] };
+}
+
+/**
+ * Decide how a Cmd Smart Action should run, without ever handing an arbitrary
+ * string to a shell. Returns a launch, a direct exec, or a tightly scoped
+ * `cmd.exe /d /c` invocation limited to SAFE_SHELL_COMMANDS.
+ */
+function resolveCommandInvocation(value, platform = process.platform, options = {}) {
+  const parts = tokenizeCommandLine(value);
+  const pathApi = platform === 'win32' ? path.win32 : path;
+  const head = pathApi.basename(String(parts[0])).toLowerCase().replace(/\.exe$/, '');
+
+  if (head === 'start') {
+    return resolveStartInvocation(parts.slice(1), platform, options);
+  }
+
+  if (head === 'cmd') {
+    const switchArg = String(parts[1] || '').toLowerCase();
+    if (switchArg !== '/c' && switchArg !== '/k') {
+      throw new Error('Only "cmd /c <command>" is supported. Example: cmd /c ipconfig');
+    }
+    if (switchArg === '/k') {
+      throw new Error('Use "cmd /c" instead of "cmd /k" so the command can finish and report output.');
+    }
+    const inner = parts.slice(2);
+    if (inner.length === 0) throw new Error('Usage: cmd /c <command>. Example: cmd /c ipconfig');
+    const innerHead = pathApi.basename(String(inner[0])).toLowerCase().replace(/\.exe$/, '');
+
+    if (innerHead === 'start') {
+      return resolveStartInvocation(inner.slice(1), platform, options);
+    }
+    assertCommandNotBlocked(inner[0], platform);
+    if (!SAFE_SHELL_COMMANDS.has(innerHead)) {
+      throw new Error(
+        `Command "${inner[0]}" is not permitted through cmd. ` +
+        `Allowed: ${[...SAFE_SHELL_COMMANDS].join(', ')}, start <app>. ` +
+        'To run other programs, use an App Smart Action with the full .exe path.'
+      );
+    }
+    // /d disables AutoRun registry scripts, so nothing extra executes on startup.
+    return { kind: 'exec', command: 'cmd.exe', args: ['/d', '/c', ...inner] };
+  }
+
+  assertCommandNotBlocked(parts[0], platform);
+  if (SHELL_BUILTINS.has(head)) {
+    throw new Error(
+      `"${parts[0]}" is a cmd.exe builtin, not a program. ` +
+      `Use "cmd /c ${parts[0]}" if it is supported, or an App Smart Action to launch a program.`
+    );
+  }
+  return { kind: 'exec', command: parts[0], args: parts.slice(1) };
 }
 
 function safePathExists(filePath, fsModule = fs) {
@@ -1191,9 +1432,32 @@ function validateUrl(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 4096) {
     throw new Error('URL is empty or too long');
   }
+  const trimmed = value.trim();
+
+  // Reject local/UNC paths explicitly. Prefixing them with https:// used to turn
+  // "C:\Users\me" into "https://c/Users/me" and "\\server\share" into
+  // "https://server/share", silently opening a browser at a bogus host instead
+  // of telling the user they picked the wrong action type.
+  if (/^[a-z]:[\\/]/i.test(trimmed) || trimmed.startsWith('\\\\')) {
+    throw new Error('This is a local file path, not a website. Use an App action to open files or programs.');
+  }
+
+  const hasExplicitScheme = /^https?:\/\//i.test(trimmed);
+  if (!hasExplicitScheme) {
+    // An explicit non-web scheme must be rejected, not rewritten. "host:8080"
+    // is a port, not a scheme, so it still gets the https:// default.
+    const schemeMatch = trimmed.match(/^([a-z][a-z0-9+.-]*):(.*)$/i);
+    if (schemeMatch && !/^\d+(?:[/?#]|$)/.test(schemeMatch[2])) {
+      throw new Error(
+        `Only HTTP and HTTPS URLs are supported (got "${schemeMatch[1].toLowerCase()}://"). `
+        + 'Use an App action for local files or programs.'
+      );
+    }
+  }
+
   let url;
   try {
-    url = new URL(/^https?:\/\//i.test(value.trim()) ? value.trim() : `https://${value.trim()}`);
+    url = new URL(hasExplicitScheme ? trimmed : `https://${trimmed}`);
   } catch {
     throw new Error('Invalid website URL');
   }
@@ -1484,15 +1748,22 @@ function createDesktopActionExecutor({
       }
       try {
         requireCurrentSimulation(startedGeneration, hardwareTrigger);
-        const [command, ...args] = parseCommandLine(normalized.smartAction.value, platform);
+        const invocation = resolveCommandInvocation(normalized.smartAction.value, platform, {
+          env: process.env,
+          fsModule,
+        });
         const cwd = typeof payload.workingDirectory === 'string' && payload.workingDirectory.trim()
           ? payload.workingDirectory.trim()
           : undefined;
         if (cwd && !fsModule.existsSync(cwd)) return { success: false, error: `Working directory does not exist: ${cwd}` };
-        const result = await runExecutable(command, args, {
-          cwd,
-          timeoutMs: boundedDelay(payload.timeoutMs, 'Command timeout') || 10_000,
-        });
+        // `start <app>` resolves to a real executable and is launched without a
+        // shell, exactly like an App Smart Action.
+        const result = invocation.kind === 'launch'
+          ? await launchExecutable(invocation.command, invocation.args, cwd)
+          : await runExecutable(invocation.command, invocation.args, {
+            cwd,
+            timeoutMs: boundedDelay(payload.timeoutMs, 'Command timeout') || 10_000,
+          });
         requireCurrentSimulation(startedGeneration, hardwareTrigger);
         return result;
       } catch (error) {
@@ -1522,6 +1793,10 @@ function createDesktopActionExecutor({
       }
       simulationEnabled = true;
       generation += 1;
+      // Warm the input worker in the background so the first physical press is
+      // not delayed by PowerShell startup. Failures stay non-fatal: the normal
+      // execute path surfaces them when an action actually runs.
+      void Promise.resolve(input.prewarm?.()).catch(() => undefined);
       return { success: true, enabled: true };
     }
 
@@ -1580,6 +1855,8 @@ module.exports = {
   setNativeSimulationEnabled,
   closeNativeActionExecutor,
   parseCommandLine,
+  resolveCommandInvocation,
+  SAFE_SHELL_COMMANDS,
   parseKeyCombo,
   parseShortcutToVK,
   parseSequenceSteps,

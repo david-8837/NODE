@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   actionToViaKeycode,
+  MP_LAYER_CYCLE,
+  MP_PROF_MAX,
+  MP_TRIG_MAX,
   QmkViaBridge,
   VIA_PROTOCOL_VERSION,
   VIA_RAW_REPORT_SIZE,
@@ -33,6 +36,29 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
   public readonly encoderKeycodes = new Map<string, number>();
   public failNextReport = false;
   public customDeviceState?: Uint8Array;
+  /** Firmware-side active layer, so SELECT_LAYER can be modelled realistically. */
+  public activeLayer = 0;
+  public activeProfile = 0;
+  /** When set, the firmware refuses the switch and keeps its current layer. */
+  public refuseLayerSwitch = false;
+  /** When true, SELECT_LAYER is left unanswered so the host must time out. */
+  public swallowLayerSwitch = false;
+  public layerSwitchCount = 0;
+  private layerStateSeeded = false;
+
+  /** Unsolicited MP_EVT_LAYER_STATE, exactly as layer_state_set_user() sends it. */
+  public emitLayerStateEvent(layer = this.activeLayer) {
+    const report = new Uint8Array(VIA_RAW_REPORT_SIZE);
+    report[0] = 0xfd;
+    report[1] = 0x10;
+    report[2] = layer;
+    report[3] = this.activeProfile;
+    this.dispatchEvent(Object.assign(new Event('inputreport'), {
+      device: this,
+      reportId: 0,
+      data: new DataView(report.buffer),
+    }));
+  }
 
   public seedKeycode(layer: number, row: number, col: number, keycode: number) {
     this.keycodes.set(`${layer}:${row}:${col}`, keycode);
@@ -86,8 +112,40 @@ class FakeViaDevice extends EventTarget implements HidDeviceLike {
       response[5] = value & 0xff;
     } else if (request[0] === 0x15) {
       this.encoderKeycodes.set(`${request[1]}:${request[3]}`, (request[4] << 8) | request[5]);
-    } else if (request[0] === 0xfd && request[1] === 0x01 && this.customDeviceState) {
-      response.set(this.customDeviceState.subarray(0, response.length));
+    } else if (request[0] === 0xfd && request[1] === 0x01) {
+      // MP_CMD_GET_STATE: real firmware always answers with the full state report.
+      if (this.customDeviceState) {
+        response.set(this.customDeviceState.subarray(0, response.length));
+        // A seeded packet defines the starting state; later switches move it.
+        if (!this.layerStateSeeded) {
+          this.activeLayer = response[2];
+          this.activeProfile = response[3];
+          this.layerStateSeeded = true;
+        }
+      } else {
+        response[1] = 0x01;
+        response[4] = 4; // MP_MAX_LAYERS
+        response[5] = 4; // MP_MAX_PROFILES
+        response[6] = 1; // rgb enabled
+      }
+      response[2] = this.activeLayer;
+      response[3] = this.activeProfile;
+    } else if (request[0] === 0xfd && request[1] === 0x05) {
+      // MP_CMD_SELECT_LAYER: mirror the firmware handler. Switch only when the
+      // target is valid and different, then always answer with the real layer.
+      this.layerSwitchCount += 1;
+      if (this.swallowLayerSwitch) return;
+      const target = request[2];
+      if (!this.refuseLayerSwitch && target < 4 && target !== this.activeLayer) {
+        this.activeLayer = target;
+        this.emitLayerStateEvent();
+      }
+      response[1] = 0x05;
+      response[2] = this.activeLayer;
+      response[3] = this.activeProfile;
+      response[4] = 4;
+      response[5] = 4;
+      response[6] = 1;
     }
 
     const event = Object.assign(new Event('inputreport'), {
@@ -130,6 +188,10 @@ describe('QMK/VIA keycode translation', () => {
     [{ t: 'media', c: 'BRIGHTNESS_DECREMENT' }, 0x00be],
     [{ t: 'layer', op: 'set', n: 2 }, 0x5202],
     [{ t: 'layer', op: 'hold', n: 1 }, 0x5221],
+    // Layer Cycle previously returned null and was silently dropped before ever
+    // reaching the device. It now maps to a firmware-handled custom keycode.
+    [{ t: 'layer', op: 'next' }, 0x7e44],
+    [{ t: 'layer', op: 'next', n: 0 }, 0x7e44],
   ])('translates supported action %j to VIA keycode %j', (action, expected) => {
     expect(actionToViaKeycode(action)).toBe(expected);
   });
@@ -138,8 +200,18 @@ describe('QMK/VIA keycode translation', () => {
     expect(actionToViaKeycode(undefined)).toBe(0);
     expect(actionToViaKeycode({ t: 'keys', k: ['A', 'B'] })).toBeNull();
     expect(actionToViaKeycode({ t: 'keys', k: ['CONTROL', 'RIGHT_SHIFT', 'A'] })).toBeNull();
-    expect(actionToViaKeycode({ t: 'layer', op: 'next', n: 0 })).toBeNull();
     expect(actionToViaKeycode({ t: 'media', c: 'UNKNOWN' })).toBeNull();
+    expect(actionToViaKeycode({ t: 'layer', op: 'unknown', n: 1 })).toBeNull();
+    expect(actionToViaKeycode({ t: 'layer', op: 'set' })).toBeNull();
+  });
+
+  it('keeps Layer Cycle clear of the host-trigger and profile keycode ranges', () => {
+    const cycle = actionToViaKeycode({ t: 'layer', op: 'next' });
+    expect(cycle).toBe(MP_LAYER_CYCLE);
+    expect(cycle).toBeGreaterThan(MP_TRIG_MAX);
+    expect(cycle).toBeGreaterThan(MP_PROF_MAX);
+    // Layer Cycle takes no target layer, so it must survive an out-of-range n.
+    expect(actionToViaKeycode({ t: 'layer', op: 'next', n: 99 })).toBe(MP_LAYER_CYCLE);
   });
 });
 
@@ -288,12 +360,16 @@ describe('QMK/VIA WebHID bridge', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.warnings).toContain('Layer 1 R1C3: unsupported action was not synced');
+    // Layer Cycle is now a real keycode, so it must sync without a warning.
+    expect(result.warnings ?? []).not.toContain('Layer 1 R1C3: unsupported action was not synced');
     const writes = hid.device.reports.filter((report) => report[0] === 0x05);
     expect(writes.find((report) => report[1] === 0 && report[2] === 0 && report[3] === 0)?.slice(4, 6))
       .toEqual(new Uint8Array([0x03, 0x16]));
     expect(writes.find((report) => report[1] === 0 && report[2] === 0 && report[3] === 1)?.slice(4, 6))
       .toEqual(new Uint8Array([0x52, 0x21]));
+    // R1C3 = Layer Cycle -> MP_LAYER_CYCLE (0x7E44) written big-endian to the device.
+    expect(writes.find((report) => report[1] === 0 && report[2] === 0 && report[3] === 2)?.slice(4, 6))
+      .toEqual(new Uint8Array([0x7e, 0x44]));
     expect(writes.find((report) => report[1] === 0 && report[2] === 3 && report[3] === 0)?.slice(4, 6))
       .toEqual(new Uint8Array([0x00, 0x28]));
 
@@ -349,7 +425,7 @@ describe('QMK/VIA WebHID bridge', () => {
     expect(hid.device.reports.filter((report) => report[0] === 0x05 || report[0] === 0x15)).toHaveLength(0);
   });
 
-  it('clears only explicit blanks and leaves unsupported or unconfigured mappings intact', async () => {
+  it('clears blanks and unconfigured slots, but never overwrites an unsupported action', async () => {
     const hid = new FakeHidApi();
     hid.device.seedKeycode(0, 0, 0, 0x0004);
     hid.device.seedKeycode(0, 0, 1, 0x0005);
@@ -372,12 +448,19 @@ describe('QMK/VIA WebHID bridge', () => {
 
     expect(result.ok).toBe(true);
     expect(result.warnings).toContain('Layer 1 R1C2: unsupported action was not synced');
+    // Explicit blank is cleared.
     expect(hid.device.keycodes.get('0:0:0')).toBe(0);
+    // An unsupported action must NOT be wiped: the user's existing assignment is
+    // kept and a warning is surfaced, so a parse failure cannot erase a key.
     expect(hid.device.keycodes.get('0:0:1')).toBe(0x0005);
-    expect(hid.device.keycodes.get('1:0:0')).toBe(0x0006);
+    // A layer the profile does not define IS cleared. SAVE_PROFILE copies every
+    // layer into the profile's EEPROM slot, so leaving 0x0006 here would capture
+    // the previous profile's key into this profile and make switching leak.
+    expect(hid.device.keycodes.get('1:0:0')).toBe(0);
     const writes = hid.device.reports.filter((report) => report[0] === 0x05);
-    expect(writes).toHaveLength(1);
+    expect(writes).toHaveLength(2);
     expect(writes[0].slice(1, 6)).toEqual(new Uint8Array([0, 0, 0, 0, 0]));
+    expect(writes[1].slice(1, 6)).toEqual(new Uint8Array([1, 0, 0, 0, 0]));
   });
 
   it('recovers cleanly after a HID send failure instead of leaving a request stuck', async () => {
@@ -491,5 +574,199 @@ describe('QMK/VIA WebHID bridge', () => {
     const rgbPacket = hid.device.reports.find((r) => r[0] === 0xfd && r[1] === 0x04);
     expect(rgbPacket).toBeDefined();
     expect(Array.from(rgbPacket!.slice(16, 24))).toEqual([2, 3, 1, 0, 80, 35, 50, 10]);
+  });
+
+  it('sends SELECT_LAYER and reports the firmware-confirmed layer, not the requested one', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+
+    const events: unknown[] = [];
+    const unsubscribe = bridge.onEvent((event) => events.push(event));
+
+    await expect(bridge.request({ cmd: 'select_layer', layer: 1 }))
+      .resolves.toMatchObject({ ok: true, deviceActiveLayer: 1, requestedLayer: 1, confirmed: true });
+
+    const packet = hid.device.reports.find((r) => r[0] === 0xfd && r[1] === 0x05);
+    expect(packet).toBeDefined();
+    expect(packet![2]).toBe(1);
+    expect(packet).toHaveLength(VIA_RAW_REPORT_SIZE);
+    // The firmware's own layer event and the command reply must agree.
+    expect(events).toContainEqual({ type: 'layer_state', deviceActiveLayer: 1, activeProfileSlot: 0 });
+    await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: 1 });
+
+    unsubscribe();
+    await bridge.disconnect();
+  });
+
+  it('reports confirmed:false and keeps the real layer when the firmware refuses the switch', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+    await bridge.request({ cmd: 'select_layer', layer: 2 });
+    hid.device.refuseLayerSwitch = true;
+
+    await expect(bridge.request({ cmd: 'select_layer', layer: 3 }))
+      .resolves.toMatchObject({ ok: true, deviceActiveLayer: 2, requestedLayer: 3, confirmed: false });
+    await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: 2 });
+
+    await bridge.disconnect();
+  });
+
+  it('rejects out-of-range layers without writing to the device', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+    const before = hid.device.reports.length;
+
+    for (const layer of [-1, 4, 99, 1.5, Number.NaN]) {
+      await expect(bridge.request({ cmd: 'select_layer', layer }))
+        .resolves.toMatchObject({ ok: false, error: 'Layer must be between 0 and 3' });
+    }
+    expect(hid.device.reports.length).toBe(before);
+    expect(hid.device.layerSwitchCount).toBe(0);
+
+    await bridge.disconnect();
+  });
+
+  it('fails the request on firmware timeout instead of claiming a layer switch', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    hid.device.swallowLayerSwitch = true;
+
+    const result = await bridge.request({ cmd: 'select_layer', layer: 3 });
+    expect(result.ok).toBe(false);
+    expect(result.deviceActiveLayer).toBeUndefined();
+    await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: 0 });
+
+    await bridge.disconnect();
+  });
+
+  it('refuses layer commands while disconnected so no report reaches an absent device', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await expect(bridge.request({ cmd: 'select_layer', layer: 1 }))
+      .resolves.toMatchObject({ ok: false, error: 'No QMK/VIA device is connected' });
+    expect(hid.device.layerSwitchCount).toBe(0);
+
+    await bridge.connect();
+    await bridge.disconnect();
+    const before = hid.device.reports.length;
+    await expect(bridge.request({ cmd: 'select_layer', layer: 1 }))
+      .resolves.toMatchObject({ ok: false, error: 'No QMK/VIA device is connected' });
+    expect(hid.device.reports.length).toBe(before);
+  });
+
+  it('adopts unsolicited physical layer events without sending any command back', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+    const events: unknown[] = [];
+    const unsubscribe = bridge.onEvent((event) => events.push(event));
+    const reportsBefore = hid.device.reports.length;
+
+    // Physical L1 -> L2 -> L3 -> L4, as layer_state_set_user() reports them.
+    for (const layer of [1, 2, 3]) {
+      hid.device.activeLayer = layer;
+      hid.device.emitLayerStateEvent();
+      expect(events).toContainEqual({ type: 'layer_state', deviceActiveLayer: layer, activeProfileSlot: 0 });
+      await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: layer });
+    }
+    // Event-driven adoption must never echo a command: that is the sync loop.
+    expect(hid.device.reports.length).toBe(reportsBefore);
+    expect(hid.device.layerSwitchCount).toBe(0);
+
+    unsubscribe();
+    await bridge.disconnect();
+  });
+
+  it('does not mistake an unsolicited layer event for a pending command reply', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+    hid.device.swallowLayerSwitch = true;
+
+    const pending = bridge.request({ cmd: 'select_layer', layer: 3 });
+    // A physical press mid-flight must not resolve the outstanding command.
+    hid.device.activeLayer = 1;
+    hid.device.emitLayerStateEvent();
+
+    await expect(pending).resolves.toMatchObject({ ok: false });
+    // The physical layer is still adopted from the event.
+    await expect(bridge.getStatus()).resolves.toMatchObject({ deviceActiveLayer: 1 });
+
+    await bridge.disconnect();
+  });
+
+  it('recovers a re-plugged authorised device from the HID connect event alone', async () => {
+    const hid = new FakeHidApi();
+    hid.deviceAvailableForSilentScan = true;
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 50 });
+    await bridge.connect();
+    await bridge.request({ cmd: 'select_layer', layer: 2 });
+
+    const states: string[] = [];
+    const unsubscribe = bridge.onStatus((status) => states.push(status.state));
+    hid.dispatchEvent(Object.assign(new Event('disconnect'), { device: hid.device }));
+    expect(states).toContain('disconnected');
+
+    // Re-plug: firmware boots on layer 0, and no requestDevice prompt is allowed.
+    hid.device.activeLayer = 0;
+    hid.device.opened = false;
+    const requestDevice = vi.spyOn(hid, 'requestDevice');
+    hid.dispatchEvent(Object.assign(new Event('connect'), { device: hid.device }));
+
+    await vi.waitFor(async () => {
+      await expect(bridge.getStatus()).resolves.toMatchObject({ state: 'connected', deviceActiveLayer: 0 });
+    });
+    expect(requestDevice).not.toHaveBeenCalled();
+
+    unsubscribe();
+    await bridge.disconnect();
+  });
+
+  it('adopts RGB changes made on the device so the editor cannot overwrite them', async () => {
+    const hid = new FakeHidApi();
+    const bridge = new QmkViaBridge(hid, { timeoutMs: 20 });
+    await bridge.connect();
+
+    const events: unknown[] = [];
+    const unsubscribe = bridge.onEvent((event) => events.push(event));
+
+    // Firmware FN key press: LED toggled off, layer 2 speed dropped to 30.
+    const report = new Uint8Array(32);
+    report[0] = 0xfd;
+    report[1] = 0x12; // MP_EVT_RGB_STATE
+    report[2] = 1;    // active layer
+    report[3] = 2;    // active profile slot
+    report[4] = 4;
+    report[5] = 4;
+    report[6] = 0;    // rgb disabled on the device
+    report.set([0, 81, 255, 16, 185, 129, 245, 158, 11, 225, 29, 72], 7);
+    report.set([1, 1, 2, 3], 19);
+    report.set([50, 30, 50, 50], 23);
+    hid.device.dispatchEvent(Object.assign(new Event('inputreport'), {
+      device: hid.device,
+      reportId: 0,
+      data: new DataView(report.buffer),
+    }));
+
+    expect(events).toContainEqual({
+      type: 'rgb_state',
+      rgbConfig: expect.objectContaining({
+        enabled: false,
+        layerModes: [1, 1, 2, 3],
+        layerSpeeds: [50, 30, 50, 50],
+      }),
+    });
+    await expect(bridge.getStatus()).resolves.toMatchObject({
+      deviceActiveLayer: 1,
+      activeProfileSlot: 2,
+      rgbConfig: expect.objectContaining({ enabled: false }),
+    });
+
+    unsubscribe();
+    await bridge.disconnect();
   });
 });
