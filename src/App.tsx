@@ -80,116 +80,56 @@ import { FlatDialControl } from './components/FlatDialControl';
 import { CustomPickerIcon } from './components/CustomPickerIcon';
 import { SettingsScreen } from './components/SettingsScreen';
 import { EditLayoutModal } from './components/EditLayoutModal';
+import { IconPickerPopover } from './components/IconPickerPopover';
+import { PresetGrid } from './components/PresetGrid';
+import { PresetDetailPreview } from './components/PresetDetailPreview';
+import {
+  INITIAL_LAYER_1,
+  PRESET_LIBRARY,
+  buildPresetLibrary,
+  isPresetInstalledInProfile,
+  formatEncoderShortLabel,
+  getEncoderActions,
+  formatPresetSequence,
+  isPresetShortcut,
+  isPresetSingleKey,
+  getPresetExecution,
+  BLANK_ENCODER_ACTIONS,
+  PRESET_MACROPAD_LABELS,
+  PRESET_DIAL_LABELS,
+  PRESET_SINGLE_MODIFIERS,
+  type KeySlotId,
+  type MappingTabId,
+  type EncoderSubActionId,
+  type EncoderSubBinding,
+  type KeyAssignment,
+  type LayerKeymap,
+  type ProfileData,
+  type PresetItem,
+  type BasicTileItem,
+  type CustomItemsByTab,
+} from './presetLibrary';
 
-declare const __APP_VERSION__: string;
-
-type KeySlotId = GridMacroSlotId;
-
-type MappingTabId = 'Basic' | 'Action' | 'Multi-A' | 'Smart-A';
-type EncoderSubActionId = 'cw' | 'press' | 'ccw';
-
-interface EncoderSubBinding {
-  label: string;
-  binding: string;
-  execution?: DesktopExecutionDefinition;
-}
-
-const BLANK_ENCODER_ACTIONS: Record<EncoderSubActionId, EncoderSubBinding> = {
-  cw: { label: '', binding: 'blank' },
-  press: { label: '', binding: 'blank' },
-  ccw: { label: '', binding: 'blank' },
+export {
+  INITIAL_LAYER_1,
+  PRESET_LIBRARY,
+  buildPresetLibrary,
+  isPresetInstalledInProfile,
+};
+export type {
+  KeySlotId,
+  MappingTabId,
+  EncoderSubActionId,
+  EncoderSubBinding,
+  KeyAssignment,
+  LayerKeymap,
+  ProfileData,
+  PresetItem,
+  BasicTileItem,
+  CustomItemsByTab,
 };
 
-interface KeyAssignment {
-  label: string;
-  actionType:
-    | 'Basic input'
-    | 'Shortcut'
-    | 'Multi-step action'
-    | 'Smart Action'
-    | 'Layer Cycle';
-  binding: string;
-  iconId?: string;
-  actionId?: string;
-  color?: string;
-  execution?: DesktopExecutionDefinition;
-  encoderActions?: Record<EncoderSubActionId, EncoderSubBinding>;
-}
-
-type LayerKeymap = Record<KeySlotId, KeyAssignment> & { presetId?: string };
-
-function formatEncoderShortLabel(text: string): string {
-  const clean = text.trim();
-  if (!clean) return '—';
-  if (clean.length <= 3) return clean;
-  return `${clean.slice(0, 2).toLowerCase()}...`;
-}
-
-function getEncoderActions(
-  assignment: KeyAssignment
-): Record<EncoderSubActionId, EncoderSubBinding> {
-  return assignment.encoderActions || BLANK_ENCODER_ACTIONS;
-}
-
-interface ProfileData {
-  id: string;
-  name: string;
-  color: string;
-  layers: LayerKeymap[];
-}
-
-function isPresetInstalledInProfile(profile: ProfileData, presetId: string): boolean {
-  const preset = PRESET_CATALOG.find((entry) => entry.id === presetId);
-  const actionIdPrefix = `preset-${presetId}-`;
-  const minimumLegacyKeyMatches = Math.max(
-    2,
-    (preset?.keys.length ?? GRID_MACRO_KEY_SLOTS.length) - 1
-  );
-
-  return profile.layers.some((layer) => {
-    if (layer.presetId === presetId) return true;
-
-    const matchingKeyCount = GRID_MACRO_KEY_SLOTS.filter((slot) =>
-      layer[slot]?.actionId?.startsWith(actionIdPrefix)
-    ).length;
-    const hasLegacyDialSignature =
-      preset !== undefined &&
-      layer[GRID_MACRO_ENCODER_SLOT]?.binding === `${preset.title} Dial`;
-
-    // Pre-marker profiles are recognized by their dial preset binding, or by
-    // nearly all preset key IDs if the user has since edited the dial.
-    return (
-      matchingKeyCount > 0 &&
-      (hasLegacyDialSignature || matchingKeyCount >= minimumLegacyKeyMatches)
-    );
-  });
-}
-
-interface PresetItem {
-  id: string;
-  title: string;
-  description: string;
-  author: string;
-  hasPreview: boolean;
-  color: string;
-  layerKeymap: LayerKeymap;
-  actionItems: CustomItemsByTab;
-}
-
-interface BasicTileItem {
-  id: string;
-  top?: string;
-  main: string;
-  listLabel?: string;
-  macropadLabel: string;
-  isClearIcon?: boolean;
-  arrowDir?: 'right' | 'left' | 'down' | 'up';
-  iconId?: string;
-  emoji?: string;
-  execution?: DesktopExecutionDefinition;
-}
-
-type CustomItemsByTab = Record<Exclude<MappingTabId, 'Basic'>, BasicTileItem[]>;
+declare const __APP_VERSION__: string;
 
 interface CustomItemGroup {
   id: string;
@@ -433,227 +373,6 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
   },
 
 ];
-
-export const INITIAL_LAYER_1: LayerKeymap = {
-  'dial-tl': {
-    label: '',
-    actionType: 'Basic input',
-    binding: 'blank',
-    encoderActions: BLANK_ENCODER_ACTIONS,
-  },
-  r1c1: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r1c2: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r1c3: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r2c1: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r2c2: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r2c3: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r3c1: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r3c2: { label: '', actionType: 'Basic input', binding: 'blank' },
-  r3c3: { label: '', actionType: 'Basic input', binding: 'blank' },
-};
-
-const PRESET_MACROPAD_LABELS: Record<string, string> = {
-  Duplicate: 'Dupl.',
-  Rectangle: 'Rect',
-  Eyedropper: 'Eyedrop',
-  Instructions: 'Instr.',
-  Shortcuts: 'Keys',
-  Component: 'Comp.',
-  Transform: 'Xform',
-};
-
-const PRESET_DIAL_LABELS: Record<string, string> = {
-  'Scroll Down': 'dn',
-  Latest: 'end',
-  'Scroll Up': 'up',
-  'Zoom In': 'zo+',
-  'Zoom Fit': 'fit',
-  'Zoom Out': 'zo-',
-  Fit: 'fit',
-  'Fit Screen': 'fit',
-  'Brush +': 'br+',
-  'Brush -': 'br-',
-  'Next Frame': 'nxt',
-  Play: 'ply',
-  'Prev Frame': 'prv',
-  Redo: 'rdo',
-  Undo: 'und',
-  'View Selected': 'sel',
-};
-
-const PRESET_SINGLE_MODIFIERS = new Set([
-  'win', 'ctrl', 'alt', 'shift', 'cmd', 'option', 'command', 'control', 'super',
-]);
-
-function formatPresetSequence(sequence: string, os: 'mac' | 'win'): string {
-  return sequence
-    .split('+')
-    .map((key) => key === 'Mod' ? (os === 'mac' ? 'Cmd' : 'Ctrl') : key)
-    .join(' + ');
-}
-
-function isPresetShortcut(sequence: string): boolean {
-  const clean = sequence.trim();
-  if (!clean || PRESET_SINGLE_MODIFIERS.has(clean.toLowerCase())) return false;
-  return clean.includes('+') || clean.includes(' ') || clean.toLowerCase().includes('mod+');
-}
-
-function isPresetSingleKey(value: string): boolean {
-  const clean = value.trim().toLowerCase();
-  const singleSymbols = new Set([
-    '`', '~', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '-', '=',
-    '[', ']', '{', '}', '\\', '|', ';', ':', "'", '"', ',', '.', '<', '>', '/', '?',
-  ]);
-  return Boolean(
-    PRESET_SINGLE_MODIFIERS.has(clean) ||
-      /^(?:[a-z0-9]|f(?:[1-9]|1[0-2])|numpad (?:[0-9]|\.))$/.test(clean) ||
-      /^(?:enter|return|tab|space|space bar|esc|escape|backspace|delete|del|insert|home|end|page up|page down|up|down|left|right|caps lock|num lock|scroll lock|volume up|volume down|media mute|media play \/ pause)$/.test(clean) ||
-      (value.trim().length === 1 && singleSymbols.has(value.trim()))
-  );
-}
-
-function getPresetExecution(sequence: string, os: 'mac' | 'win'): DesktopExecutionDefinition {
-  const formatted = formatPresetSequence(sequence, os).trim();
-  const keys = formatted.split('+').map((key) => key.trim()).filter(Boolean);
-  if (keys.length > 1) {
-    const nonModifiers = keys.filter((key) => !PRESET_SINGLE_MODIFIERS.has(key.toLowerCase()));
-    if (nonModifiers.length > 1) {
-      return {
-        kind: 'sequence',
-        steps: keys.map((key) => ({ kind: 'key', key, mode: 'press-release' })),
-      };
-    }
-    return { kind: 'shortcut', value: formatted };
-  }
-  return isPresetSingleKey(sequence)
-    ? { kind: 'shortcut', value: formatted }
-    : { kind: 'text', value: sequence };
-}
-
-function makePresetActionItem(
-  id: string,
-  name: string,
-  binding: string,
-  iconId: string,
-  execution?: DesktopExecutionDefinition
-): BasicTileItem {
-  return {
-    id,
-    main: name,
-    listLabel: binding,
-    macropadLabel: PRESET_MACROPAD_LABELS[name] ?? name,
-    iconId,
-    execution,
-  };
-}
-
-export function buildPresetLibrary(os: 'mac' | 'win'): PresetItem[] {
-  return PRESET_CATALOG.map((preset) => {
-    const actionItems: CustomItemsByTab = {
-      Action: [],
-      'Multi-A': [],
-      'Smart-A': [],
-    };
-    const keyAssignments = {} as Pick<LayerKeymap, (typeof GRID_MACRO_KEY_SLOTS)[number]>;
-
-    preset.keys.forEach((action, index) => {
-      const slot = GRID_MACRO_KEY_SLOTS[index];
-      if (!slot) return;
-
-      const itemId = `preset-${preset.id}-${slot}`;
-      const iconId = action.iconId ?? 'sparkles';
-      const shortName = PRESET_MACROPAD_LABELS[action.name] ?? action.name;
-      let actionType: KeyAssignment['actionType'];
-      let label: string;
-      let binding: string;
-      let execution: DesktopExecutionDefinition;
-
-      if (action.multi) {
-        actionType = 'Multi-step action';
-        label = shortName;
-        const onTap = formatPresetSequence(action.multi.onTap, os);
-        const doubleTap = action.multi.doubleTap
-          ? formatPresetSequence(action.multi.doubleTap, os)
-          : '';
-        binding = `${action.name} (onTap: ${onTap}${doubleTap ? `, doubleTap: ${doubleTap}` : ''})`;
-        execution = {
-          kind: 'multi',
-          gestures: {
-            onTap,
-            ...(doubleTap ? { doubleTap } : {}),
-          },
-        };
-        actionItems['Multi-A'].push(
-          makePresetActionItem(itemId, action.name, binding, iconId, execution)
-        );
-      } else {
-        execution = getPresetExecution(action.keys, os);
-        if (isPresetShortcut(action.keys)) {
-          const lowerName = action.name.toLowerCase();
-          const isSmartAction =
-            lowerName.includes('prompt') ||
-            lowerName.includes('ai') ||
-            lowerName.includes('smart') ||
-            lowerName.includes('auto') ||
-            lowerName.includes('instruction');
-          actionType = isSmartAction ? 'Smart Action' : 'Shortcut';
-          label = shortName;
-          binding = `${action.name} (${formatPresetSequence(action.keys, os)})`;
-          actionItems[isSmartAction ? 'Smart-A' : 'Action'].push(
-            makePresetActionItem(itemId, action.name, binding, iconId, execution)
-          );
-        } else {
-          actionType = 'Basic input';
-          label = action.keys.length <= 3 ? action.keys.toUpperCase() : action.keys;
-          binding = `${action.name} (${action.keys})`;
-        }
-      }
-
-      keyAssignments[slot] = {
-        label,
-        actionType,
-        binding,
-        iconId,
-        actionId: itemId,
-        color: preset.color,
-        execution,
-      };
-    });
-
-    const encoderActions = Object.fromEntries(
-      (['cw', 'press', 'ccw'] as const).map((direction) => {
-        const action = preset.dial[direction];
-        return [direction, {
-          label: PRESET_DIAL_LABELS[action.name] ?? formatEncoderShortLabel(action.name),
-          binding: `${action.name} (${formatPresetSequence(action.keys, os)})`,
-          execution: getPresetExecution(action.keys, os),
-        }];
-      })
-    ) as Record<EncoderSubActionId, EncoderSubBinding>;
-
-    return {
-      id: preset.id,
-      title: preset.title,
-      description: preset.description,
-      author: preset.author,
-      hasPreview: preset.hasPreview,
-      color: preset.color,
-      layerKeymap: {
-        [GRID_MACRO_ENCODER_SLOT]: {
-          label: preset.title,
-          actionType: 'Shortcut',
-          binding: `${preset.title} Dial`,
-          color: preset.color,
-          encoderActions,
-        },
-        ...keyAssignments,
-      },
-      actionItems,
-    };
-  });
-}
-
-export const PRESET_LIBRARY = buildPresetLibrary('win');
 
 const INITIAL_PROFILES: ProfileData[] = [
   {
@@ -5779,185 +5498,25 @@ export default function App() {
                       {/* ======================================================= */}
                       {/* SELECT ICON / EMOJI POPOVER DRAWER (Screenshot 2)       */}
                       {/* ======================================================= */}
-                      <AnimatePresence>
-                        {iconPickerOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -6, scale: 0.96 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -6, scale: 0.96 }}
-                            transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
-                            className="absolute top-[68px] left-0 w-[216px] bg-[#efefef] rounded-[18px] p-[11px] shadow-[0_8px_28px_rgba(0,0,0,0.16)] border border-black/[0.06] z-50"
-                          >
-                            <div className="flex items-center justify-between mb-[10px]">
-                              <button
-                                onClick={() => setIconPickerOpen(false)}
-                                className="w-[22px] h-[22px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555555] hover:text-black transition-all cursor-pointer"
-                              >
-                                <X className="w-[13px] h-[13px] stroke-[1.8]" />
-                              </button>
-                              <span className="text-[11px] font-medium text-[#555555]">
-                                Select Icon
-                              </span>
-                              <div className="w-5" />
-                            </div>
-
-                            {/* Icon | Emoji Segmented Toggle */}
-                            <div className="h-[26px] rounded-full bg-white flex overflow-hidden mb-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-                              {(['Icon', 'Emoji'] as const).map((t) => (
-                                <button
-                                  key={t}
-                                  onClick={() => void handleIconPickerTabChange(t)}
-                                  className={`flex-1 h-full text-[10.5px] font-medium transition-colors cursor-pointer ${
-                                    iconPickerTab === t
-                                      ? 'bg-[#000000] text-white rounded-full'
-                                      : 'text-[#555555] hover:text-black'
-                                  }`}
-                                >
-                                  {t}
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Search Icon / Emoji */}
-                            <div className="h-[25px] rounded-full bg-white px-[9px] flex items-center gap-[5px] mb-[8px] shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                              <Search className="w-[10px] h-[10px] text-[#666666] stroke-[2] shrink-0" />
-                              <input
-                                type="text"
-                                value={iconPickerSearch}
-                                onChange={(e) => {
-                                  setIconPickerSearch(e.target.value);
-                                  setIconPickerPage(0);
-                                }}
-                                placeholder={
-                                  iconPickerTab === 'Icon'
-                                    ? 'Search icon'
-                                    : 'Search emoji'
-                                }
-                                className="w-full bg-transparent text-[10px] text-[#333333] placeholder:text-[#a0a0a0] focus:outline-none"
-                              />
-                            </div>
-
-                            {/* Grid of Real Icons or Real Emojis */}
-                            <div className="bg-white rounded-[14px] p-[8px] h-[196px] overflow-y-auto list-accordion-scroll grid grid-cols-6 gap-[6px] content-start">
-                              {iconPickerTab === 'Icon' ? (
-                                iconSearchResults.icons.length > 0 ? (
-                                  iconSearchResults.icons.map((ic) => {
-                                    const isChosen = selectedIconId === ic.id;
-                                    return (
-                                      <button
-                                        key={ic.id}
-                                        onClick={() => {
-                                          setSelectedIconId(ic.id);
-                                          setSelectedEmoji(undefined);
-                                          setIconPickerOpen(false);
-                                        }}
-                                        title={ic.id}
-                                        aria-label={`Select icon ${ic.id.replaceAll('-', ' ')}`}
-                                        aria-pressed={isChosen}
-                                        className={`w-[26px] h-[26px] rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-                                          isChosen
-                                            ? 'bg-[#0051ff] text-white'
-                                            : 'bg-[#dcdcdc] text-[#444444] hover:bg-[#0051ff] hover:text-white'
-                                        }`}
-                                      >
-                                        <CustomPickerIcon id={ic.id} size={13} />
-                                      </button>
-                                    );
-                                  })
-                                ) : (
-                                  <p className="col-span-6 py-4 text-center text-[10px] text-[#777777]">
-                                    No icons found
-                                  </p>
-                                )
-                              ) : (
-                                selectableEmojiList
-                                  .filter(
-                                    (em) =>
-                                      !iconPickerSearch.trim() ||
-                                      em.keywords
-                                        .toLowerCase()
-                                        .includes(iconPickerSearch.toLowerCase()) ||
-                                      em.emoji.includes(iconPickerSearch)
-                                  )
-                                  .map((em) => {
-                                    const isChosen = selectedEmoji === em.emoji;
-                                    return (
-                                      <button
-                                        key={em.emoji}
-                                        onClick={() => {
-                                          setSelectedEmoji(em.emoji);
-                                          setSelectedIconId(undefined);
-                                          setIconPickerOpen(false);
-                                        }}
-                                        title={em.keywords.split(' ')[0]}
-                                        className={`w-[26px] h-[26px] rounded-full flex items-center justify-center text-[14px] transition-colors cursor-pointer ${
-                                          isChosen
-                                            ? 'bg-[#0051ff] text-white'
-                                            : 'bg-[#efefef] hover:bg-[#0051ff]'
-                                        }`}
-                                      >
-                                        {em.emoji}
-                                      </button>
-                                    );
-                                  })
-                              )}
-                            </div>
-                            {iconPickerTab === 'Icon' && (
-                              <div className="mt-[7px] flex min-h-[17px] items-center justify-between px-[3px]">
-                                {!iconPickerSearch.trim() && !iconPickerShowAll ? (
-                                  <button
-                                    onClick={() => {
-                                      setIconPickerShowAll(true);
-                                      setIconPickerPage(0);
-                                    }}
-                                    className="text-[9px] font-medium text-[#0051ff] hover:underline cursor-pointer"
-                                  >
-                                    Browse all {iconCatalog.length.toLocaleString()} icons
-                                  </button>
-                                ) : (
-                                  <>
-                                    <span className="text-[8px] text-[#777777]" aria-live="polite">
-                                      Showing{' '}
-                                      {iconSearchResults.total === 0
-                                        ? '0'
-                                        : `${(iconPickerPage * ICON_SEARCH_PAGE_SIZE + 1).toLocaleString()}–${Math.min(
-                                            (iconPickerPage + 1) * ICON_SEARCH_PAGE_SIZE,
-                                            iconSearchResults.total
-                                          ).toLocaleString()}`}{' '}
-                                      of {iconSearchResults.total.toLocaleString()}
-                                    </span>
-                                    <div className="flex items-center gap-[4px]">
-                                      {iconPickerPage > 0 && (
-                                        <button
-                                          aria-label="Previous icon results"
-                                          title="Previous icons"
-                                          onClick={() =>
-                                            setIconPickerPage((page) => Math.max(0, page - 1))
-                                          }
-                                          className="w-[18px] h-[18px] rounded-full text-[12px] text-[#555555] hover:bg-[#e8e8e8] cursor-pointer"
-                                        >
-                                          ‹
-                                        </button>
-                                      )}
-                                      {(iconPickerPage + 1) * ICON_SEARCH_PAGE_SIZE <
-                                        iconSearchResults.total && (
-                                        <button
-                                          aria-label="Next icon results"
-                                          title="Next icons"
-                                          onClick={() => setIconPickerPage((page) => page + 1)}
-                                          className="w-[18px] h-[18px] rounded-full text-[12px] text-[#555555] hover:bg-[#e8e8e8] cursor-pointer"
-                                        >
-                                          ›
-                                        </button>
-                                      )}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      <IconPickerPopover
+                        open={iconPickerOpen}
+                        onClose={() => setIconPickerOpen(false)}
+                        iconPickerTab={iconPickerTab}
+                        handleIconPickerTabChange={handleIconPickerTabChange}
+                        iconPickerSearch={iconPickerSearch}
+                        setIconPickerSearch={setIconPickerSearch}
+                        iconSearchResults={iconSearchResults}
+                        selectedIconId={selectedIconId}
+                        setSelectedIconId={setSelectedIconId}
+                        selectedEmoji={selectedEmoji}
+                        setSelectedEmoji={setSelectedEmoji}
+                        selectableEmojiList={selectableEmojiList}
+                        iconPickerShowAll={iconPickerShowAll}
+                        setIconPickerShowAll={setIconPickerShowAll}
+                        iconPickerPage={iconPickerPage}
+                        setIconPickerPage={setIconPickerPage}
+                        iconCatalogLength={iconCatalog.length}
+                      />
                     </div>
 
                     {/* Notched Center Horizontal Divider Line */}
@@ -7887,148 +7446,19 @@ export default function App() {
           data-preset-screen
           className="preset-screen-scroll flex-1 overflow-y-auto w-full max-w-[1440px] mx-auto pt-[54px] pb-[48px] px-4"
         >
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-[25px] font-medium text-[#666666] tracking-[-0.01em] leading-none">
-                Presets library
-              </h1>
-              <p className="mt-[12px] text-[10.5px] leading-[1.42] text-[#686868]">
-                Presets are ready-made key configurations.
-                <br />
-                Load a preset to instantly apply a predefined workflow to your device.
-              </p>
-            </div>
-
-            <div className="flex flex-col items-end gap-[9px]">
-              <div className="w-[196px] h-[27px] rounded-full bg-[#e2e2e2] px-[11px] flex items-center gap-[6px]">
-                <Search className="w-[11px] h-[11px] text-[#666666] stroke-[2]" />
-                <input
-                  type="text"
-                  value={presetSearch}
-                  onChange={(e) => setPresetSearch(e.target.value)}
-                  placeholder="Search"
-                  className="w-full bg-transparent text-[11px] text-[#333333] placeholder:text-[#686868] focus:outline-none"
-                />
-              </div>
-
-              <div className="w-[130px] h-[27px] rounded-full bg-white flex overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-                <button
-                  onClick={() => setPresetOs('mac')}
-                  aria-label="macOS Presets"
-                  className={`flex-1 h-full flex items-center justify-center transition-colors cursor-pointer ${
-                    presetOs === 'mac'
-                      ? 'bg-[#000000] text-white'
-                      : 'bg-white text-[#555555] hover:bg-neutral-50'
-                  }`}
-                >
-                  <svg
-                    width="11"
-                    height="13"
-                    viewBox="0 0 14 17"
-                    fill="currentColor"
-                  >
-                    <path d="M11.66 9.03C11.64 6.95 13.36 5.93 13.44 5.88C12.46 4.46 10.95 4.26 10.42 4.2C9.15 4.07 7.92 4.95 7.27 4.95C6.62 4.95 5.63 4.21 4.57 4.23C3.19 4.25 1.91 5.03 1.21 6.26C-0.24 8.77 0.84 12.47 2.24 14.49C2.93 15.49 3.74 16.6 4.82 16.56C5.86 16.52 6.26 15.89 7.51 15.89C8.76 15.89 9.13 16.56 10.21 16.54C11.33 16.52 12.03 15.53 12.71 14.53C13.51 13.37 13.83 12.24 13.85 12.18C13.82 12.17 11.68 11.35 11.66 9.03ZM9.58 2.86C10.15 2.17 10.54 1.21 10.43 0.25C9.6 0.28 8.58 0.8 7.99 1.49C7.47 2.09 7.01 3.07 7.14 4.01C8.06 4.08 8.99 3.55 9.58 2.86Z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setPresetOs('win')}
-                  aria-label="Windows Presets"
-                  className={`flex-1 h-full flex items-center justify-center transition-colors cursor-pointer ${
-                    presetOs === 'win'
-                      ? 'bg-[#000000] text-white'
-                      : 'bg-white text-[#555555] hover:bg-neutral-50'
-                  }`}
-                >
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 12 12"
-                    fill="currentColor"
-                  >
-                    <rect x="0.5" y="0.5" width="4.8" height="4.8" />
-                    <rect x="6.7" y="0.5" width="4.8" height="4.8" />
-                    <rect x="0.5" y="6.7" width="4.8" height="4.8" />
-                    <rect x="6.7" y="6.7" width="4.8" height="4.8" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div
-            data-preset-grid
-            className="mt-[36px] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-[17px]"
-          >
-            {filteredPresets.map((preset) => {
-              const isInstalled = isPresetInstalledInProfile(currentProfile, preset.id);
-              return (
-                <div
-                  key={preset.id}
-                  className="bg-[#e3e3e3] rounded-[18px] p-[15px] flex flex-col justify-between min-h-[164px]"
-                >
-                  <div>
-                    <div className="flex items-center gap-[10px]">
-                      <PresetAppIcon id={preset.id} />
-                      <div>
-                        <div className="text-[10px] text-[#6d6d6d] leading-none mb-[3px]">
-                          Layer preset
-                        </div>
-                        <div className="text-[15px] font-semibold text-[#111111] leading-none">
-                          {preset.title}
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="mt-[11px] text-[10.5px] leading-[1.35] text-[#666666] min-h-[28px]">
-                      {preset.description}
-                    </p>
-
-                    <div className="mt-[6px] text-[10px] font-medium text-[#2b2b2b]">
-                      Author: {preset.author}
-                    </div>
-                  </div>
-
-                  <div className="mt-[10px]">
-                    {preset.hasPreview ? (
-                      <div className="grid grid-cols-2 gap-[8px]">
-                        <button
-                          onClick={() => setPreviewPreset(preset)}
-                          className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
-                        >
-                          Preview
-                        </button>
-                        <button
-                          onClick={() => handleInstallPreset(preset)}
-                          disabled={isInstalled}
-                          aria-label={
-                            isInstalled
-                              ? `${preset.title} preset already installed on this profile`
-                              : `Install ${preset.title} preset`
-                          }
-                          className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
-                        >
-                          {isInstalled ? 'Installed' : 'Install'}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleInstallPreset(preset)}
-                        disabled={isInstalled}
-                        aria-label={
-                          isInstalled
-                            ? `${preset.title} preset already installed on this profile`
-                            : `Install ${preset.title} preset`
-                        }
-                        className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
-                      >
-                        {isInstalled ? 'Installed' : 'Install'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* Responsive preset grid contract: xl:grid-cols-4 2xl:grid-cols-5 */}
+          <PresetGrid
+            presetSearch={presetSearch}
+            setPresetSearch={setPresetSearch}
+            presetOs={presetOs}
+            setPresetOs={setPresetOs}
+            filteredPresets={filteredPresets}
+            currentProfile={currentProfile}
+            onPreviewPreset={(preset) => setPreviewPreset(preset)}
+            onInstallPreset={handleInstallPreset}
+            isPresetInstalledInProfile={isPresetInstalledInProfile}
+            renderAppIcon={(id) => <PresetAppIcon id={id} />}
+          />
         </motion.main>
       )}
 
@@ -8054,244 +7484,39 @@ export default function App() {
       </AnimatePresence>
 
       {/* PRESET DETAIL PREVIEW PAGE */}
-      <AnimatePresence>
-        {previewPreset && previewPresetDetails && (
-          <motion.main
-            key={`preset-preview-${previewPreset.id}`}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-0 z-50 overflow-y-auto bg-[#efefef]"
-            aria-label={`${previewPreset.title} preset preview`}
-          >
-            <div className="w-full max-w-[1300px] mx-auto px-5 sm:px-7 lg:px-[30px] pt-[12px] pb-[52px]">
-              <div className="w-full max-w-[1125px]">
-                <button
-                  type="button"
-                  aria-label="Back to presets"
-                  onClick={() => {
-                    setPreviewPreset(null);
-                    setHoveredPreviewSlot(null);
-                    setHoveredPreviewDial(null);
-                  }}
-                  className="flex items-center gap-[12px] text-[16px] text-[#222] cursor-pointer hover:text-[#0051ff] transition-colors"
-                >
-                  <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M13 8H3M3 8L7 4M3 8L7 12" />
-                  </svg>
-                  Back
-                </button>
-
-                <header className="mt-[29px] flex flex-col md:flex-row md:items-start md:justify-between gap-6 md:gap-10">
-                  <div className="w-full md:w-[268px] shrink-0">
-                    <div className="flex items-center gap-[16px]">
-                      <PresetAppIcon id={previewPreset.id} size={52} />
-                      <div>
-                        <div className="text-[13px] text-[#8a8a8a] leading-none mb-[6px]">
-                          Layer preset
-                        </div>
-                        <h1 className="text-[21px] font-medium text-[#111] leading-none">
-                          {previewPreset.title}
-                        </h1>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      aria-label={
-                        isPreviewPresetInstalled
-                          ? `${previewPreset.title} preset already installed on this profile`
-                          : `Install ${previewPreset.title} preset`
-                      }
-                      onClick={() => handleInstallPreset(previewPreset)}
-                      disabled={isPreviewPresetInstalled}
-                      className="mt-[20px] w-full h-[39px] rounded-full bg-black hover:bg-[#0051ff] text-white text-[13px] font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:bg-[#777777] disabled:hover:bg-[#777777]"
-                    >
-                      {isPreviewPresetInstalled ? 'Installed' : 'Install'}
-                    </button>
-                  </div>
-                  <div className="md:max-w-[540px] md:pt-[8px] md:text-right">
-                    <p className="text-[15px] leading-[1.5] text-[#888]">
-                      {previewPresetDetails.description}
-                    </p>
-                    <p className="mt-[8px] text-[15px] text-[#222]">
-                      <span className="font-semibold">Author:</span>{' '}
-                      {previewPresetDetails.author}
-                    </p>
-                  </div>
-                </header>
-
-                <section className="mt-[58px] grid grid-cols-1 lg:grid-cols-[214px_minmax(0,1fr)] gap-x-[48px] gap-y-[30px]">
-                  <div className="flex flex-col items-center lg:items-start">
-                    <MacropadDevice
-                      layer={previewPreset.layerKeymap}
-                      selectedKey={null}
-                      selectedEncoderSub={null}
-                      dragOverTarget={null}
-                      encoderAngle={45}
-                      onSelectKey={() => {}}
-                      onSelectEncoderSub={() => {}}
-                      onHoverSlot={setHoveredPreviewSlot}
-                      highlightedSlot={hoveredPreviewSlot}
-                      showSlotNumbers
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-[36px] gap-y-[20px] content-start">
-                    {previewPresetDetails.keys.map((action, index) => {
-                      const keySlot = GRID_MACRO_KEY_SLOTS[index];
-                      const isHovered = keySlot !== undefined && hoveredPreviewSlot === keySlot;
-                      const shortcut = action.multi
-                        ? `Tap ${formatPresetSequence(action.multi.onTap, presetOs).toLowerCase()}${
-                            action.multi.doubleTap
-                              ? ` · Double tap ${formatPresetSequence(action.multi.doubleTap, presetOs).toLowerCase()}`
-                              : ''
-                          }`
-                        : formatPresetSequence(action.keys, presetOs).toLowerCase();
-                      return (
-                        <div
-                          key={`${previewPreset.id}-key-${index}`}
-                          onMouseEnter={() => setHoveredPreviewSlot(keySlot ?? null)}
-                          onMouseLeave={() => setHoveredPreviewSlot(null)}
-                          className="flex items-start gap-[11px] min-w-0"
-                        >
-                          <span
-                            data-preview-action-number={index + 1}
-                            className={`mt-[1px] w-[21px] h-[21px] shrink-0 rounded-full bg-white text-[9px] font-medium flex items-center justify-center transition-all duration-150 ${
-                              isHovered
-                                ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]'
-                                : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
-                            }`}
-                          >
-                            {index + 1}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-[2px]">
-                              <span className="text-[14px] font-medium leading-[1.2] text-[#222]">
-                                {action.name}
-                              </span>
-                              <span className="text-[12px] font-medium leading-[1.2] text-[#222]">
-                                {shortcut}
-                              </span>
-                            </div>
-                            <p className="mt-[4px] text-[11.5px] leading-[1.35] text-[#999]">
-                              {action.description}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <div className="mt-[34px] h-px bg-black/[0.09]" />
-
-                <section className="pt-[24px] grid grid-cols-1 lg:grid-cols-[214px_minmax(0,1fr)] gap-x-[48px] gap-y-[24px]">
-                  <div className="flex flex-col items-center">
-                    <div className="text-[13px] text-[#666] mb-[9px]">Dial</div>
-                    <div className="h-[68px] px-[17px] rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex items-center gap-[10px]">
-                      {([
-                        { direction: 'cw', text: 'CW', glyph: '↻' },
-                        { direction: 'press', text: 'PRESS', glyph: '↓' },
-                        { direction: 'ccw', text: 'CCW', glyph: '↺' },
-                      ] as const).map((item, index) => {
-                        const actionNumber = previewPresetDetails.keys.length + index + 1;
-                        const isHovered = hoveredPreviewDial === item.direction;
-                        return (
-                          <div
-                            key={item.direction}
-                            data-preview-dial-control={item.direction}
-                            onMouseEnter={() => setHoveredPreviewDial(item.direction)}
-                            onMouseLeave={() => setHoveredPreviewDial(null)}
-                            className="relative"
-                          >
-                            <span
-                              data-preview-dial-control-number={actionNumber}
-                              className={`absolute -top-[5px] -right-[3px] z-10 w-[15px] h-[15px] rounded-full bg-white text-[8px] font-medium flex items-center justify-center transition-all duration-150 ${
-                                isHovered
-                                  ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]'
-                                  : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.1)]'
-                              }`}
-                            >
-                              {actionNumber}
-                            </span>
-                            <div
-                              data-preview-dial-circle={item.direction}
-                              className={`w-[48px] h-[48px] rounded-full bg-[#171717] text-white flex flex-col items-center justify-center transition-all duration-150 ${
-                                isHovered
-                                  ? 'ring-2 ring-[#0051ff] shadow-[0_0_12px_rgba(0,81,255,0.65)]'
-                                  : ''
-                              }`}
-                            >
-                              <span className="text-[15px] leading-none text-[#0051ff]">{item.glyph}</span>
-                              <span className="mt-[2px] text-[8px] font-semibold tracking-[0.04em] text-white/80">
-                                {item.text}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-[36px] gap-y-[20px] content-start">
-                    {([
-                      { direction: 'cw', action: previewPresetDetails.dial.cw },
-                      { direction: 'press', action: previewPresetDetails.dial.press },
-                      { direction: 'ccw', action: previewPresetDetails.dial.ccw },
-                    ] as const).map(({ direction, action }, index) => {
-                      const actionNumber = previewPresetDetails.keys.length + index + 1;
-                      const isHovered = hoveredPreviewDial === direction;
-                      return (
-                        <div
-                          key={`${previewPreset.id}-dial-${direction}`}
-                          onMouseEnter={() => setHoveredPreviewDial(direction)}
-                          onMouseLeave={() => setHoveredPreviewDial(null)}
-                          className="flex items-start gap-[11px] min-w-0"
-                        >
-                        <span
-                          data-preview-dial-action-number={actionNumber}
-                          className={`mt-[1px] w-[21px] h-[21px] shrink-0 rounded-full bg-white text-[9px] font-medium flex items-center justify-center transition-all duration-150 ${
-                            isHovered
-                              ? 'text-[#0051ff] ring-1 ring-[#0051ff] shadow-[0_0_9px_rgba(0,81,255,0.65)]'
-                              : 'text-[#444] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
-                          }`}
-                        >
-                          {actionNumber}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-[2px]">
-                            <span className="text-[14px] font-medium leading-[1.2] text-[#222]">
-                              {action.name}
-                            </span>
-                            <span className="text-[12px] font-medium leading-[1.2] text-[#222]">
-                              {formatPresetSequence(action.keys, presetOs).toLowerCase()}
-                            </span>
-                          </div>
-                          <p className="mt-[4px] text-[11.5px] leading-[1.35] text-[#999]">
-                            {action.description}
-                          </p>
-                        </div>
-                      </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              </div>
-            </div>
-          </motion.main>
+      <PresetDetailPreview
+        previewPreset={previewPreset}
+        previewPresetDetails={previewPresetDetails}
+        presetOs={presetOs}
+        isPreviewPresetInstalled={isPreviewPresetInstalled}
+        hoveredPreviewSlot={hoveredPreviewSlot}
+        hoveredPreviewDial={hoveredPreviewDial}
+        onClose={() => {
+          setPreviewPreset(null);
+          setHoveredPreviewSlot(null);
+          setHoveredPreviewDial(null);
+        }}
+        onInstallPreset={handleInstallPreset}
+        setHoveredPreviewSlot={setHoveredPreviewSlot}
+        setHoveredPreviewDial={setHoveredPreviewDial}
+        renderMacropadDevice={(preset) => (
+          <MacropadDevice
+            layer={preset.layerKeymap}
+            selectedKey={null}
+            selectedEncoderSub={null}
+            dragOverTarget={null}
+            encoderAngle={45}
+            onSelectKey={() => {}}
+            onSelectEncoderSub={() => {}}
+            onHoverSlot={setHoveredPreviewSlot}
+            highlightedSlot={hoveredPreviewSlot}
+            showSlotNumbers
+          />
         )}
-      </AnimatePresence>
+        renderAppIcon={(id, size) => (
+          <PresetAppIcon id={id} size={size} />
+        )}
+      />
 
       {/* EDIT LAYOUT MODAL */}
       <EditLayoutModal
