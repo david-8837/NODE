@@ -35,7 +35,7 @@ class FakeWindow extends EventEmitter {
   loadFile(_path: string, options: unknown) { this.loadOptions = options; return Promise.resolve(); }
   destroy() { this.destroyed = true; this.emit('closed'); }
 }
-function harness(platform = 'linux', release = '0.0.0', blur: (handle: Buffer, enabled?: boolean) => boolean = () => false) {
+function harness(platform = 'linux', release = '0.0.0', blur: (handle: Buffer) => (() => void) | null = () => null) {
   return createCheatSheetController({ BrowserWindow: FakeWindow, platform, release, createBlur: () => blur, screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) } });
 }
 const bindings = ['Show Cheat-Sheet', 'Show Cheat-Sheet Hold', 'Hide Cheat-Sheet', 'Toggle Cheat-Sheet'];
@@ -196,8 +196,9 @@ describe('native HUD controller (mock Electron)', () => {
     expect(win.ignored).toBe(true);
     hud.destroy();
   });
-  it('keeps the HUD unshaped when Windows accepts blur so native clipping cannot cut the outlines', () => {
-    const blur = vi.fn(() => true);
+  it('keeps the HUD unshaped while using rounded compositor blur, and detaches on close', () => {
+    const detach = vi.fn();
+    const blur = vi.fn(() => detach);
     const hud = harness('win32', '10.0.22621', blur);
     hud.update({ layer: 1, keys: Array(9).fill('') });
     const win = FakeWindow.instance;
@@ -206,6 +207,7 @@ describe('native HUD controller (mock Electron)', () => {
     expect(win.shape).toEqual([]);
     expect(win.ignored).toBe(true);
     hud.destroy();
+    expect(detach).toHaveBeenCalledOnce();
     expect(hud.isBlurEnabled()).toBe(false);
   });
   it('creates a non-focusable click-through always-on-top window and updates it after load', () => {

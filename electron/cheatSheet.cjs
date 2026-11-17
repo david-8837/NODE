@@ -6,7 +6,7 @@ const { makeWindowsBlur } = require('./cheatSheetBlur.cjs');
  * rendered using textContent in the isolated overlay, never as HTML. */
 function createCheatSheetController({ BrowserWindow, screen, platform = process.platform, createBlur = makeWindowsBlur }) {
   let window = null;
-  let blurEnabled = false;
+  let detachBlur = null;
   let ready = false;
   let visible = false;
   const holds = new Set();
@@ -32,13 +32,12 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
         contextIsolation: true, nodeIntegration: false, sandbox: true,
       },
     });
-    // The Windows accent blur is rectangular even when setShape succeeds.
-    // Native shape clipping can also cut off the HUD outline at some DPI scales,
-    // so keep the renderer unshaped. Windows' blur corners remain a known issue.
+    // Use a compositor-clipped rounded backdrop, not a native rectangular
+    // accent or window region. Failure leaves the transparent outline intact.
     if (platform === 'win32' && typeof window.getNativeWindowHandle === 'function') {
       try {
         const blur = createBlur({ platform });
-        blurEnabled = blur(window.getNativeWindowHandle());
+        detachBlur = blur(window.getNativeWindowHandle());
       } catch (error) {
         console.warn('Cheat-Sheet native blur unavailable:', error.message);
       }
@@ -48,11 +47,14 @@ function createCheatSheetController({ BrowserWindow, screen, platform = process.
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event) => event.preventDefault());
     window.webContents.once('did-finish-load', () => { ready = true; deliver(); syncVisibility(); });
-    window.on('closed', () => { window = null; ready = false; blurEnabled = false; visible = false; holds.clear(); });
+    window.on('closed', () => {
+      if (detachBlur) detachBlur();
+      detachBlur = null; window = null; ready = false; visible = false; holds.clear();
+    });
     void window.loadFile(path.join(__dirname, 'cheatSheet.html'));
   }
   return {
-    isBlurEnabled() { return blurEnabled; },
+    isBlurEnabled() { return typeof detachBlur === 'function'; },
     update(data) {
       if (!data || !Number.isInteger(data.layer) || data.layer < 1 || data.layer > 64 ||
           !Array.isArray(data.keys) || data.keys.length !== 9 || data.keys.some((key) => typeof key !== 'string')) return false;

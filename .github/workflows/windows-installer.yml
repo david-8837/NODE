@@ -12,6 +12,8 @@ on:
     paths:
       - '.github/workflows/windows-installer.yml'
       - 'electron/**'
+      - 'native/rounded-blur/**'
+      - 'scripts/build-rounded-blur.cjs'
       - 'src/**'
       - 'native-executor.ts'
       - 'index.html'
@@ -40,6 +42,9 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Set up Rust for rounded Windows blur
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
         run: npm ci
 
@@ -48,6 +53,14 @@ jobs:
 
       - name: Run tests
         run: npx vitest run --reporter=default --reporter=github-actions
+
+      - name: Resolve rounded blur dependencies
+        shell: pwsh
+        run: |
+          cargo generate-lockfile --manifest-path native/rounded-blur/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $lock = [Convert]::ToBase64String([IO.File]::ReadAllBytes('native/rounded-blur/Cargo.lock'))
+          Write-Output "::notice title=Rounded blur Cargo lock::$lock"
 
       - name: Build installer and ZIP
         run: npm run build:win
