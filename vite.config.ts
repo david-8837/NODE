@@ -181,6 +181,7 @@ export default defineConfig(() => {
     test: {
       testTimeout: 15000,
       maxWorkers: 4,
+      include: ['tests/**/*.{test,spec}.{ts,tsx}'],
       coverage: {
         provider: 'v8' as const,
         reporter: ['text', 'json-summary', 'html'],

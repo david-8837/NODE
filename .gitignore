@@ -3,6 +3,8 @@ build/
 dist/
 dist_electron/
 coverage/
+test-results/
+playwright-report/
 .DS_Store
 *.log
 electron/native/*.dll
