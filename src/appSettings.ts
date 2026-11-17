@@ -25,11 +25,13 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   allowDeviceNotifications: false,
 });
 
+export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
+
 export const SUPPORT_LINKS: Record<SupportLinkKey, string> = {
-  help: 'https://github.com/david-8837/NODE/blob/main/qmk_firmware/grid_macro_1/README.md',
-  contact: 'https://github.com/david-8837/NODE/issues/new?title=Support%20request',
-  feedback: 'https://github.com/david-8837/NODE/issues/new?title=Product%20feedback',
-  releaseNotes: 'https://github.com/david-8837/NODE/releases',
+  help: `${WEBSITE_BASE_URL}/docs.html`,
+  contact: `${WEBSITE_BASE_URL}/support.html`,
+  feedback: `${WEBSITE_BASE_URL}/feedback.html`,
+  releaseNotes: `${WEBSITE_BASE_URL}/releases.html`,
   firmwareBuilds: FIRMWARE_BUILD_WORKFLOW_URL,
 };
 

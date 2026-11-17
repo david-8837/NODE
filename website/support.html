@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f4f1" />
+    <meta name="description" content="NODE studio support: frequently asked questions, hardware diagnostics, and community contact channels." />
+    <meta name="author" content="NODE studio" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://david-8837.github.io/NODE/support.html" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://david-8837.github.io/NODE/support.html" />
+    <meta property="og:site_name" content="NODE studio" />
+    <meta property="og:title" content="Support &amp; Troubleshooting — NODE studio" />
+    <meta property="og:description" content="Get help with your Grid Macro 1 macropad: hardware FAQs, connection diagnostics, and contact channels." />
+    <meta property="og:image" content="https://david-8837.github.io/NODE/assets/grid-macro-studio-current.png" />
+    <meta property="og:image:width" content="1350" />
+    <meta property="og:image:height" content="942" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://david-8837.github.io/NODE/support.html" />
+    <meta name="twitter:title" content="Support &amp; Troubleshooting — NODE studio" />
+    <meta name="twitter:description" content="Get help with your Grid Macro 1 macropad: hardware FAQs, connection diagnostics, and contact channels." />
+    <meta name="twitter:image" content="https://david-8837.github.io/NODE/assets/grid-macro-studio-current.png" />
+
+    <title>Support &amp; Troubleshooting — NODE studio</title>
+    <link rel="icon" type="image/png" href="./assets/node-studio-icon.png" />
+    <link rel="stylesheet" href="./styles.css?v=8" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="34" height="34" />
+          <span class="brand-copy">
+            <strong>NODE</strong>
+            <span>studio</span>
+          </span>
+        </a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="./#features">Features</a>
+          <a href="./#hardware">Hardware Guide</a>
+          <a href="./docs.html">Docs</a>
+          <a href="./support.html" style="color: #fff;">Support</a>
+          <a href="./releases.html">Releases</a>
+        </nav>
+        <a class="button button-small button-dark header-cta" href="./#download">
+          Get the app <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="page-hero container">
+        <div class="eyebrow eyebrow-muted">[:: KNOWLEDGE BASE &amp; HELP ::]</div>
+        <h1>Contact <span>Support</span></h1>
+        <p>Find quick answers to common hardware and software questions, run diagnostic checks, or connect directly with the maintainers.</p>
+      </section>
+
+      <section class="container page-section">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow eyebrow-muted">TROUBLESHOOTING</div>
+            <h2>Frequently Asked Questions</h2>
+          </div>
+        </div>
+
+        <div class="faq-grid">
+          <article class="faq-card">
+            <h3>Pad not detected by WebHID or Studio?</h3>
+            <p>Ensure your USB-C cable supports data transfer (some charging-only cables will not expose the USB data lines). When using Google Chrome or Microsoft Edge, ensure you grant access to the <code>0xFEED:0x6001</code> HID device in the browser prompt.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Windows SmartScreen warning on install?</h3>
+            <p>The prebuilt Windows binaries are currently self-distributed and unsigned. Click <em>"More info"</em> and then <em>"Run anyway"</em>. For full verification, all releases include verifiable SHA-256 build logs built directly on GitHub Actions runners.</p>
+          </article>
+          <article class="faq-card">
+            <h3>Do Smart Actions follow the device to another PC?</h3>
+            <p>Hardware keys, rotary encoder directions, and layer assignments live on the physical QMK device. Host-assisted Smart Actions (such as specific Windows app launching) and custom profile labels live in local browser storage, and can be exported as portable JSON.</p>
+          </article>
+          <article class="faq-card">
+            <h3>How do I reset to factory firmware?</h3>
+            <p>Hold the <code>BOOT</code> button while plugging in the USB cable to mount the <code>RPI-RP2</code> drive, then copy over a fresh <code>grid_macro_1_via.uf2</code> build from the Releases page to restore default settings.</p>
+          </article>
+        </div>
+
+        <div class="section-heading" style="margin-top: 50px;">
+          <div>
+            <div class="eyebrow eyebrow-muted">GET IN TOUCH</div>
+            <h2>Direct Channels</h2>
+          </div>
+        </div>
+
+        <div class="contact-channels">
+          <article class="channel-card">
+            <span class="doc-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+              </svg>
+            </span>
+            <h4>GitHub Issue Tracker</h4>
+            <p>Submit bug reports, crash logs, or protocol mismatch traces directly to our development repository.</p>
+            <a class="channel-link" href="https://github.com/david-8837/NODE/issues" target="_blank" rel="noreferrer">Open GitHub Issue <span aria-hidden="true">↗</span></a>
+          </article>
+
+          <article class="channel-card">
+            <span class="doc-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+              </svg>
+            </span>
+            <h4>Email Support</h4>
+            <p>Have licensing questions or custom hardware integration needs? Send a message directly to the team.</p>
+            <a class="channel-link" href="mailto:dth3315@gmail.com">Contact by Email <span aria-hidden="true">↗</span></a>
+          </article>
+
+          <article class="channel-card">
+            <span class="doc-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            </span>
+            <h4>Community Feedback</h4>
+            <p>Share preset requests, UX suggestions, and feature wishes to shape upcoming releases.</p>
+            <a class="channel-link" href="./feedback.html">Give Feedback <span aria-hidden="true">↗</span></a>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <a class="brand footer-brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="29" height="29" />
+          <span class="brand-copy"><strong>NODE</strong><span>studio</span></span>
+        </a>
+        <p>Made for the Grid Macro 1.</p>
+        <div class="footer-links">
+          <a href="./docs.html">Docs</a>
+          <a href="./support.html">Support</a>
+          <a href="./feedback.html">Feedback</a>
+          <a href="./releases.html">Releases</a>
+          <a href="https://github.com/david-8837/NODE" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+        <span class="copyright">© <span id="copyright-year">2026</span> NODE studio</span>
+      </div>
+    </footer>
+  </body>
+</html>

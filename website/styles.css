@@ -193,6 +193,62 @@ h1, h2, h3, p { margin-top: 0; }
 .footer-links span { color: var(--blue); }
 .copyright { color: #9a9da3; font-size: 8px; white-space: nowrap; }
 
+/* Subpages: Docs, Support, Feedback, Releases */
+.page-hero { padding-block: 64px 38px; text-align: center; }
+.page-hero .eyebrow { margin-bottom: 12px; }
+.page-hero h1 { margin: 0 0 14px; font-size: clamp(38px, 5.5vw, 58px); font-weight: 750; line-height: 1.05; letter-spacing: -.055em; }
+.page-hero h1 span { color: #a1a4aa; }
+.page-hero p { max-width: 580px; margin: 0 auto; color: #686c74; font-size: 14px; line-height: 1.7; }
+.page-section { padding-block: 20px 80px; }
+
+/* Docs layout */
+.docs-layout { display: grid; grid-template-columns: 240px 1fr; gap: 40px; align-items: start; }
+.docs-sidebar { position: sticky; top: 100px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, .7); backdrop-filter: blur(8px); }
+.docs-sidebar h4 { margin: 0 0 12px; font-size: 9px; font-weight: 800; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+.docs-sidebar nav { display: grid; gap: 4px; font-size: 11px; font-weight: 650; color: #555860; }
+.docs-sidebar nav a { padding: 6px 10px; border-radius: 6px; transition: all .15s ease; }
+.docs-sidebar nav a:hover { color: var(--blue); background: var(--soft-blue); }
+.docs-body { display: grid; gap: 24px; min-width: 0; }
+.doc-article { padding: 30px 32px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 4px 20px rgba(0, 0, 0, .02); }
+.doc-article h2 { margin: 0 0 10px; font-size: 20px; font-weight: 740; letter-spacing: -.03em; }
+.doc-article p { color: #5b6068; font-size: 12px; line-height: 1.75; margin-bottom: 14px; }
+.doc-article ul, .doc-article ol { color: #5b6068; font-size: 12px; line-height: 1.75; padding-left: 20px; margin-bottom: 14px; }
+.doc-article li { margin-bottom: 5px; }
+.doc-article code { padding: 2px 6px; border-radius: 5px; font-size: 11px; background: #edf0f5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #222; }
+
+/* Support & Feedback cards */
+.faq-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 34px; }
+.faq-card { padding: 24px 26px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.faq-card h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+.faq-card p { margin: 0; color: #666a72; font-size: 12px; line-height: 1.7; }
+
+.contact-channels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.channel-card { padding: 24px 22px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, .7); transition: transform .2s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease; }
+.channel-card:hover { transform: translateY(-3px); border-color: #ccd2de; background: #fff; box-shadow: 0 10px 25px rgba(0,0,0,.05); }
+.channel-card .doc-icon { margin-bottom: 14px; }
+.channel-card h4 { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+.channel-card p { margin: 0 0 14px; color: #777b83; font-size: 11px; line-height: 1.6; }
+.channel-link { color: var(--blue); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+
+/* Feedback form styling */
+.feedback-box { max-width: 640px; margin: 0 auto; padding: 34px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 12px 35px rgba(0,0,0,.03); }
+.feedback-group { display: grid; gap: 6px; margin-bottom: 18px; text-align: left; }
+.feedback-group label { font-size: 11px; font-weight: 700; color: var(--ink); }
+.feedback-input, .feedback-textarea { width: 100%; border: 1px solid #d4d7dc; border-radius: 8px; padding: 10px 14px; font-size: 13px; font-family: inherit; background: #fafaf9; transition: border-color .15s ease, background .15s ease; }
+.feedback-input:focus, .feedback-textarea:focus { outline: none; border-color: var(--blue); background: #fff; }
+.feedback-textarea { resize: vertical; min-height: 110px; }
+
+/* Releases / Changelog */
+.releases-list { display: grid; gap: 20px; max-width: 820px; margin: 0 auto; }
+.release-item { padding: 30px 32px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.02); }
+.release-header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #f0f1f3; }
+.release-tag { font-size: 20px; font-weight: 800; letter-spacing: -.03em; color: var(--ink); }
+.release-badge { padding: 3px 8px; border-radius: 99px; font-size: 8px; font-weight: 700; color: #fff; background: var(--blue); }
+.release-date { color: #888c94; font-size: 10px; font-weight: 600; }
+.release-body h4 { margin: 16px 0 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.release-body ul { margin: 0 0 14px; padding-left: 18px; color: #555860; font-size: 12px; line-height: 1.7; }
+.release-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
 @media (max-width: 1020px) {
   .container { width: min(100% - 48px, 800px); }
   .hero { min-height: auto; }
@@ -203,6 +259,7 @@ h1, h2, h3, p { margin-top: 0; }
   .spec-grid { gap: 18px; }
   .spec-note { font-size: 9px; }
   .hardware-links-strip { grid-template-columns: 1fr; }
+  .contact-channels { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -211,6 +268,11 @@ h1, h2, h3, p { margin-top: 0; }
   .header-inner { height: 66px; gap: 12px; }
   .main-nav { display: none; }
   .header-cta { margin-left: auto; }
+  .docs-layout { grid-template-columns: 1fr; gap: 24px; }
+  .docs-sidebar { position: static; }
+  .faq-grid { grid-template-columns: 1fr; }
+  .doc-article, .release-item { padding: 22px; }
+  .feedback-box { padding: 22px; }
   .hero { min-height: auto; grid-template-columns: 1fr; gap: 0; padding-block: 64px 51px; }
   .hero-copy { padding-bottom: 0; }
   .hero h1 { margin-top: 21px; font-size: clamp(48px, 11vw, 72px); }

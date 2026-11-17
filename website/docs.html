@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f4f1" />
+    <meta name="description" content="NODE studio documentation: keymaps, layers, rotary encoder setup, smart actions, WebHID protocol, and firmware flashing." />
+    <meta name="author" content="NODE studio" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://david-8837.github.io/NODE/docs.html" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://david-8837.github.io/NODE/docs.html" />
+    <meta property="og:site_name" content="NODE studio" />
+    <meta property="og:title" content="Documentation — NODE studio" />
+    <meta property="og:description" content="Official documentation for NODE studio and the Grid Macro 1 macropad: setup, keymaps, encoder, layers, and firmware." />
+    <meta property="og:image" content="https://david-8837.github.io/NODE/assets/grid-macro-studio-current.png" />
+    <meta property="og:image:width" content="1350" />
+    <meta property="og:image:height" content="942" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://david-8837.github.io/NODE/docs.html" />
+    <meta name="twitter:title" content="Documentation — NODE studio" />
+    <meta name="twitter:description" content="Everything you need to configure your Grid Macro 1 macropad with NODE studio." />
+    <meta name="twitter:image" content="https://david-8837.github.io/NODE/assets/grid-macro-studio-current.png" />
+
+    <title>Documentation — NODE studio</title>
+    <link rel="icon" type="image/png" href="./assets/node-studio-icon.png" />
+    <link rel="stylesheet" href="./styles.css?v=8" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="34" height="34" />
+          <span class="brand-copy">
+            <strong>NODE</strong>
+            <span>studio</span>
+          </span>
+        </a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="./#features">Features</a>
+          <a href="./#hardware">Hardware Guide</a>
+          <a href="./docs.html" style="color: #fff;">Docs</a>
+          <a href="./support.html">Support</a>
+          <a href="./releases.html">Releases</a>
+        </nav>
+        <a class="button button-small button-dark header-cta" href="./#download">
+          Get the app <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="page-hero container">
+        <div class="eyebrow eyebrow-muted">[:: REFERENCE MANUAL ::]</div>
+        <h1>Help &amp; <span>Documentation</span></h1>
+        <p>Everything you need to configure your Grid Macro 1 macropad, tune rotary encoder gestures, build custom multi-actions, and flash QMK firmware.</p>
+      </section>
+
+      <section class="container page-section">
+        <div class="docs-layout">
+          <aside class="docs-sidebar">
+            <h4>Contents</h4>
+            <nav>
+              <a href="#quick-start">Quick Start</a>
+              <a href="#connecting">Device Connection</a>
+              <a href="#keymaps">Configuring Keys</a>
+              <a href="#encoder">Rotary Encoder</a>
+              <a href="#layers">Layers &amp; Profiles</a>
+              <a href="#smart-actions">Smart Actions</a>
+              <a href="#cheat-sheet">Cheat Sheet HUD</a>
+              <a href="#firmware-flashing">Firmware &amp; UF2</a>
+            </nav>
+          </aside>
+
+          <div class="docs-body">
+            <article class="doc-article" id="quick-start">
+              <h2>Quick Start</h2>
+              <p>NODE studio works in two environments: as an installed Windows desktop application (with native Smart Actions and HUD overlay) and in any Chromium browser (Chrome or Edge) via WebHID over HTTPS or localhost.</p>
+              <ol>
+                <li>Launch <strong>NODE studio</strong> on your computer.</li>
+                <li>Connect your <strong>Grid Macro 1</strong> via USB-C.</li>
+                <li>When prompted, click <strong>Connect</strong> and authorize the <code>0xFEED:0x6001</code> Raw HID keyboard interface.</li>
+                <li>Studio will immediately read your active device layers and synchronize the keymap in real time.</li>
+              </ol>
+            </article>
+
+            <article class="doc-article" id="connecting">
+              <h2>Device Connection &amp; Safety</h2>
+              <p>The configurator uses a connection gate: if no pad is connected, editing is disabled to ensure no out-of-sync writes can occur.</p>
+              <ul>
+                <li><strong>Auto-Backup:</strong> Before writing any change to device memory, Studio captures a local backup snapshot. You can revert to this backup anytime in Settings.</li>
+                <li><strong>Disconnect Protection:</strong> If the USB cable is unplugged while you are customizing keymaps, your profiles remain completely intact in local storage.</li>
+                <li><strong>Simulation Mode:</strong> You can toggle Simulation Mode in Settings to test macros, shortcuts, and app launches using your computer keyboard without physical hardware.</li>
+              </ul>
+            </article>
+
+            <article class="doc-article" id="keymaps">
+              <h2>Configuring Keymaps (3×3 Matrix)</h2>
+              <p>Each of the nine keys can be individually assigned with a single keycode, keyboard chord, media control, or custom action:</p>
+              <ul>
+                <li><strong>Basic Inputs:</strong> Alphanumerics, navigation arrows, function keys (F1–F24), and number pad keys.</li>
+                <li><strong>Shortcuts:</strong> Multi-key chords (e.g. <code>Ctrl + Shift + S</code>, <code>Alt + F4</code>, <code>Win + V</code>).</li>
+                <li><strong>Icons:</strong> Pick custom icons from Tabler or Lucide icon catalogs to display directly on key tiles.</li>
+              </ul>
+            </article>
+
+            <article class="doc-article" id="encoder">
+              <h2>Rotary Encoder (Dial)</h2>
+              <p>The top-left rotary encoder supports three distinct hardware trigger events per layer:</p>
+              <ul>
+                <li><strong>Clockwise (CW):</strong> Standard default is Volume Up, Zoom In, or Timeline Forward.</li>
+                <li><strong>Counter-Clockwise (CCW):</strong> Standard default is Volume Down, Zoom Out, or Timeline Rewind.</li>
+                <li><strong>Encoder Press:</strong> Built-in push switch (GP11), commonly used for Mute, Zoom Reset, or Play/Pause.</li>
+              </ul>
+            </article>
+
+            <article class="doc-article" id="layers">
+              <h2>Hardware Layers &amp; Profiles</h2>
+              <p>The QMK firmware supports <strong>4 hardware layers</strong> (Layer 0 through 3). You can create multiple profiles (e.g., Coding, Video Editing, Gaming, Streaming) with up to 4 layers each.</p>
+              <p>Assign <code>Layer Cycle</code> or a momentary layer shift to any key to switch layers instantly with muscle memory.</p>
+            </article>
+
+            <article class="doc-article" id="smart-actions">
+              <h2>Smart Actions &amp; Multi-Actions</h2>
+              <p>Host-assisted actions take your macropad beyond standard keyboard HID:</p>
+              <ul>
+                <li><strong>App Launching:</strong> Select any installed Windows application or Start Menu shortcut to launch in one press.</li>
+                <li><strong>Text Insertion:</strong> Paste boilerplate code, terminal snippets, or canned email replies without typing errors.</li>
+                <li><strong>Web Links:</strong> Open your favorite dashboards or repositories in your default browser.</li>
+                <li><strong>Multi-Action Gestures:</strong> Set different actions for <em>Tap</em>, <em>Double-Tap</em>, and <em>Hold</em> on the exact same key.</li>
+              </ul>
+            </article>
+
+            <article class="doc-article" id="cheat-sheet">
+              <h2>Cheat Sheet HUD Overlay</h2>
+              <p>In the Windows desktop app, press the designated Cheat Sheet key to toggle a transparent, click-through acrylic HUD overlay showing all current layer shortcuts directly over your active games or IDE.</p>
+            </article>
+
+            <article class="doc-article" id="firmware-flashing">
+              <h2>Firmware &amp; UF2 Flashing</h2>
+              <p>The Grid Macro 1 uses an RP2040-Zero controller running QMK with VIA v13 Raw HID protocol.</p>
+              <ol>
+                <li>Unplug the macropad.</li>
+                <li>Hold down the <strong>BOOT</strong> button on the controller while plugging the USB-C cable back in.</li>
+                <li>A mass-storage drive named <code>RPI-RP2</code> will appear in Windows File Explorer.</li>
+                <li>Drag and drop the official <code>grid_macro_1_via.uf2</code> firmware onto the drive.</li>
+                <li>The drive unmounts automatically and reboots into configured studio mode.</li>
+              </ol>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <a class="brand footer-brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="29" height="29" />
+          <span class="brand-copy"><strong>NODE</strong><span>studio</span></span>
+        </a>
+        <p>Made for the Grid Macro 1.</p>
+        <div class="footer-links">
+          <a href="./docs.html">Docs</a>
+          <a href="./support.html">Support</a>
+          <a href="./feedback.html">Feedback</a>
+          <a href="./releases.html">Releases</a>
+          <a href="https://github.com/david-8837/NODE" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+        <span class="copyright">© <span id="copyright-year">2026</span> NODE studio</span>
+      </div>
+    </footer>
+  </body>
+</html>

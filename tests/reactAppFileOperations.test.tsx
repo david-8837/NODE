@@ -215,7 +215,7 @@ describe('React source app file operations', () => {
     await clickButton([...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.trim() === 'Help & Documentation')!);
     expect(openExternal).toHaveBeenCalledWith(
-      'https://github.com/david-8837/NODE/blob/main/qmk_firmware/grid_macro_1/README.md'
+      'https://david-8837.github.io/NODE/docs.html'
     );
 
     await clickButton([...container.querySelectorAll<HTMLButtonElement>('button')]

@@ -186,11 +186,12 @@ function writeStoredAppSettings(settings) {
 function isAllowedExternalUrl(rawUrl) {
   try {
     const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase();
     return (
       url.protocol === 'https:' &&
       !url.username &&
       !url.password &&
-      url.hostname.toLowerCase() === 'github.com'
+      (host === 'github.com' || host === 'david-8837.github.io')
     );
   } catch {
     return false;

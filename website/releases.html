@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f4f1" />
+    <meta name="description" content="NODE studio release notes: changelogs, new features, bug fixes, and download history." />
+    <meta name="author" content="NODE studio" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://david-8837.github.io/NODE/releases.html" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://david-8837.github.io/NODE/releases.html" />
+    <meta property="og:site_name" content="NODE studio" />
+    <meta property="og:title" content="Release Notes &amp; Changelog — NODE studio" />
+    <meta property="og:description" content="View what's new in NODE studio: version changelogs, new hardware features, and downloadable packages." />
+    <meta property="og:image" content="https://david-8837.github.io/NODE/assets/grid-macro-studio-current.png" />
+    <meta property="og:image:width" content="1350" />
+    <meta property="og:image:height" content="942" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://david-8837.github.io/NODE/releases.html" />
+    <meta name="twitter:title" content="Release Notes &amp; Changelog — NODE studio" />
+    <meta name="twitter:description" content="View what's new in NODE studio: version changelogs, new hardware features, and downloadable packages." />
+    <meta name="twitter:image" content="https://david-8837.github.io/NODE/assets/grid-macro-studio-current.png" />
+
+    <title>Release Notes &amp; Changelog — NODE studio</title>
+    <link rel="icon" type="image/png" href="./assets/node-studio-icon.png" />
+    <link rel="stylesheet" href="./styles.css?v=8" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="34" height="34" />
+          <span class="brand-copy">
+            <strong>NODE</strong>
+            <span>studio</span>
+          </span>
+        </a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="./#features">Features</a>
+          <a href="./#hardware">Hardware Guide</a>
+          <a href="./docs.html">Docs</a>
+          <a href="./support.html">Support</a>
+          <a href="./releases.html" style="color: #fff;">Releases</a>
+        </nav>
+        <a class="button button-small button-dark header-cta" href="./#download">
+          Get the app <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="page-hero container">
+        <div class="eyebrow eyebrow-muted">[:: VERSION HISTORY ::]</div>
+        <h1>Release <span>Notes</span></h1>
+        <p>Explore what's new in each release of NODE studio, including performance upgrades, firmware features, and bug fixes.</p>
+      </section>
+
+      <section class="container page-section">
+        <div class="releases-list">
+          <article class="release-item">
+            <div class="release-header">
+              <div>
+                <span class="release-tag">v1.1.11</span>
+                <span class="release-badge">LATEST</span>
+              </div>
+              <span class="release-date">November 2026</span>
+            </div>
+            <div class="release-body">
+              <h4>Documentation &amp; Community</h4>
+              <ul>
+                <li>Released official web documentation, hardware specifications, and support portal.</li>
+                <li>Added open-source Source-Available license and contributor guidelines (<code>CONTRIBUTING.md</code>).</li>
+                <li>Pinned Node 22 engine environment across <code>.nvmrc</code> and <code>package.json</code>.</li>
+                <li>Added flat ESLint v9/v10 and Prettier formatting rules to CI pipeline.</li>
+              </ul>
+              <h4>Desktop &amp; Hardware Bridge</h4>
+              <ul>
+                <li>Integrated web documentation routes directly into the in-app Support menu.</li>
+                <li>Restricted external web navigation in Electron to verified official domain origins.</li>
+              </ul>
+            </div>
+            <div class="release-actions">
+              <a class="button button-primary button-small" href="https://github.com/david-8837/NODE/releases/latest" target="_blank" rel="noreferrer">
+                Download Latest Release <span aria-hidden="true">↗</span>
+              </a>
+              <a class="button button-small" style="border: 1px solid var(--line); background: #fff;" href="https://github.com/david-8837/NODE/releases" target="_blank" rel="noreferrer">
+                View All on GitHub <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </article>
+
+          <article class="release-item">
+            <div class="release-header">
+              <div>
+                <span class="release-tag">v1.1.10</span>
+              </div>
+              <span class="release-date">November 2026</span>
+            </div>
+            <div class="release-body">
+              <h4>Cheat Sheet HUD</h4>
+              <ul>
+                <li>Introduced Windows Composition API rounded blur for the floating HUD overlay.</li>
+                <li>Implemented click-through window affinity to prevent focus stealing during games or editing.</li>
+              </ul>
+              <h4>Security &amp; Sandboxing</h4>
+              <ul>
+                <li>Hardened Electron process sandbox with strict frame-origin and loopback verification.</li>
+                <li>Added dangerous command execution blocking for terminal smart actions.</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="release-item">
+            <div class="release-header">
+              <div>
+                <span class="release-tag">v1.1.0</span>
+              </div>
+              <span class="release-date">November 2026</span>
+            </div>
+            <div class="release-body">
+              <h4>Features &amp; Presets</h4>
+              <ul>
+                <li>Shipped built-in preset library for media, graphic design, and coding workflows.</li>
+                <li>Added multi-gesture tap, double-tap, and hold support per key.</li>
+                <li>Implemented automated pre-sync backups of QMK device keymaps.</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <a class="brand footer-brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="29" height="29" />
+          <span class="brand-copy"><strong>NODE</strong><span>studio</span></span>
+        </a>
+        <p>Made for the Grid Macro 1.</p>
+        <div class="footer-links">
+          <a href="./docs.html">Docs</a>
+          <a href="./support.html">Support</a>
+          <a href="./feedback.html">Feedback</a>
+          <a href="./releases.html">Releases</a>
+          <a href="https://github.com/david-8837/NODE" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+        <span class="copyright">© <span id="copyright-year">2026</span> NODE studio</span>
+      </div>
+    </footer>
+  </body>
+</html>
