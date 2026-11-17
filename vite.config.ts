@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync } from 'node:fs';
@@ -176,6 +177,22 @@ export default defineConfig(() => {
       strictPort: true,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+    test: {
+      coverage: {
+        provider: 'v8' as const,
+        reporter: ['text', 'json-summary', 'html'],
+        exclude: [
+          'dist/**',
+          'dist_electron/**',
+          'node_modules/**',
+          'qmk_firmware/**',
+          'website/**',
+          'tests/**',
+          'scripts/**',
+          '*.config.*',
+        ],
+      },
     },
   };
 });

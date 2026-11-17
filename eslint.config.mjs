@@ -84,6 +84,7 @@ export default [
       'tests/**',
       'dist/**',
       'dist_electron/**',
+      'coverage/**',
       'node_modules/**',
       'qmk_firmware/**',
       '**/*.bmp',
