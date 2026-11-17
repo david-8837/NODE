@@ -331,3 +331,55 @@ export function buildPresetLibrary(os: 'mac' | 'win'): PresetItem[] {
 }
 
 export const PRESET_LIBRARY = buildPresetLibrary('win');
+
+export function formatCustomTileText(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2) {
+    const line1 = words[0].length > 7 ? `${words[0].slice(0, 5)}..` : words[0];
+    const rest = words.slice(1).join(' ');
+    const line2 = rest.length > 6 ? `${rest.slice(0, 5)}..` : rest;
+    return `${line1}\n${line2}`;
+  }
+  const single = words[0] || 'Action';
+  return single.length > 7 ? `${single.slice(0, 5)}..` : single;
+}
+
+export interface CustomItemGroup {
+  id: string;
+  title: string;
+  presetId?: string;
+  presetColor?: string;
+  items: BasicTileItem[];
+}
+
+export function groupCustomItemsByPreset(
+  items: BasicTileItem[],
+  customGroupTitle: string
+): CustomItemGroup[] {
+  const groups = new Map<string, CustomItemGroup>();
+
+  items.forEach((item) => {
+    const preset = PRESET_CATALOG.find((entry) => item.id.startsWith(`preset-${entry.id}-`));
+    const groupId = preset ? `preset-${preset.id}` : 'custom';
+    const existingGroup = groups.get(groupId);
+
+    if (existingGroup) {
+      existingGroup.items.push(item);
+      return;
+    }
+
+    groups.set(groupId, {
+      id: groupId,
+      title: preset?.title ?? customGroupTitle,
+      presetId: preset?.id,
+      presetColor: preset?.color,
+      items: [item],
+    });
+  });
+
+  return [...groups.values()].sort((left, right) => {
+    if (!left.presetId && right.presetId) return -1;
+    if (left.presetId && !right.presetId) return 1;
+    return 0;
+  });
+}

@@ -6,7 +6,14 @@ import {
   EmptyKeyPlusIcon,
   ArrowKeyGlyph,
 } from './UiIcons';
-import type { BasicTileItem, CustomItemsByTab, MappingTabId } from '../presetLibrary';
+import { CustomPickerIcon } from './CustomPickerIcon';
+import {
+  groupCustomItemsByPreset,
+  formatCustomTileText,
+  type BasicTileItem,
+  type CustomItemsByTab,
+  type MappingTabId,
+} from '../presetLibrary';
 
 export interface BasicSection {
   title: string;
@@ -35,13 +42,9 @@ export interface ActionLibrarySidebarProps {
     tab: MappingTabId
   ) => void;
   handleAssignTileFromDrawer: (item: BasicTileItem) => void;
-  handleOpenCreatorEditor: (tab: Exclude<MappingTabId, 'Basic'>) => void;
+  handleOpenCreatorEditor: (tab: Exclude<MappingTabId, 'Basic'>, item?: BasicTileItem) => void;
   customItemsByTab: CustomItemsByTab;
-  renderCustomItemGroups: (
-    tab: Exclude<MappingTabId, 'Basic'>,
-    items: BasicTileItem[],
-    customGroupTitle: string
-  ) => React.ReactNode;
+  renderAppIcon: (id: string, size?: number) => React.ReactNode;
   showToast: (msg: string) => void;
 }
 
@@ -64,9 +67,181 @@ export function ActionLibrarySidebar({
   handleAssignTileFromDrawer,
   handleOpenCreatorEditor,
   customItemsByTab,
-  renderCustomItemGroups,
+  renderAppIcon,
   showToast,
 }: ActionLibrarySidebarProps) {
+  const renderCustomItemGroups = (
+    tab: Exclude<MappingTabId, 'Basic'>,
+    items: BasicTileItem[],
+    customGroupTitle: string
+  ) => (
+    <div className="flex-1 overflow-y-auto pt-[2px] pb-[3px]">
+      <div className="text-[11.5px] font-normal text-[#5c5c5c] mb-[10px]">
+        {customGroupTitle}
+      </div>
+      <div className="space-y-[16px]">
+        {groupCustomItemsByPreset(items, customGroupTitle).map((group) => (
+          <section
+            key={group.id}
+            data-action-group={group.presetId ?? 'custom'}
+            data-preset-action-group={group.presetId}
+          >
+            {group.presetId && (
+              <div className="h-[20px] flex items-center gap-[7px] mb-[9px]">
+                {renderAppIcon(group.presetId, 18)}
+                <span
+                  className="text-[11.5px] font-medium leading-none"
+                  style={{ color: group.presetColor }}
+                >
+                  {group.title}
+                </span>
+                {group.presetColor && (
+                  <span
+                    aria-hidden="true"
+                    className="flex-1 h-px rounded-full"
+                    style={{
+                      background: `linear-gradient(90deg, ${group.presetColor}66, transparent)`,
+                    }}
+                  />
+                )}
+              </div>
+            )}
+            <div
+              data-action-view={mappingViewMode}
+              className={
+                mappingViewMode === 'grid'
+                  ? 'grid grid-cols-5 gap-[6px] content-start'
+                  : 'flex flex-col gap-[6px]'
+              }
+            >
+              {group.items.map((item) => {
+                const isBeingDragged = draggedTile?.item.id === item.id;
+                const isFlashed = flashedTileId === item.id;
+                const presetTileStyle =
+                  group.presetColor && !isFlashed && !isBeingDragged
+                    ? {
+                        borderColor: `${group.presetColor}55`,
+                        backgroundColor: `${group.presetColor}0D`,
+                      }
+                    : undefined;
+                const presetIconStyle = group.presetColor
+                  ? {
+                      color: group.presetColor,
+                      backgroundColor: `${group.presetColor}1A`,
+                    }
+                  : undefined;
+                const listIconStyle = group.presetColor
+                  ? presetIconStyle
+                  : { color: '#666666', backgroundColor: '#f1f1f1' };
+                const listDescription =
+                  item.listLabel || item.top || item.macropadLabel;
+                const layoutClasses =
+                  mappingViewMode === 'grid'
+                    ? 'h-[54px] rounded-[10px] flex-col justify-center px-1 text-center'
+                    : 'w-full min-h-[48px] rounded-[10px] flex-row justify-start gap-[10px] px-[9px] text-left';
+
+                return (
+                  <button
+                    key={item.id}
+                    data-preset-action-item={group.presetId ? item.id : undefined}
+                    data-action-list-item={mappingViewMode === 'list' ? item.id : undefined}
+                    onPointerDown={(e) => handleStartTileDrag(e, item, tab)}
+                    onClick={() => handleAssignTileFromDrawer(item)}
+                    onDoubleClick={() => handleOpenCreatorEditor(tab, item)}
+                    title={`${item.main} (Click or drag onto key, double-click to edit)`}
+                    style={presetTileStyle}
+                    className={`border-[1.5px] flex items-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${layoutClasses} ${
+                      isFlashed
+                        ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
+                        : isBeingDragged
+                        ? 'bg-[#e8e8e8] text-[#a8a8a8] border-transparent transition-colors duration-200'
+                        : 'bg-white hover:bg-[#fafafa] text-[#444444] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
+                    }`}
+                  >
+                    {mappingViewMode === 'grid' ? (
+                      item.iconId ? (
+                        <span
+                          data-preset-action-icon={group.presetId ?? undefined}
+                          className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
+                          style={presetIconStyle}
+                        >
+                          <CustomPickerIcon id={item.iconId} size={20} />
+                        </span>
+                      ) : item.emoji ? (
+                        <span
+                          className="text-[20px] leading-none"
+                          style={
+                            group.presetColor
+                              ? { color: group.presetColor }
+                              : undefined
+                          }
+                        >
+                          {item.emoji}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-[10px] leading-[1.2] whitespace-pre-line"
+                          style={
+                            group.presetColor
+                              ? { color: group.presetColor }
+                              : undefined
+                          }
+                        >
+                          {formatCustomTileText(item.main)}
+                        </span>
+                      )
+                    ) : (
+                      <>
+                        <span
+                          className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0"
+                          style={listIconStyle}
+                        >
+                          {item.iconId ? (
+                            <span
+                              data-preset-action-icon={group.presetId ?? undefined}
+                              className="w-[30px] h-[30px] rounded-[8px] flex items-center justify-center"
+                              style={presetIconStyle}
+                            >
+                              <CustomPickerIcon id={item.iconId} size={20} />
+                            </span>
+                          ) : item.emoji ? (
+                            <span className="text-[20px] leading-none">
+                              {item.emoji}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] leading-[1.2] whitespace-pre-line">
+                              {formatCustomTileText(item.main)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className="block truncate text-[11px] font-medium"
+                            style={
+                              group.presetColor
+                                ? { color: group.presetColor }
+                                : undefined
+                            }
+                          >
+                            {item.main}
+                          </span>
+                          {listDescription && listDescription !== item.main && (
+                            <span className="block truncate text-[9.5px] leading-[1.3] text-[#888888]">
+                              {listDescription}
+                            </span>
+                          )}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
   return (
     <motion.div
       key="key-mapping-drawer-view"
