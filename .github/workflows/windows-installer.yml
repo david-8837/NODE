@@ -60,7 +60,11 @@ jobs:
           cargo generate-lockfile --manifest-path native/rounded-blur/Cargo.toml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $lock = [Convert]::ToBase64String([IO.File]::ReadAllBytes('native/rounded-blur/Cargo.lock'))
-          Write-Output "::notice title=Rounded blur Cargo lock::$lock"
+          for ($i = 0; $i -lt $lock.Length; $i += 2500) {
+            $part = [Math]::Floor($i / 2500)
+            $length = [Math]::Min(2500, $lock.Length - $i)
+            Write-Output "::notice title=Rounded blur lock part $part::$($lock.Substring($i, $length))"
+          }
 
       - name: Build installer and ZIP
         run: npm run build:win
