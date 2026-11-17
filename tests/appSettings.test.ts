@@ -131,6 +131,27 @@ describe('Settings persistence and native capabilities', () => {
     expect(release.message).toContain("cannot compare release tags with the device's VIA build ID");
   });
 
+  it('calls checkForUpdates via desktop electronAPI when available or returns desktop-only error', async () => {
+    const host = createWindow();
+    const tools = createAppSettingsTools(host);
+    const browserResult = await tools.checkForUpdates?.();
+    expect(browserResult).toMatchObject({
+      ok: false,
+      error: 'Update checking is only available in the desktop application',
+    });
+
+    const mockCheck = vi.fn().mockResolvedValue({
+      ok: true,
+      currentVersion: '1.1.11',
+      latestVersion: '1.2.0',
+      hasUpdate: true,
+    });
+    host.electronAPI = { checkForUpdates: mockCheck } as unknown as import('../src/appSettings').ElectronApi;
+    const desktopResult = await tools.checkForUpdates?.();
+    expect(mockCheck).toHaveBeenCalled();
+    expect(desktopResult).toMatchObject({ ok: true, hasUpdate: true });
+  });
+
   it('validates every UF2 block and accepts only RP2040 family images', () => {
     const makeBlock = (familyId = RP2040_FAMILY_ID) => {
       const block = Buffer.alloc(512);

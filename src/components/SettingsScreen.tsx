@@ -17,9 +17,11 @@ export interface SettingsScreenProps {
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
   firmwareCheckPending: boolean;
+  appUpdateCheckPending?: boolean;
   handleAppSettingChange: (key: AppSettingKey, value: boolean) => Promise<void> | void;
   handleOpenSupportLink: (key: SupportLinkKey, label: string) => Promise<void> | void;
   handleCheckFirmwareUpdate: () => Promise<void> | void;
+  handleCheckAppUpdate?: () => Promise<void> | void;
   handleResetLocalConfig: () => void;
   handleAdvanceFlash: () => Promise<void> | void;
 }
@@ -32,9 +34,11 @@ export function SettingsScreen({
   allowTerminalSmartActions,
   allowDeviceNotifications,
   firmwareCheckPending,
+  appUpdateCheckPending = false,
   handleAppSettingChange,
   handleOpenSupportLink,
   handleCheckFirmwareUpdate,
+  handleCheckAppUpdate,
   handleResetLocalConfig,
   handleAdvanceFlash,
 }: SettingsScreenProps) {
@@ -75,9 +79,22 @@ export function SettingsScreen({
                 </div>
                 <div className="pt-[7px] pb-[2px] flex items-center justify-between">
                   <span className="text-[#585858]">Input app version:</span>
-                  <span className="text-[#444444] font-medium tabular-nums">
-                    {appVersion}
-                  </span>
+                  <div className="flex items-center gap-[8px]">
+                    <span className="text-[#444444] font-medium tabular-nums">
+                      {appVersion}
+                    </span>
+                    {handleCheckAppUpdate && (
+                      <button
+                        type="button"
+                        onClick={() => void handleCheckAppUpdate()}
+                        disabled={appUpdateCheckPending}
+                        title="Check GitHub for application updates"
+                        className="px-[8px] py-[2px] rounded-full bg-white hover:bg-[#0051ff] text-[9.5px] font-medium text-[#444444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {appUpdateCheckPending ? 'Checking…' : 'Check update'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

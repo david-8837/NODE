@@ -11,6 +11,7 @@ export type {
   AppOperationResult,
   NativeActionResult,
   SimulationToggleResult,
+  UpdateCheckResult,
   ElectronApi,
 } from '../src/appSettings';
 

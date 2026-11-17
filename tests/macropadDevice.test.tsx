@@ -10,6 +10,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -180,5 +181,52 @@ describe('MacropadDevice component', () => {
       }
     });
     expect(onHoverSlot).toHaveBeenCalledWith(null);
+  });
+
+  it('applies active pressed visual styling when activePressedSlot matches keycap slot', async () => {
+    await act(async () => {
+      root.render(
+        createElement(MacropadDevice, {
+          layer: INITIAL_LAYER_1,
+          selectedKey: null,
+          selectedEncoderSub: null,
+          dragOverTarget: null,
+          encoderAngle: 0,
+          onSelectKey: vi.fn(),
+          onSelectEncoderSub: vi.fn(),
+          activePressedSlot: 'r2c2',
+        })
+      );
+    });
+
+    const keyR2C2 = container.querySelector<HTMLButtonElement>('[data-drop-slot="r2c2"]');
+    expect(keyR2C2).not.toBeNull();
+    expect(keyR2C2?.className).toContain('scale-[0.93]');
+    expect(keyR2C2?.className).toContain('shadow-[0_0_20px_rgba(0,81,255,0.95)]');
+
+    const keyR1C1 = container.querySelector<HTMLButtonElement>('[data-drop-slot="r1c1"]');
+    expect(keyR1C1?.className).not.toContain('scale-[0.93]');
+  });
+
+  it('applies active pressed visual styling to rotary dial when dial trigger is pressed', async () => {
+    await act(async () => {
+      root.render(
+        createElement(MacropadDevice, {
+          layer: INITIAL_LAYER_1,
+          selectedKey: null,
+          selectedEncoderSub: null,
+          dragOverTarget: null,
+          encoderAngle: 0,
+          onSelectKey: vi.fn(),
+          onSelectEncoderSub: vi.fn(),
+          activePressedSlot: GRID_MACRO_ENCODER_SLOT,
+        })
+      );
+    });
+
+    const dial = container.querySelector<HTMLButtonElement>('[title^="Dial:"]');
+    expect(dial).not.toBeNull();
+    expect(dial?.className).toContain('scale-[0.93]');
+    expect(dial?.className).toContain('shadow-[0_0_20px_rgba(0,81,255,0.95)]');
   });
 });

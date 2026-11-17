@@ -5,6 +5,7 @@ export interface FlatDialControlProps {
   angle: number;
   title: string;
   onClick: () => void;
+  isPressed?: boolean;
 }
 
 export function FlatDialControl({
@@ -12,13 +13,16 @@ export function FlatDialControl({
   angle,
   title,
   onClick,
+  isPressed = false,
 }: FlatDialControlProps) {
   return (
     <button
       onClick={onClick}
       title={title}
       className={`w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-        selected
+        isPressed
+          ? 'scale-[0.93] border-[#0051ff] shadow-[0_0_20px_rgba(0,81,255,0.95)] z-20'
+          : selected
           ? 'border-[#0051ff] shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
           : 'border-transparent hover:border-[#0051ff] hover:z-10'
       }`}
@@ -49,8 +53,8 @@ export function FlatDialControl({
           cx="20"
           cy="20"
           r="19"
-          fill={selected ? 'url(#dialSelectedBlue)' : 'url(#dialUpperLeft)'}
-          stroke={selected ? '#0051ff' : '#262626'}
+          fill={selected || isPressed ? 'url(#dialSelectedBlue)' : 'url(#dialUpperLeft)'}
+          stroke={selected || isPressed ? '#0051ff' : '#262626'}
           strokeWidth="0.8"
         />
         <line
@@ -58,7 +62,7 @@ export function FlatDialControl({
           y1="33.5"
           x2="33.5"
           y2="6.5"
-          stroke={selected ? 'rgba(255,255,255,0.45)' : '#4a4a4a'}
+          stroke={selected || isPressed ? 'rgba(255,255,255,0.45)' : '#4a4a4a'}
           strokeWidth="1.1"
           strokeOpacity="0.7"
         />

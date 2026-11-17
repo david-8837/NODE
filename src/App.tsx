@@ -843,6 +843,8 @@ export default function App() {
     typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : APP_VERSION_FALLBACK
   );
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
+  const [appUpdateCheckPending, setAppUpdateCheckPending] = useState(false);
+  const [activePressedSlot, setActivePressedSlot] = useState<string | null>(null);
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
   const [deviceActiveLayer, setDeviceActiveLayer] = useState<number>(0);
   const [deviceActiveProfileSlot, setDeviceActiveProfileSlot] = useState<number>(0);
@@ -1502,6 +1504,11 @@ export default function App() {
       }
       if (rawEvent.type === 'hardware_trigger') {
         const trig = rawEvent as unknown as HardwareTriggerEvent;
+        if (trig.pressed) {
+          setActivePressedSlot(trig.slotId);
+        } else {
+          setActivePressedSlot((current) => (current === trig.slotId ? null : current));
+        }
         // A release belongs to the original press, even if profile/layer changed.
         if (!trig.pressed && cheatSheetTriggersRef.current?.handle(trig.slotId, false)) return;
         const syncedProfile = syncedCheatProfilesRef.current[trig.profileSlot];
@@ -1761,6 +1768,38 @@ export default function App() {
     } finally {
       setFirmwareCheckPending(false);
     }
+  };
+
+  const handleCheckAppUpdate = async () => {
+    setAppUpdateCheckPending(true);
+    try {
+      const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+      const result = await tools.checkForUpdates?.();
+      if (!result) {
+        showToast('App update checking is only available in the desktop application.');
+        return;
+      }
+      if (!result.ok) {
+        showToast(`Update check failed: ${result.error || 'Unknown error'}`);
+        return;
+      }
+      if (result.hasUpdate) {
+        showToast(`Update available: ${result.latestVersion}! Click Release Notes in Settings to download.`);
+      } else {
+        showToast(`NODE Studio is up to date (v${result.currentVersion}).`);
+      }
+    } catch (error) {
+      showToast(`Update check failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setAppUpdateCheckPending(false);
+    }
+  };
+
+  const flashSimulatedPress = (slotId: string) => {
+    setActivePressedSlot(slotId);
+    window.setTimeout(() => {
+      setActivePressedSlot((current) => (current === slotId ? null : current));
+    }, 220);
   };
 
   const handleAdvanceFlash = async () => {
@@ -2781,6 +2820,7 @@ export default function App() {
   const handleSelectKey = (slotId: KeySlotId) => {
     if (suppressNextClickRef.current) return;
     if (simulationMode) {
+      flashSimulatedPress(slotId);
       if (slotId === GRID_MACRO_ENCODER_SLOT) {
         setEncoderAngle((angle) => (angle + 30) % 360);
         runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
@@ -2822,6 +2862,7 @@ export default function App() {
   ) => {
     if (suppressNextClickRef.current) return;
     if (simulationMode) {
+      flashSimulatedPress(slotId);
       if (subAction === 'cw') setEncoderAngle((angle) => (angle + 30) % 360);
       if (subAction === 'ccw') setEncoderAngle((angle) => (angle - 30 + 360) % 360);
       runSimulationAction(getEncoderActions(currentLayer[slotId])[subAction]);
@@ -3586,6 +3627,7 @@ export default function App() {
                   onSelectEncoderSub={handleSelectEncoderSubAction}
                   onStartKeyDrag={handleStartMacropadKeyDrag}
                   entrancePhase={entrancePhase}
+                  activePressedSlot={activePressedSlot}
                 />
               </motion.div>
 
@@ -3836,9 +3878,11 @@ export default function App() {
           allowTerminalSmartActions={allowTerminalSmartActions}
           allowDeviceNotifications={allowDeviceNotifications}
           firmwareCheckPending={firmwareCheckPending}
+          appUpdateCheckPending={appUpdateCheckPending}
           handleAppSettingChange={handleAppSettingChange}
           handleOpenSupportLink={handleOpenSupportLink}
           handleCheckFirmwareUpdate={handleCheckFirmwareUpdate}
+          handleCheckAppUpdate={handleCheckAppUpdate}
           handleResetLocalConfig={handleResetLocalConfig}
           handleAdvanceFlash={handleAdvanceFlash}
         />

@@ -8,6 +8,7 @@ const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 const { listInstalledApplications } = require('./installedApplications.cjs');
 const { migrateLegacyUserData } = require('./userDataMigration.cjs');
 const { createCheatSheetController } = require('./cheatSheet.cjs');
+const { checkForAppUpdates } = require('./updater.cjs');
 const cheatSheet = createCheatSheetController({ BrowserWindow, screen });
 
 const desktopActionExecutor = createDesktopActionExecutor({
@@ -749,6 +750,13 @@ ipcMain.handle('window-is-maximized', (event) => {
 
 ipcMain.handle('get-app-version', (event) => {
   return isTrustedRenderer(event) ? app.getVersion() : null;
+});
+
+ipcMain.handle('check-for-updates', async (event) => {
+  if (!isTrustedRenderer(event)) {
+    return { ok: false, error: 'Untrusted renderer' };
+  }
+  return checkForAppUpdates();
 });
 
 ipcMain.handle('list-installed-applications', (event) => {

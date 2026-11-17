@@ -39,6 +39,7 @@ export interface MacropadDeviceProps {
   ) => void;
   onHoverSlot?: (slotId: KeySlotId | null) => void;
   highlightedSlot?: KeySlotId | null;
+  activePressedSlot?: string | null;
   entrancePhase?: EntrancePhase;
   showSlotNumbers?: boolean;
 }
@@ -55,10 +56,16 @@ export function MacropadDevice({
   onStartKeyDrag = () => {},
   onHoverSlot,
   highlightedSlot = null,
+  activePressedSlot = null,
   entrancePhase,
   showSlotNumbers = false,
 }: MacropadDeviceProps) {
   const isEncoderOpen = selectedKey === GRID_MACRO_ENCODER_SLOT;
+  const isDialPressed =
+    activePressedSlot === GRID_MACRO_ENCODER_SLOT ||
+    activePressedSlot === 'press' ||
+    activePressedSlot === 'cw' ||
+    activePressedSlot === 'ccw';
 
   return (
     <div className="relative flex items-center justify-center">
@@ -114,6 +121,7 @@ export function MacropadDevice({
                 angle={encoderAngle}
                 title={`Dial: ${layer[GRID_MACRO_ENCODER_SLOT].binding}`}
                 onClick={() => onSelectKey(GRID_MACRO_ENCODER_SLOT)}
+                isPressed={isDialPressed}
               />
             </motion.div>
           </div>
@@ -133,6 +141,7 @@ export function MacropadDevice({
                 selected={selectedKey === slotId}
                 dragOver={dragOverTarget?.slotId === slotId}
                 isDraggingSource={draggedFromSlot === slotId}
+                isPressed={activePressedSlot === slotId}
                 onClick={() => onSelectKey(slotId)}
                 onPointerDown={(e) => onStartKeyDrag(e, slotId)}
                 onHoverSlot={onHoverSlot}
@@ -158,6 +167,7 @@ export interface KeycapButtonProps {
   selected: boolean;
   dragOver?: boolean;
   isDraggingSource?: boolean;
+  isPressed?: boolean;
   isLowercase?: boolean;
   onClick: () => void;
   onPointerDown?: (e: React.PointerEvent) => void;
@@ -177,6 +187,7 @@ export function KeycapButton({
   selected,
   dragOver,
   isDraggingSource,
+  isPressed = false,
   isLowercase,
   onClick,
   onPointerDown,
@@ -203,7 +214,7 @@ export function KeycapButton({
       onMouseEnter={() => onHoverSlot?.(slotId)}
       onMouseLeave={() => onHoverSlot?.(null)}
       title={binding}
-      style={color && !isEmpty && !selected && !dragOver && !isDraggingSource
+      style={color && !isEmpty && !selected && !dragOver && !isDraggingSource && !isPressed
         ? { backgroundColor: color, borderColor: color }
         : undefined}
       className={`${slotNumber !== undefined ? 'group ' : ''}w-[42px] h-[42px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all duration-150 cursor-grab active:cursor-grabbing focus:outline-none select-none ${
@@ -213,7 +224,9 @@ export function KeycapButton({
           ? 'text-[11px] font-normal'
           : 'text-[11.5px] font-medium'
       } ${
-        previewHighlighted
+        isPressed
+          ? 'scale-[0.93] bg-[#0051ff] border-[#0051ff] text-white shadow-[0_0_20px_rgba(0,81,255,0.95)] z-20'
+          : previewHighlighted
           ? 'bg-[#313131] text-[#f3f3f3] border-[#0051ff] shadow-[0_0_12px_rgba(0,81,255,0.65)] z-10'
           : isDraggingSource
           ? 'bg-[#1e1e1e] text-[#6d6d6d] border-transparent'

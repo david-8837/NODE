@@ -86,10 +86,24 @@ export interface FirmwareCheckResult {
   firmwareUrl?: string;
 }
 
+export interface UpdateCheckResult {
+  ok: boolean;
+  currentVersion: string;
+  latestVersion?: string;
+  hasUpdate?: boolean;
+  releaseName?: string;
+  releaseNotes?: string;
+  publishedAt?: string;
+  downloadUrl?: string;
+  assetName?: string | null;
+  error?: string;
+}
+
 export interface ElectronApi {
   isElectron?: boolean;
   platform?: string;
   getVersion?: () => Promise<string | null>;
+  checkForUpdates?: () => Promise<UpdateCheckResult>;
   getInstalledApplications?: () => Promise<InstalledApplicationsResult>;
   getAppSettings?: () => Promise<NativeSettingsResult>;
   setAppSetting?: (key: AppSettingKey, value: boolean) => Promise<NativeSettingsResult>;
@@ -115,6 +129,7 @@ export interface AppSettingsTools {
   openSupport: (link: SupportLinkKey | string) => Promise<AppOperationResult>;
   checkFirmware: () => Promise<FirmwareCheckResult>;
   flashFirmware: () => Promise<AppOperationResult>;
+  checkForUpdates?: () => Promise<UpdateCheckResult>;
 }
 
 type StorageHost = Pick<Window, 'localStorage'>;
@@ -396,6 +411,18 @@ export function createAppSettingsTools(host?: SettingsHost): AppSettingsTools {
           error: error instanceof Error ? error.message : String(error),
         };
       }
+    },
+    checkForUpdates: async () => {
+      const browser = requireHost();
+      const check = browser.electronAPI?.checkForUpdates;
+      if (check) {
+        return await check();
+      }
+      return {
+        ok: false,
+        currentVersion: '1.1.11',
+        error: 'Update checking is only available in the desktop application',
+      };
     },
   };
 }
