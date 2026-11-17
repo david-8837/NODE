@@ -8,8 +8,7 @@ if (process.platform !== 'win32') {
   process.exit(1);
 }
 const manifest = path.join(root, 'native', 'rounded-blur', 'Cargo.toml');
-const args = ['build', '--release', '--features', 'ffi', '--manifest-path', manifest];
-if (fs.existsSync(path.join(root, 'native', 'rounded-blur', 'Cargo.lock'))) args.push('--locked');
+const args = ['build', '--release', '--locked', '--features', 'ffi', '--manifest-path', manifest];
 const result = spawnSync('cargo', args, { cwd: root, stdio: 'inherit' });
 if (result.error || result.status !== 0) {
   console.error('Failed to compile the rounded blur:', result.error?.message || `cargo exited ${result.status}`);

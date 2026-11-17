@@ -58,6 +58,9 @@
     "asarUnpack": [
       "electron/native/*.dll"
     ],
+    "extraResources": [
+      { "from": "native/rounded-blur/LICENSE", "to": "licenses/Haze-LICENSE.txt" }
+    ],
     "directories": {
       "output": "dist_electron"
     },
