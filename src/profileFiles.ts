@@ -542,7 +542,6 @@ export function mergeImportedProfiles(
         return normalizeProfile(profile);
       })
     : [];
-  const existingIndex = normalizeActiveIndex(current.activeProfileIndex, Math.max(currentProfiles.length, 1));
   const baseCustom = normalizeCustomItems(current.customItems);
   const importedCustom = normalizeCustomItems(imported.customItems);
   const usedProfileIds = new Set(currentProfiles.map((profile) => String(profile.id)));

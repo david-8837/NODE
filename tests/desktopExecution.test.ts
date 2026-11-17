@@ -8,7 +8,6 @@ const {
   parseCommandLine,
   resolveCommandInvocation,
   SAFE_SHELL_COMMANDS,
-  parseKeyCombo,
   parseSequenceSteps,
   parseShortcutToVK,
   resolveApplicationShortcutPath,

@@ -7,7 +7,6 @@ import { installConnectedDevice, removeConnectedDevice, settleInitialDeviceSync 
 import {
   createProfileExport,
   PROFILE_FILE_STORAGE_KEY,
-  profileFileTools,
 } from '../src/profileFiles';
 import type { QmkViaBridge } from '../src/qmkViaBridge';
 

@@ -65,7 +65,6 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
-  Check,
   X,
   Search,
 } from 'lucide-react';
@@ -9417,85 +9416,6 @@ function KeycapButton({
         </span>
       )}
     </motion.button>
-  );
-}
-
-interface KnobControlProps {
-  selected: boolean;
-  angle: number;
-  title: string;
-  onClick: () => void;
-}
-
-function KnobControl({
-  selected,
-  angle,
-  title,
-  onClick,
-}: KnobControlProps) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={`w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-        selected
-          ? 'bg-[#0051ff] border-[#0051ff] shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
-          : 'border-transparent hover:border-[#0051ff] hover:z-10'
-      }`}
-    >
-      <svg
-        width="39"
-        height="39"
-        viewBox="0 0 40 40"
-        className="transition-transform duration-150 pointer-events-none"
-        style={{ transform: `rotate(${angle}deg)` }}
-      >
-        <circle
-          cx="20"
-          cy="20"
-          r="19"
-          fill={selected ? '#0051ff' : '#2f2f2f'}
-          stroke={selected ? '#0051ff' : '#3b3b3b'}
-          strokeWidth="0.9"
-        />
-        <line
-          x1="7.2"
-          y1="7.2"
-          x2="15.2"
-          y2="15.2"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="32.8"
-          y1="7.2"
-          x2="24.8"
-          y2="15.2"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="7.2"
-          y1="32.8"
-          x2="15.2"
-          y2="24.8"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-        <line
-          x1="32.8"
-          y1="32.8"
-          x2="24.8"
-          y2="24.8"
-          stroke={selected ? '#ffffff' : '#151515'}
-          strokeWidth="1.35"
-          strokeLinecap="round"
-        />
-      </svg>
-    </button>
   );
 }
 

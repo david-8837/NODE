@@ -121,7 +121,7 @@ describe('bidirectional hardware layer synchronisation', () => {
   });
 
   it('does not move the highlight when the firmware confirms a different layer', async () => {
-    const device = installConnectedDevice({
+    installConnectedDevice({
       // Firmware refuses and reports it stayed on layer 0.
       request: async (payload) => {
         if (payload.cmd === 'select_layer') {
