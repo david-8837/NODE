@@ -1,0 +1,8 @@
+dist
+dist_electron
+node_modules
+qmk_firmware
+*.bmp
+*.png
+*.ico
+package-lock.json

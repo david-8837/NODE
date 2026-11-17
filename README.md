@@ -91,4 +91,9 @@ Before flashing a physical board, read the [hardware preparation checklist](HARD
 
 ## License
 
-There is currently no `LICENSE` file in this repository. Until a license is added, do not assume the source is licensed for reuse or redistribution; contact the repository owner for permission.
+This project is released under the [NODE Studio Source Available License](LICENSE). In short:
+
+- ✅ **Free** to use, modify, and share for personal and non-commercial purposes.
+- 📝 **Credit required** — you must attribute "NODE studio by david-8837" in any derivative work or product.
+- 🚫 **No selling** without permission — commercial use, resale, or distribution for profit requires prior written approval from the author.
+- 📬 **Commercial inquiries** — open an issue or reach out via the [GitHub repository](https://github.com/david-8837/NODE).
