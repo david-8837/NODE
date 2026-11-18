@@ -9,6 +9,7 @@ const { listInstalledApplications } = require('./installedApplications.cjs');
 const { migrateLegacyUserData } = require('./userDataMigration.cjs');
 const { createCheatSheetController } = require('./cheatSheet.cjs');
 const { checkForAppUpdates } = require('./updater.cjs');
+const { createActiveWindowTracker, matchProfileForApplication } = require('./activeWindowTracker.cjs');
 const cheatSheet = createCheatSheetController({ BrowserWindow, screen });
 
 const desktopActionExecutor = createDesktopActionExecutor({
@@ -25,6 +26,7 @@ const desktopActionExecutor = createDesktopActionExecutor({
   },
 });
 let mainWindow = null;
+let activeWindowTracker = null;
 let appTray = null;
 let visualSmokeCaptureStarted = false;
 let completingQuit = false;
@@ -130,6 +132,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   launchAtStartup: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
+  autoSwitchProfile: false,
 });
 const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
 
@@ -142,7 +145,7 @@ function readStoredAppSettings() {
   try {
     const stored = JSON.parse(fs.readFileSync(getAppSettingsPath(), 'utf8'));
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
-      for (const key of ['allowTerminalSmartActions', 'allowDeviceNotifications']) {
+      for (const key of ['allowTerminalSmartActions', 'allowDeviceNotifications', 'autoSwitchProfile']) {
         if (typeof stored[key] === 'boolean') settings[key] = stored[key];
       }
     }
@@ -160,6 +163,7 @@ function getSettingsCapabilities() {
     ),
     firmwareFlash: typeof dialog.showOpenDialog === 'function',
     externalLinks: typeof shell.openExternal === 'function',
+    autoSwitchProfile: process.platform === 'win32',
   };
 }
 
@@ -701,6 +705,23 @@ function createWindow() {
     } else {
       startVisualSmokeCapture();
     }
+
+    if (process.platform === 'win32') {
+      try {
+        if (!activeWindowTracker) {
+          activeWindowTracker = createActiveWindowTracker({
+            onActiveWindowChange: (windowInfo) => {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('active-window-changed', windowInfo);
+              }
+            },
+          });
+          activeWindowTracker.start();
+        }
+      } catch (err) {
+        console.warn('Could not initialize active window tracker:', err);
+      }
+    }
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -714,6 +735,10 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    if (activeWindowTracker) {
+      activeWindowTracker.stop();
+      activeWindowTracker = null;
+    }
     cheatSheet.destroy();
     mainWindow = null;
     void desktopActionExecutor.setSimulationEnabled(false);
@@ -725,6 +750,11 @@ ipcMain.handle('cheat-sheet-update', (event, snapshot) =>
   isTrustedRenderer(event) && snapshot && typeof snapshot === 'object' && cheatSheet.update(snapshot));
 ipcMain.handle('cheat-sheet-command', (event, command, token) =>
   isTrustedRenderer(event) && typeof command === 'string' && cheatSheet.command(command, token));
+
+ipcMain.handle('match-profile-for-app', (event, windowInfo, profiles) => {
+  if (!isTrustedRenderer(event)) return null;
+  return matchProfileForApplication(windowInfo, profiles);
+});
 
 // IPC Handlers for Native Windows Control
 ipcMain.handle('window-minimize', (event) => {

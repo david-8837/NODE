@@ -29,4 +29,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('open-hardware-modal', listener);
     return () => ipcRenderer.removeListener('open-hardware-modal', listener);
   },
+  onActiveWindowChanged: (callback) => {
+    const listener = (_event, info) => callback(info);
+    ipcRenderer.on('active-window-changed', listener);
+    return () => ipcRenderer.removeListener('active-window-changed', listener);
+  },
+  matchProfileForApp: (windowInfo, profiles) =>
+    ipcRenderer.invoke('match-profile-for-app', windowInfo, profiles),
 });

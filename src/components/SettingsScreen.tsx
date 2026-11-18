@@ -16,6 +16,7 @@ export interface SettingsScreenProps {
   settingsCapabilities: SettingsCapabilities;
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
+  autoSwitchProfile?: boolean;
   firmwareCheckPending: boolean;
   appUpdateCheckPending?: boolean;
   handleAppSettingChange: (key: AppSettingKey, value: boolean) => Promise<void> | void;
@@ -33,6 +34,7 @@ export function SettingsScreen({
   settingsCapabilities,
   allowTerminalSmartActions,
   allowDeviceNotifications,
+  autoSwitchProfile = false,
   firmwareCheckPending,
   appUpdateCheckPending = false,
   handleAppSettingChange,
@@ -136,6 +138,19 @@ export function SettingsScreen({
                     checked={allowDeviceNotifications}
                     title="Shows a system notification when the device connects or disconnects."
                     onChange={() => void handleAppSettingChange('allowDeviceNotifications', !allowDeviceNotifications)}
+                  />
+                </div>
+                <div className="pt-[8px] pb-[2px] flex items-center justify-between">
+                  <span className="text-[#585858] flex items-center gap-[5px]">
+                    <span>Auto-switch profile for active app</span>
+                    <span className="text-[#666666]">
+                      <InfoCircleIcon size={11} />
+                    </span>
+                  </span>
+                  <SettingsSwitch
+                    checked={autoSwitchProfile}
+                    title="Automatically activate matching profiles when switching between applications (e.g. VS Code, Photoshop, Blender)."
+                    onChange={() => void handleAppSettingChange('autoSwitchProfile', !autoSwitchProfile)}
                   />
                 </div>
               </div>

@@ -81,6 +81,7 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { EditLayoutModal } from './components/EditLayoutModal';
 import { CommunityProfileModal } from './components/CommunityProfileModal';
 import type { CommunityProfile } from './communityProfiles';
+import { matchProfileForApplication } from './activeWindow';
 import { IconPickerPopover } from './components/IconPickerPopover';
 import { PresetGrid } from './components/PresetGrid';
 import { PresetDetailPreview } from './components/PresetDetailPreview';
@@ -543,6 +544,10 @@ export default function App() {
   const [activeProfileIndex, setActiveProfileIndex] = useState(
     () => savedProfileState?.activeProfileIndex ?? 0
   );
+  const profilesRef = useRef(profiles);
+  profilesRef.current = profiles;
+  const activeProfileIndexRef = useRef(activeProfileIndex);
+  activeProfileIndexRef.current = activeProfileIndex;
   const [activeLayerIndex, setActiveLayerIndex] = useState(0);
   const [selectedKey, setSelectedKey] = useState<KeySlotId | null>(null);
   const [selectedEncoderSub, setSelectedEncoderSub] =
@@ -839,7 +844,12 @@ export default function App() {
       ? saved
       : { ...saved, launchAtStartup: false };
   });
-  const { launchAtStartup, allowTerminalSmartActions, allowDeviceNotifications } = appSettings;
+  const {
+    launchAtStartup,
+    allowTerminalSmartActions,
+    allowDeviceNotifications,
+    autoSwitchProfile,
+  } = appSettings;
   const [settingsCapabilities, setSettingsCapabilities] = useState<SettingsCapabilities>({
     launchAtStartup: false,
     firmwareFlash: false,
@@ -1585,6 +1595,26 @@ export default function App() {
       if (typeof offModal === 'function') offModal();
     };
   }, [deviceStatus.state]);
+
+  // Auto-switch profile when the user switches to a different application (Windows only)
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onActiveWindowChanged) return;
+
+    const offActiveWindow = api.onActiveWindowChanged((windowInfo) => {
+      if (!appSettings.autoSwitchProfile) return;
+      const currentProfiles = profilesRef.current;
+      const match = matchProfileForApplication(windowInfo, currentProfiles);
+      if (!match || match.profileIndex === activeProfileIndexRef.current) return;
+      const layerCount = currentProfiles[match.profileIndex]?.layers?.length ?? 1;
+      selectProfileInApp(match.profileIndex, layerCount);
+      showToast(`Auto-switched to "${match.profile.name}" for ${windowInfo.processName}`);
+    });
+
+    return () => {
+      if (typeof offActiveWindow === 'function') offActiveWindow();
+    };
+  }, [appSettings.autoSwitchProfile, selectProfileInApp]);
 
   useEffect(() => {
     const bridge = window.macropad;
@@ -3890,6 +3920,7 @@ export default function App() {
           settingsCapabilities={settingsCapabilities}
           allowTerminalSmartActions={allowTerminalSmartActions}
           allowDeviceNotifications={allowDeviceNotifications}
+          autoSwitchProfile={autoSwitchProfile}
           firmwareCheckPending={firmwareCheckPending}
           appUpdateCheckPending={appUpdateCheckPending}
           handleAppSettingChange={handleAppSettingChange}

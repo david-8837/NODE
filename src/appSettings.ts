@@ -9,6 +9,7 @@ export interface AppSettings {
   launchAtStartup: boolean;
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
+  autoSwitchProfile: boolean;
 }
 
 export type AppSettingKey = keyof AppSettings;
@@ -23,6 +24,7 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   launchAtStartup: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
+  autoSwitchProfile: false,
 });
 
 export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
@@ -39,6 +41,7 @@ export interface SettingsCapabilities {
   launchAtStartup: boolean;
   firmwareFlash: boolean;
   externalLinks: boolean;
+  autoSwitchProfile?: boolean;
 }
 
 export interface NativeSettingsResult {
@@ -119,6 +122,11 @@ export interface ElectronApi {
   isMaximized?: () => Promise<boolean>;
   onHardwareSync?: (callback: () => void) => (() => void) | void;
   onOpenHardwareModal?: (callback: () => void) => (() => void) | void;
+  onActiveWindowChanged?: (callback: (info: import('./activeWindow').ActiveWindowInfo) => void) => (() => void) | void;
+  matchProfileForApp?: (
+    windowInfo: import('./activeWindow').ActiveWindowInfo,
+    profiles: unknown[]
+  ) => Promise<import('./activeWindow').MatchedProfileResult | null>;
 }
 
 export interface AppSettingsTools {
@@ -151,6 +159,9 @@ export function normalizeAppSettings(value: unknown): AppSettings {
     allowDeviceNotifications: typeof raw.allowDeviceNotifications === 'boolean'
       ? raw.allowDeviceNotifications
       : DEFAULT_APP_SETTINGS.allowDeviceNotifications,
+    autoSwitchProfile: typeof raw.autoSwitchProfile === 'boolean'
+      ? raw.autoSwitchProfile
+      : DEFAULT_APP_SETTINGS.autoSwitchProfile,
   };
 }
 

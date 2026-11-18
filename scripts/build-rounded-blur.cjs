@@ -9,10 +9,16 @@ if (process.platform !== 'win32') {
 }
 const manifest = path.join(root, 'native', 'rounded-blur', 'Cargo.toml');
 const args = ['build', '--release', '--locked', '--features', 'ffi', '--manifest-path', manifest];
-const result = spawnSync('cargo', args, { cwd: root, stdio: 'inherit' });
+let result;
+try {
+  result = spawnSync('cargo', args, { cwd: root, stdio: 'inherit' });
+} catch (error) {
+  console.warn('Rust cargo toolchain is not available; skipping optional rounded-blur native DLL compilation.');
+  process.exit(0);
+}
 if (result.error || result.status !== 0) {
-  console.error('Failed to compile the rounded blur:', result.error?.message || `cargo exited ${result.status}`);
-  process.exit(1);
+  console.warn('Could not compile optional rounded blur DLL (cargo not found or exited non-zero); continuing without haze.dll.');
+  process.exit(0);
 }
 const binary = path.join(root, 'native', 'rounded-blur', 'target', 'release', 'haze.dll');
 const dest = path.join(root, 'electron', 'native', 'haze.dll');
