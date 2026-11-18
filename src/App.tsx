@@ -44,6 +44,13 @@ import {
   type SettingsCapabilities,
   type SupportLinkKey,
 } from './appSettings';
+import {
+  useTipRotation,
+  useInstalledApplications,
+  useDeviceNotifications,
+  useKeymapHistory,
+  useAppSettings,
+} from './hooks';
 import type {
   DeviceLayerStateEvent,
   DeviceRgbConfig,
@@ -626,62 +633,18 @@ export default function App() {
   const [smartAppDropdownOpen, setSmartAppDropdownOpen] = useState(false);
   const [selectedSmartApplication, setSelectedSmartApplication] =
     useState<InstalledApplication | null>(null);
-  const [installedApplications, setInstalledApplications] = useState<InstalledApplication[]>([]);
-  const [installedApplicationsLoading, setInstalledApplicationsLoading] = useState(false);
-  const [installedApplicationsError, setInstalledApplicationsError] = useState('');
-  const installedApplicationsRequestRef = useRef(0);
+  const {
+    installedApplications,
+    installedApplicationsLoading,
+    installedApplicationsError,
+    loadInstalledApplications,
+  } = useInstalledApplications();
   const [enableCommandActions, setEnableCommandActions] = useState(true);
-
-  const loadInstalledApplications = useCallback(async () => {
-    const requestId = ++installedApplicationsRequestRef.current;
-    const getApplications = window.electronAPI?.getInstalledApplications;
-    if (!getApplications) {
-      setInstalledApplications([]);
-      setInstalledApplicationsError('Installed app search is available in the Windows desktop app.');
-      setInstalledApplicationsLoading(false);
-      return;
-    }
-    if (window.electronAPI?.platform && window.electronAPI.platform !== 'win32') {
-      setInstalledApplications([]);
-      setInstalledApplicationsError('Installed app search is currently available on Windows.');
-      setInstalledApplicationsLoading(false);
-      return;
-    }
-
-    setInstalledApplicationsLoading(true);
-    setInstalledApplicationsError('');
-    try {
-      const result = await getApplications();
-      if (requestId !== installedApplicationsRequestRef.current) return;
-      if (!result?.ok || !Array.isArray(result.apps)) {
-        setInstalledApplications([]);
-        setInstalledApplicationsError(result?.error || 'Could not load installed applications.');
-        return;
-      }
-      setInstalledApplications(result.apps.filter((application) =>
-        typeof application?.name === 'string' && application.name.trim() &&
-        typeof application.shortcutPath === 'string' && application.shortcutPath.trim()
-      ));
-    } catch (error) {
-      if (requestId !== installedApplicationsRequestRef.current) return;
-      setInstalledApplications([]);
-      setInstalledApplicationsError(
-        error instanceof Error ? error.message : 'Could not load installed applications.'
-      );
-    } finally {
-      if (requestId === installedApplicationsRequestRef.current) {
-        setInstalledApplicationsLoading(false);
-      }
-    }
-  }, []);
 
   useEffect(() => {
     if (creatorModalTab !== 'Smart-A' || smartSubTab !== 'App') return;
     setSmartAppDropdownOpen(true);
     void loadInstalledApplications();
-    return () => {
-      installedApplicationsRequestRef.current += 1;
-    };
   }, [creatorModalTab, smartSubTab, loadInstalledApplications]);
 
   useEffect(() => {
@@ -753,7 +716,7 @@ export default function App() {
   const [activeTooltip, setActiveTooltip] = useState<
     'profiles' | 'layers' | 'mapping' | 'drawer-mapping' | null
   >(null);
-  const [tipIndex, setTipIndex] = useState(0);
+  const { tipIndex, setTipIndex } = useTipRotation(TIPS.length);
 
   // Drag-and-drop & Drawer Tile Selection state
   const [selectedDrawerTile, setSelectedDrawerTile] = useState<{
@@ -822,13 +785,6 @@ export default function App() {
     isMoving: boolean;
   } | null>(null);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTipIndex((prev) => (prev + 1) % TIPS.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Preset view state
   const [presetSearch, setPresetSearch] = useState('');
   const [presetOs, setPresetOs] = useState<'mac' | 'win'>('win');
@@ -838,23 +794,18 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Settings view state
-  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
-    const saved = readAppSettings();
-    return window.electronAPI?.setAppSetting
-      ? saved
-      : { ...saved, launchAtStartup: false };
-  });
+  const {
+    appSettings,
+    setAppSettings,
+    settingsCapabilities,
+    setSettingsCapabilities,
+  } = useAppSettings();
   const {
     launchAtStartup,
     allowTerminalSmartActions,
     allowDeviceNotifications,
     autoSwitchProfile,
   } = appSettings;
-  const [settingsCapabilities, setSettingsCapabilities] = useState<SettingsCapabilities>({
-    launchAtStartup: false,
-    firmwareFlash: false,
-    externalLinks: true,
-  });
   const [appVersion, setAppVersion] = useState(
     typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : APP_VERSION_FALLBACK
   );
@@ -1175,12 +1126,6 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    const settingsTools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
-    void settingsTools.getDesktop().then((result) => {
-      if (!active || !result?.ok) return;
-      if (result.settings) setAppSettings(result.settings);
-      if (result.capabilities) setSettingsCapabilities(result.capabilities);
-    });
     const getVersion = window.electronAPI?.getVersion;
     if (getVersion) {
       void getVersion().then((version) => {
@@ -1192,38 +1137,19 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    saveAppSettings(appSettings);
-  }, [appSettings]);
-
-  useEffect(() => {
-    const bridge = window.macropad;
-    if (
-      !bridge ||
-      !allowDeviceNotifications ||
-      typeof window.Notification === 'undefined' ||
-      window.Notification.permission !== 'granted'
-    ) return;
-
-    return bridge.onEvent((event) => {
-      if (!isRecordValue(event)) return;
-      const type = event.type;
-      if (type !== 'connect' && type !== 'disconnect') return;
-      const title = type === 'connect' ? 'Device connected' : 'Device disconnected';
-      const body = type === 'connect'
-        ? `${typeof event.device === 'string' ? event.device : 'Grid Macro 1'} is ready`
-        : 'The Grid Macro 1 was disconnected';
-      try {
-        new window.Notification(title, { body });
-      } catch {
-        // Notification permission may be revoked by the OS after the setting is enabled.
-      }
-    });
-  }, [allowDeviceNotifications]);
+  useDeviceNotifications(allowDeviceNotifications);
 
   // Undo / Redo stacks
-  const [history, setHistory] = useState<ProfileData[][]>([]);
-  const [redoStack, setRedoStack] = useState<ProfileData[][]>([]);
+  const {
+    history,
+    redoStack,
+    recordSnapshot,
+    undo,
+    redo,
+    clearHistory,
+    setHistory,
+    setRedoStack,
+  } = useKeymapHistory<ProfileData[]>();
 
   useEffect(() => {
     try {
@@ -1904,8 +1830,7 @@ export default function App() {
   };
 
   const pushState = (nextProfiles: ProfileData[]) => {
-    setHistory((prev) => [...prev.slice(-19), profiles]);
-    setRedoStack([]);
+    recordSnapshot(profiles);
     setProfiles(nextProfiles);
   };
 
@@ -1916,26 +1841,19 @@ export default function App() {
     setProfiles(JSON.parse(JSON.stringify(INITIAL_PROFILES)) as ProfileData[]);
     selectProfileInApp(0, INITIAL_PROFILES[0]?.layers.length ?? 1);
     setCustomItemsByTab({ Action: [], 'Multi-A': [], 'Smart-A': [] });
-    setHistory([]);
-    setRedoStack([]);
+    clearHistory();
     setLayerNames({});
     showToast('Local profiles and custom actions reset; the physical device keymap was not changed');
   };
 
   const handleUndo = () => {
-    if (history.length === 0) return;
-    const previous = history[history.length - 1];
-    setRedoStack((prev) => [profiles, ...prev]);
-    setHistory((prev) => prev.slice(0, -1));
-    setProfiles(previous);
+    const previous = undo(profiles);
+    if (previous) setProfiles(previous);
   };
 
   const handleRedo = () => {
-    if (redoStack.length === 0) return;
-    const next = redoStack[0];
-    setHistory((prev) => [...prev, profiles]);
-    setRedoStack((prev) => prev.slice(1));
-    setProfiles(next);
+    const next = redo(profiles);
+    if (next) setProfiles(next);
   };
 
   const handleAddLayer = () => {
