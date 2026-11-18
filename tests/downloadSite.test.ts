@@ -106,4 +106,47 @@ describe('Public download website', () => {
     expect(page.window.document.querySelector('#release-status')?.getAttribute('data-state')).toBe('pending');
     page.window.close();
   });
+
+  it('provides a comprehensive visual tutorial page with software screenshots and architecture guide', () => {
+    const tutorialHtml = readFileSync(join(process.cwd(), 'website/tutorial.html'), 'utf8');
+    expect(tutorialHtml).toContain('NODE studio');
+    expect(tutorialHtml).toContain('How the Hardware &amp; Software Work Together');
+    expect(tutorialHtml).toContain('RP2040-Zero');
+    expect(tutorialHtml).toContain('0xFEED:0x6001');
+    expect(tutorialHtml).toContain('Raw HID');
+    expect(tutorialHtml).toContain('tutorial-main-studio.png');
+    expect(tutorialHtml).toContain('tutorial-keycap-personalization.png');
+    expect(tutorialHtml).toContain('tutorial-preset-library.png');
+    expect(tutorialHtml).toContain('tutorial-settings-rules.png');
+    expect(tutorialHtml).toContain('tutorial-community-hub.png');
+
+    // All 10 features thoroughly documented
+    expect(tutorialHtml).toContain('1. Live Key Visualizer');
+    expect(tutorialHtml).toContain('2. Keycap Legend Personalization');
+    expect(tutorialHtml).toContain('3. Presets Library with Dynamic OS Switcher');
+    expect(tutorialHtml).toContain('4. Auto Active Window Profile Switching');
+    expect(tutorialHtml).toContain('5. Community Profile Sharing Hub');
+    expect(tutorialHtml).toContain('6. Action Creator Drawer');
+    expect(tutorialHtml).toContain('7. Acrylic Cheat Sheet HUD Overlay');
+    expect(tutorialHtml).toContain('8. Hardware RGB Matrix Lighting Sync');
+    expect(tutorialHtml).toContain('9. Desktop Auto-Updater');
+    expect(tutorialHtml).toContain('10. Pre-Write EEPROM Backups &amp; Hardware Simulation');
+
+    // Baseline vs Modern comparison table
+    expect(tutorialHtml).toContain('Original Baseline');
+    expect(tutorialHtml).toContain('Modern NODE Studio (All New Features)');
+
+    // 7-step configuration walkthrough
+    expect(tutorialHtml).toContain('7-Step Macropad Configuration Walkthrough');
+    expect(tutorialHtml).toContain('Step 1: Connect via USB-C');
+    expect(tutorialHtml).toContain('Step 7: Commit to Flash');
+
+    // No emotes/emojis on website rule (strictly vector SVG or plain text)
+    const emojiRegex = /[\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}]/u;
+    expect(tutorialHtml).not.toMatch(emojiRegex);
+    expect(siteHtml).not.toMatch(emojiRegex);
+
+    // Site header contains tutorial link
+    expect(siteHtml).toContain('href="./tutorial.html"');
+  });
 });

@@ -9,7 +9,14 @@ const {
 } = require('../electron/activeWindowTracker.cjs') as {
   matchProfileForApplication: (
     windowInfo: { processName: string; title: string },
-    profiles: Array<{ name: string }>
+    profiles: Array<{ name: string }>,
+    customRules?: Array<{
+      id: string;
+      processPattern: string;
+      titlePattern?: string;
+      targetProfileName: string;
+      enabled: boolean;
+    }>
   ) => { profileIndex: number; profile: { name: string }; matchType: string } | null;
   createActiveWindowTracker: (options?: {
     onActiveWindowChange?: (info: unknown) => void;

@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f4f1" />
+    <meta name="description" content="NODE studio visual tutorial and architecture walkthrough: how the RP2040-Zero macropad communicates over WebHID, original capabilities vs modern suite, and guide to all 10 advanced studio features." />
+    <meta name="author" content="NODE studio" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://david-8837.github.io/NODE/tutorial.html" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://david-8837.github.io/NODE/tutorial.html" />
+    <meta property="og:site_name" content="NODE studio" />
+    <meta property="og:title" content="Visual Tutorial &amp; Architecture Tour — NODE studio" />
+    <meta property="og:description" content="Deep-dive visual tutorial and complete feature guide for NODE studio and the Grid Macro 1 macropad with authentic interface screenshots." />
+    <meta property="og:image" content="https://david-8837.github.io/NODE/assets/tutorial-main-studio.png" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="820" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://david-8837.github.io/NODE/tutorial.html" />
+    <meta name="twitter:title" content="Visual Tutorial &amp; Architecture Tour — NODE studio" />
+    <meta name="twitter:description" content="Complete guide to NODE studio: hardware architecture, evolution from baseline, and hands-on walkthrough with software screenshots." />
+    <meta name="twitter:image" content="https://david-8837.github.io/NODE/assets/tutorial-main-studio.png" />
+
+    <title>Visual Tutorial &amp; Architecture Tour — NODE studio</title>
+    <link rel="icon" type="image/png" href="./assets/node-studio-icon.png" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="34" height="34" />
+          <span class="brand-copy">
+            <strong>NODE</strong>
+            <span>studio</span>
+          </span>
+        </a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="./#features">Features</a>
+          <a href="./#hardware">Hardware Guide</a>
+          <a href="./tutorial.html" style="color: #fff;">Tutorial</a>
+          <a href="./docs.html">Docs</a>
+          <a href="./support.html">Support</a>
+          <a href="./releases.html">Releases</a>
+        </nav>
+        <a class="button button-small button-dark header-cta" href="./#download">
+          Get the app <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="page-hero container">
+        <div class="eyebrow eyebrow-muted">[:: VISUAL WALKTHROUGH &amp; COMPLETE SYSTEM TOUR ::]</div>
+        <h1>Studio Walkthrough &amp; <span>Feature Guide</span></h1>
+        <p>A comprehensive visual guide to NODE studio and the Grid Macro 1 macropad. Explore how the hardware talks to the software, compare what we had originally against our new modern feature suite, and master all 10 advanced tools with authentic software previews.</p>
+      </section>
+
+      <section class="container page-section">
+        <div class="docs-layout">
+          <aside class="docs-sidebar">
+            <h4>Contents</h4>
+            <nav>
+              <a href="#how-it-works">How the Hardware Works</a>
+              <a href="#architecture">System Architecture</a>
+              <a href="#evolution">Original vs. Modern Suite</a>
+              <a href="#visualizer">1. Live Key Visualizer</a>
+              <a href="#legend-styling">2. Keycap Legend Personalization</a>
+              <a href="#presets-library">3. Presets Library &amp; OS Switcher</a>
+              <a href="#active-window">4. Auto Window &amp; Rules Editor</a>
+              <a href="#community-hub">5. Community Sharing Hub</a>
+              <a href="#action-drawer">6. Action Creator Drawer</a>
+              <a href="#cheat-sheet">7. Cheat Sheet HUD Overlay</a>
+              <a href="#rgb-sync">8. RGB Matrix Lighting Sync</a>
+              <a href="#auto-updater">9. Desktop Auto-Updater</a>
+              <a href="#backup-safety">10. Backups &amp; Simulation</a>
+              <a href="#step-by-step">7-Step Configuration Guide</a>
+            </nav>
+          </aside>
+
+          <div class="docs-body">
+            <!-- SECTION 1: HOW IT WORKS -->
+            <article class="doc-article" id="how-it-works">
+              <span class="tutorial-badge">Hardware Communication</span>
+              <h2>How the Hardware &amp; Software Work Together</h2>
+              <p>The Grid Macro 1 macropad is built around the Raspberry Pi RP2040-Zero microcontroller running custom QMK firmware with the VIA v13 protocol. Rather than requiring external driver installations, NODE studio communicates directly with the controller through standard WebHID channels over USB.</p>
+
+              <figure class="tutorial-figure">
+                <img src="./assets/tutorial-main-studio.png" alt="NODE studio Main Studio View with 3x3 macropad, layers, and status bar" width="1280" height="820" />
+                <figcaption>
+                  <span class="caption-label">
+                    <span class="status-dot"></span>
+                    Figure 1: Main Studio View — Real-time connection badge, 3×3 matrix, rotary dial, 4 hardware layers, and profile selector.
+                  </span>
+                  <span>NODE studio v1.0.0</span>
+                </figcaption>
+              </figure>
+
+              <p>When you plug the macropad into your computer via USB-C:</p>
+              <ol>
+                <li><strong>Hardware Enumeration:</strong> The RP2040-Zero presents two HID interfaces to Windows: Interface 0 is standard consumer HID keyboard/mouse for instant input transmission with zero OS latency; Interface 1 is a vendor-defined Raw HID interface (Vendor ID <code>0xFEED</code>, Product ID <code>0x6001</code>).</li>
+                <li><strong>Cryptographic &amp; Protocol Handshake:</strong> When NODE studio opens the WebHID channel, it issues a 32-byte <code>VIA_GET_PROTOCOL_VERSION</code> request. The controller answers with protocol version <code>0x000D</code> (VIA v13), verifying firmware compatibility.</li>
+                <li><strong>Live EEPROM/Flash Readout:</strong> Studio reads all 4 hardware layers (Layer 0 through 3) into local memory, decoding 16-bit QMK keycodes and displaying them instantly on the interactive 3×3 canvas.</li>
+                <li><strong>Instant Atomic Writes:</strong> When you change a key binding, Studio creates an atomic safety backup before transmitting <code>VIA_SET_KEYCODE</code> over Raw HID. The RP2040 commits the change directly to non-volatile flash storage—your keys remain mapped forever even if you plug the pad into another computer without software installed.</li>
+              </ol>
+            </article>
+
+            <!-- SECTION 2: SYSTEM ARCHITECTURE -->
+            <article class="doc-article" id="architecture">
+              <span class="tutorial-badge tutorial-badge-purple">Circuit &amp; Matrix</span>
+              <h2>Hardware Architecture: 3×3 Matrix &amp; Rotary Encoder</h2>
+              <p>The macropad provides 9 mechanical switch sockets and an EC11 rotary encoder, all connected to GPIO pins on the RP2040-Zero:</p>
+              <ul>
+                <li><strong>Matrix Rows &amp; Columns:</strong> The 9 keys are organized in a diode-isolated matrix across GPIO 0, 1, 2 (rows) and GPIO 3, 4, 5 (columns), scanned continuously at 1000Hz polling rate for true N-Key Rollover (NKRO) without ghosting.</li>
+                <li><strong>Rotary Encoder (EC11):</strong> The encoder connects via GP9 (Channel A) and GP10 (Channel B) for quadrature pulse decoding (Clockwise / Counter-Clockwise turns), while the integrated tactile push switch is wired to GP11.</li>
+                <li><strong>4 Hardware Layers:</strong> The firmware maintains 4 distinct layer buffers in flash memory. A single key or encoder action can perform different tasks depending on whether Layer 0 (Base), Layer 1 (Media), Layer 2 (Code), or Layer 3 (Game) is active.</li>
+                <li><strong>Dynamic Layer Switching:</strong> Studio allows assigning <code>TO(n)</code> (switch to layer), <code>MO(n)</code> (momentary layer shift while held), or <code>TG(n)</code> (toggle layer) to any physical switch or rotary gesture.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 3: EVOLUTION COMPARISON -->
+            <article class="doc-article" id="evolution">
+              <span class="tutorial-badge tutorial-badge-green">Evolution Breakdown</span>
+              <h2>What Did the Software Have Originally vs. Everything We Built</h2>
+              <p>The project started as a rudimentary single-page key mapper. Below is a complete side-by-side comparison of the original baseline capabilities versus the modern production-grade studio environment.</p>
+
+              <div class="comparison-table-wrapper">
+                <table class="comparison-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 28%;">System Area</th>
+                      <th style="width: 34%;">Original Baseline</th>
+                      <th style="width: 38%;">Modern NODE Studio (All New Features)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Visualizer &amp; Feedback</strong></td>
+                      <td><span class="tag-baseline">Static HTML buttons, no input detection</span></td>
+                      <td><span class="tag-modern">Real-time Live Keypress Visualizer with pulse animation, WebHID readouts, and latency monitor</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Keycap Customization</strong></td>
+                      <td><span class="tag-baseline">Fixed system font, single keycode label</span></td>
+                      <td><span class="tag-modern">Custom legend personalization, subscript sub-legends, 7-swatch color palette &amp; 1-click styling reset</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Presets &amp; Workflows</strong></td>
+                      <td><span class="tag-baseline">Zero templates; manual entry required</span></td>
+                      <td><span class="tag-modern">Multi-category Presets Library with instant OS Switcher (Windows / macOS / Linux modifier mapping)</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Profile Management</strong></td>
+                      <td><span class="tag-baseline">Single default profile only</span></td>
+                      <td><span class="tag-modern">Unlimited custom profiles with tag metadata, clone, export/import JSON, and active window synchronization</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>App Switching Automation</strong></td>
+                      <td><span class="tag-baseline">None; manual profile switching only</span></td>
+                      <td><span class="tag-modern">Background Win32 tracker with Custom App-to-Profile Rules Editor (process name + window title matching)</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Community Sharing</strong></td>
+                      <td><span class="tag-baseline">None; isolated local settings</span></td>
+                      <td><span class="tag-modern">Community Profile Sharing Hub with category filtering, search, live previews, and 1-click import</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Action Engine &amp; Gestures</strong></td>
+                      <td><span class="tag-baseline">Single keycode tap only</span></td>
+                      <td><span class="tag-modern">Multi-action drawer: Single Tap, Double-Tap, Long-Press Hold, app launching, text paste, URL shortcuts</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>In-Game / In-App Overlay</strong></td>
+                      <td><span class="tag-baseline">None</span></td>
+                      <td><span class="tag-modern">Click-through Acrylic Cheat Sheet HUD overlay showing active layer bindings without stealing focus</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>RGB Lighting Matrix</strong></td>
+                      <td><span class="tag-baseline">Uncontrolled or static hardware default</span></td>
+                      <td><span class="tag-modern">Interactive HSV color picker, speed/brightness controls, lighting effects, and per-layer color profiles</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Reliability &amp; Safety</strong></td>
+                      <td><span class="tag-baseline">Direct overwrite without backup or dry-run</span></td>
+                      <td><span class="tag-modern">Automatic pre-write EEPROM snapshots, revert history, and full keyboard Simulation Mode</span></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Desktop Integration</strong></td>
+                      <td><span class="tag-baseline">Browser only, no automatic updates</span></td>
+                      <td><span class="tag-modern">Signed Windows Electron desktop app with GitHub Releases background auto-updater and system tray</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <!-- SECTION 4: LIVE KEY VISUALIZER -->
+            <article class="doc-article" id="visualizer">
+              <span class="tutorial-badge">Feature 1</span>
+              <h2>1. Live Key Visualizer &amp; Hardware Input Monitor</h2>
+              <p>The Live Key Visualizer bridges the physical macropad and the on-screen studio. When you press any key or twist the rotary dial on your physical desk, the corresponding switch lights up on the virtual canvas within milliseconds.</p>
+              <ul>
+                <li><strong>Sub-Millisecond Reflection:</strong> Studio hooks into incoming HID reports to immediately reflect physical presses with a reactive glowing ring and subtle 3D mechanical depression animation.</li>
+                <li><strong>Hardware Keycode &amp; Modifier Readout:</strong> Shows the exact QMK scan-code being triggered, verifying that your hotkey modifiers (e.g. <code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>, <code>GUI</code>) are transmitting cleanly.</li>
+                <li><strong>Rotary Quadrature Indicator:</strong> Clockwise and counter-clockwise detent clicks trigger directional pulse animations on the virtual dial ring, confirming encoder health.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 5: KEYCAP LEGEND PERSONALIZATION -->
+            <article class="doc-article" id="legend-styling">
+              <span class="tutorial-badge">Feature 2</span>
+              <h2>2. Keycap Legend Personalization &amp; Color Accents</h2>
+              <p>Keycap customization allows you to make your digital macropad an exact visual replica of your desk setup or tailor labels to complex multi-step workflows.</p>
+
+              <figure class="tutorial-figure">
+                <img src="./assets/tutorial-keycap-personalization.png" alt="Keycap legend personalization drawer showing custom text, sub-legend, and color palette" width="1280" height="820" />
+                <figcaption>
+                  <span class="caption-label">
+                    <span class="status-dot"></span>
+                    Figure 2: Keycap Personalization Drawer — Custom primary label, subscript sub-legend, and 7-swatch accent palette.
+                  </span>
+                  <span>Action Library Sidebar</span>
+                </figcaption>
+              </figure>
+
+              <ul>
+                <li><strong>Primary Custom Legend:</strong> Replace cryptic abbreviations like <code>C(S(T))</code> with human-readable text like <code>REOPEN TAB</code> or <code>MUTE MIC</code>.</li>
+                <li><strong>Sub-Legend (Subscript):</strong> Add a secondary label to the bottom corner of the key tile, perfect for noting secondary layer behavior, shortcut notes (e.g. <code>F13</code> or <code>HOLD: ZOOM</code>), or app contexts.</li>
+                <li><strong>7-Swatch Aesthetic Color Palette:</strong> Select from Graphite, Crimson Red, Royal Blue, Forest Green, Amber Gold, Deep Purple, or Mint Teal to color-code functional groups across your 3×3 matrix.</li>
+                <li><strong>Full Profile Persistence:</strong> Custom legends and accent colors are seamlessly saved into profile JSON files and restored whenever you switch profiles.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 6: PRESETS LIBRARY -->
+            <article class="doc-article" id="presets-library">
+              <span class="tutorial-badge">Feature 3</span>
+              <h2>3. Presets Library with Dynamic OS Switcher</h2>
+              <p>Jumpstart your workflow in seconds using curated, expert-crafted templates for industry-standard software.</p>
+
+              <figure class="tutorial-figure">
+                <img src="./assets/tutorial-preset-library.png" alt="Presets Library showing workflow templates for Photoshop, VS Code, Premiere Pro, and Blender" width="1280" height="820" />
+                <figcaption>
+                  <span class="caption-label">
+                    <span class="status-dot"></span>
+                    Figure 3: Presets Library View — Curated workflow templates with instantaneous Windows / macOS / Linux modifier translation.
+                  </span>
+                  <span>Presets Catalog</span>
+                </figcaption>
+              </figure>
+
+              <ul>
+                <li><strong>Curated Workflows:</strong> Ready-to-use layouts for <em>Adobe Photoshop</em> (Brush, Zoom, Layers), <em>Visual Studio Code</em> (Format, Terminal, Command Palette), <em>Premiere Pro</em> (Razor, Ripple Delete, Jog Wheel), <em>Blender</em>, <em>Streaming</em>, and <em>Discord</em>.</li>
+                <li><strong>Instant OS Switcher:</strong> A dedicated operating system toggle automatically adapts shortcuts between Windows (<code>Ctrl</code>/<code>Alt</code>), macOS (<code>Cmd</code>/<code>Option</code>), and Linux environments.</li>
+                <li><strong>Layered Integration:</strong> Presets populate all 4 layers with complementary actions, including rotary dial jog and scrub behaviors.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 7: AUTO ACTIVE WINDOW SWITCHING -->
+            <article class="doc-article" id="active-window">
+              <span class="tutorial-badge">Feature 4</span>
+              <h2>4. Auto Active Window Profile Switching &amp; Rules Editor</h2>
+              <p>Forget manually changing profiles when you multitask. The desktop tracker detects which application currently owns the operating system foreground focus and switches macropad layers automatically.</p>
+
+              <figure class="tutorial-figure">
+                <img src="./assets/tutorial-settings-rules.png" alt="Settings screen showing Auto Profile Switching toggle and custom App-to-Profile Mapping Rules Editor" width="1280" height="820" />
+                <figcaption>
+                  <span class="caption-label">
+                    <span class="status-dot"></span>
+                    Figure 4: Settings &amp; Rules Editor — Active window background tracking with custom process and window title priority rules.
+                  </span>
+                  <span>Settings Manager</span>
+                </figcaption>
+              </figure>
+
+              <ul>
+                <li><strong>Native Foreground Polling:</strong> Electron's Win32 helper monitors window activation events using low-overhead native system calls.</li>
+                <li><strong>App-to-Profile Rules Manager:</strong> Define custom rules specifying exact process executable names (e.g. <code>photoshop.exe</code>, <code>Code.exe</code>, <code>obs64.exe</code>) or window title patterns.</li>
+                <li><strong>Priority Matching:</strong> Rules evaluate in strict user-configured priority order. If you switch from Chrome to VS Code, your coding layer activates instantly without a single manual click.</li>
+                <li><strong>Safe Fallback:</strong> If no custom rule matches the current foreground window, the pad smoothly reverts to your designated default profile.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 8: COMMUNITY PROFILE HUB -->
+            <article class="doc-article" id="community-hub">
+              <span class="tutorial-badge">Feature 5</span>
+              <h2>5. Community Profile Sharing Hub</h2>
+              <p>Discover, share, and install macropad layouts created by developers, digital artists, audio engineers, and gamers worldwide.</p>
+
+              <figure class="tutorial-figure">
+                <img src="./assets/tutorial-community-hub.png" alt="Community Profile Sharing Hub modal with category filters and profile cards" width="1280" height="820" />
+                <figcaption>
+                  <span class="caption-label">
+                    <span class="status-dot"></span>
+                    Figure 5: Community Sharing Hub — Explore verified community profiles, inspect keymaps, and import with one click.
+                  </span>
+                  <span>Community Hub</span>
+                </figcaption>
+              </figure>
+
+              <ul>
+                <li><strong>Category Filtering:</strong> Browse through dedicated categories including Productivity, Creative &amp; Design, Development, Media &amp; Audio, and Gaming.</li>
+                <li><strong>Interactive Keymap Previews:</strong> Inspect key assignments, custom legends, and rotary functions before importing.</li>
+                <li><strong>1-Click Non-Destructive Import:</strong> Automatically installs the profile into your local profile catalog without overwriting your existing layouts.</li>
+                <li><strong>Publishing &amp; Export:</strong> Export your tuned profiles with author credits and tags to share with coworkers or the open-source community.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 9: ACTION CREATOR DRAWER -->
+            <article class="doc-article" id="action-drawer">
+              <span class="tutorial-badge">Feature 6</span>
+              <h2>6. Action Creator Drawer &amp; Multi-Action Gestures</h2>
+              <p>Expand every physical key into a versatile command hub using our host-assisted gesture engine.</p>
+              <ul>
+                <li><strong>Multi-Action Triggers:</strong> Assign up to three distinct actions to each physical switch:
+                  <ul>
+                    <li><strong>Single Tap:</strong> Standard momentary input or shortcut.</li>
+                    <li><strong>Double-Tap:</strong> Secondary action (e.g. Single tap for Save, Double-tap for Save As).</li>
+                    <li><strong>Long-Press Hold:</strong> Trigger a destructive or contextual command (e.g. Hold for 500ms to Close Window or Force Push).</li>
+                  </ul>
+                </li>
+                <li><strong>Smart Action Types:</strong>
+                  <ul>
+                    <li><strong>Application Launcher:</strong> Launch any installed Windows desktop executable or Microsoft Store app with optional command-line flags.</li>
+                    <li><strong>Text Snippet Paste:</strong> Insert boilerplate code snippets, terminal commands, or markdown templates instantly without clipboard corruption.</li>
+                    <li><strong>Web URL Navigator:</strong> Open monitoring dashboards, documentation pages, or pull requests in your default browser.</li>
+                  </ul>
+                </li>
+              </ul>
+            </article>
+
+            <!-- SECTION 10: CHEAT SHEET HUD -->
+            <article class="doc-article" id="cheat-sheet">
+              <span class="tutorial-badge">Feature 7</span>
+              <h2>7. Acrylic Cheat Sheet HUD Overlay</h2>
+              <p>Never struggle to remember your complex shortcuts while streaming or gaming. The Cheat Sheet HUD provides an ultra-lightweight, non-intrusive on-screen reference overlay.</p>
+              <ul>
+                <li><strong>Acrylic Glassmorphism:</strong> Renders with Windows 11 Fluent acrylic backdrop blur, floating elegantly over any running application.</li>
+                <li><strong>Click-Through &amp; Zero Focus Steal:</strong> Configured with <code>WS_EX_TRANSPARENT</code> and <code>WS_EX_NOACTIVATE</code> window styles so your mouse clicks and keystrokes pass directly to your game or IDE without interruption.</li>
+                <li><strong>Real-time Layer Synchronization:</strong> The HUD updates immediately when you switch hardware layers or profiles.</li>
+                <li><strong>Global Hotkey Toggle:</strong> Summon and dismiss the HUD with a customizable global keyboard shortcut (default: <code>Ctrl + Shift + \</code>) or map it directly to a macropad key.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 11: RGB SYNC -->
+            <article class="doc-article" id="rgb-sync">
+              <span class="tutorial-badge">Feature 8</span>
+              <h2>8. Hardware RGB Matrix Lighting Sync</h2>
+              <p>Personalize the per-key backlighting across all 9 mechanical switches with hardware-level color fidelity.</p>
+              <ul>
+                <li><strong>Real-Time HSV Color Picker:</strong> Tune hue, saturation, and brightness with live hardware preview over WebHID.</li>
+                <li><strong>Dynamic Animation Modes:</strong> Choose from Solid, Breathing, Color Cycle, Rainbow Wave, and Reactive Ripple animations.</li>
+                <li><strong>Per-Layer Lighting Indicators:</strong> Set distinctive accent colors for each hardware layer (e.g., Cool Cyan for Coding, Neon Violet for Blender, Warm Amber for Gaming) so you can tell at a glance which layer is active.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 12: AUTO UPDATER -->
+            <article class="doc-article" id="auto-updater">
+              <span class="tutorial-badge">Feature 9</span>
+              <h2>9. Desktop Auto-Updater &amp; Release Channel</h2>
+              <p>NODE studio keeps itself updated seamlessly in the background with zero disruption to your daily work.</p>
+              <ul>
+                <li><strong>Cryptographic Verification:</strong> Downloads new binary packages directly from official GitHub Releases, validating digital checksums before staging updates.</li>
+                <li><strong>Silent Background Delivery:</strong> Updates download quietly while you use the app. When ready, an unobtrusive toast notification lets you restart and install with a single click.</li>
+                <li><strong>Release Notes Modal:</strong> Review changes, performance optimizations, and new features directly inside the studio.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 13: BACKUP SAFETY & SIMULATION -->
+            <article class="doc-article" id="backup-safety">
+              <span class="tutorial-badge">Feature 10</span>
+              <h2>10. Pre-Write EEPROM Backups &amp; Hardware Simulation</h2>
+              <p>Enjoy complete peace of mind while experimenting with complex macros and keymaps.</p>
+              <ul>
+                <li><strong>Pre-Write Flash Snapshots:</strong> Before every single write operation over WebHID, Studio takes an automated snapshot of your macropad's current EEPROM state. If you ever make an unwanted change, you can revert with one click in Settings.</li>
+                <li><strong>Disconnect Guard:</strong> If your USB-C cable is accidentally knocked out mid-configuration, all local profiles remain intact and no corrupt half-written keymaps reach the hardware.</li>
+                <li><strong>Hardware Simulation Mode:</strong> Don't have your physical macropad with you? Enable Simulation Mode in Settings to test macros, shortcuts, app triggers, and layout responsiveness using your regular keyboard.</li>
+              </ul>
+            </article>
+
+            <!-- SECTION 14: 7-STEP GUIDE -->
+            <article class="doc-article" id="step-by-step">
+              <span class="tutorial-badge tutorial-badge-green">Step-by-Step</span>
+              <h2>7-Step Macropad Configuration Walkthrough</h2>
+              <p>Follow this quick guide to take your Grid Macro 1 macropad from out-of-the-box hardware to a fully personalized productivity command center.</p>
+
+              <ol>
+                <li>
+                  <strong>Step 1: Connect via USB-C</strong><br />
+                  Plug your Grid Macro 1 macropad into any standard USB-C port on your Windows PC or Chromium-compatible laptop.
+                </li>
+                <li>
+                  <strong>Step 2: Authorize WebHID Access</strong><br />
+                  Launch NODE studio and click <strong>Connect</strong> in the top connection bar. Select the <code>0xFEED:0x6001</code> Raw HID keyboard interface from the system dialog.
+                </li>
+                <li>
+                  <strong>Step 3: Studio Readout &amp; Verification</strong><br />
+                  Studio performs the cryptographic protocol handshake and reads your 4 hardware layers into the interactive canvas. The live status indicator turns green.
+                </li>
+                <li>
+                  <strong>Step 4: Assign Keys &amp; Rotary Dial</strong><br />
+                  Click any key on the 3×3 matrix or the rotary dial. Select your desired input from the Action Library (Standard Keystroke, Multi-key Chord, Media Control, or Smart Action).
+                </li>
+                <li>
+                  <strong>Step 5: Personalize Keycap Legends &amp; Colors</strong><br />
+                  In the right drawer, enter a custom legend (e.g. <code>BUILD</code>), add a subscript sub-legend (e.g. <code>F5</code>), and choose an accent color swatch to match your aesthetic.
+                </li>
+                <li>
+                  <strong>Step 6: Configure App-to-Profile Auto-Switching</strong><br />
+                  Open Settings, toggle <strong>Auto Profile Switching</strong>, and add a rule matching your primary applications (e.g., assign your "Code" profile to <code>Code.exe</code>).
+                </li>
+                <li>
+                  <strong>Step 7: Commit to Flash &amp; Enjoy the HUD</strong><br />
+                  Changes write instantaneously to the RP2040's on-board flash. Press <code>Ctrl + Shift + \</code> to toggle your Acrylic Cheat Sheet HUD overlay over any fullscreen game or coding environment!
+                </li>
+              </ol>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <a class="brand footer-brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="29" height="29" />
+          <span class="brand-copy"><strong>NODE</strong><span>studio</span></span>
+        </a>
+        <p>Made for the Grid Macro 1.</p>
+        <div class="footer-links">
+          <a href="./tutorial.html">Tutorial</a>
+          <a href="./docs.html">Docs</a>
+          <a href="./support.html">Support</a>
+          <a href="./feedback.html">Feedback</a>
+          <a href="./releases.html">Releases</a>
+          <a href="https://github.com/david-8837/NODE" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+        <span class="copyright">© <span id="copyright-year">2026</span> NODE studio</span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -249,6 +249,24 @@ h1, h2, h3, p { margin-top: 0; }
 .release-body ul { margin: 0 0 14px; padding-left: 18px; color: #555860; font-size: 12px; line-height: 1.7; }
 .release-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
 
+/* Tutorial & Visualizer Guide */
+.tutorial-figure { margin: 20px 0 24px; border-radius: 14px; overflow: hidden; border: 1px solid #23262f; background: #0c0d12; box-shadow: 0 10px 30px rgba(0, 0, 0, .14); }
+.tutorial-figure img { display: block; width: 100%; height: auto; }
+.tutorial-figure figcaption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; background: #13151b; border-top: 1px solid #23262f; color: #9da1ad; font-size: 11px; font-weight: 500; }
+.tutorial-figure figcaption span.caption-label { display: inline-flex; align-items: center; gap: 8px; color: #e1e4ed; font-weight: 600; }
+.tutorial-figure figcaption .status-dot { width: 6px; height: 6px; background: #38a96b; box-shadow: 0 0 0 3px rgba(56, 169, 107, .18); }
+.tutorial-badge { display: inline-block; padding: 3px 9px; border-radius: 99px; font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; background: var(--soft-blue); color: var(--blue); }
+.tutorial-badge-green { background: #eafaf1; color: #1e7e48; }
+.tutorial-badge-purple { background: #f3ebfc; color: #7928ca; }
+.comparison-table-wrapper { width: 100%; overflow-x: auto; margin: 18px 0 24px; border: 1px solid var(--line); border-radius: 12px; }
+.comparison-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.comparison-table th, .comparison-table td { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.comparison-table tr:last-child td { border-bottom: none; }
+.comparison-table th { background: #f6f7f9; font-weight: 750; color: var(--ink); letter-spacing: -.01em; }
+.comparison-table tr:hover td { background: #fcfcfd; }
+.comparison-table .tag-baseline { color: #888d96; font-size: 11px; }
+.comparison-table .tag-modern { color: var(--blue); font-weight: 600; }
+
 @media (max-width: 1020px) {
   .container { width: min(100% - 48px, 800px); }
   .hero { min-height: auto; }

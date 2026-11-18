@@ -41,4 +41,24 @@ test.describe('Support & Documentation Subpages E2E', () => {
     await expect(page.getByRole('heading', { name: /Release Notes/i })).toBeVisible();
     await expect(page.getByText('v1.1.11').first()).toBeVisible();
   });
+
+  test('renders Visual Tutorial page with software screenshots and architecture sections', async ({ page }) => {
+    await page.goto(getFileUrl('tutorial.html'));
+    await expect(page).toHaveTitle(/Visual Tutorial & Architecture Tour — NODE studio/i);
+
+    // Verify main headings and architecture guide
+    await expect(page.getByRole('heading', { name: /Studio Walkthrough & Feature Guide/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /How the Hardware & Software Work Together/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /What Did the Software Have Originally vs. Everything We Built/i })).toBeVisible();
+
+    // Verify embedded screenshots
+    const figures = page.locator('figure.tutorial-figure img');
+    await expect(figures).toHaveCount(5);
+    for (let i = 0; i < 5; i++) {
+      await expect(figures.nth(i)).toBeVisible();
+    }
+
+    // Verify 7-step guide
+    await expect(page.getByRole('heading', { name: /7-Step Macropad Configuration Walkthrough/i })).toBeVisible();
+  });
 });
