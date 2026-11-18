@@ -133,6 +133,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
   autoSwitchProfile: false,
+  appProfileRules: [],
 });
 const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
 
@@ -147,6 +148,9 @@ function readStoredAppSettings() {
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
       for (const key of ['allowTerminalSmartActions', 'allowDeviceNotifications', 'autoSwitchProfile']) {
         if (typeof stored[key] === 'boolean') settings[key] = stored[key];
+      }
+      if (Array.isArray(stored.appProfileRules)) {
+        settings.appProfileRules = stored.appProfileRules;
       }
     }
   } catch {}
@@ -751,9 +755,9 @@ ipcMain.handle('cheat-sheet-update', (event, snapshot) =>
 ipcMain.handle('cheat-sheet-command', (event, command, token) =>
   isTrustedRenderer(event) && typeof command === 'string' && cheatSheet.command(command, token));
 
-ipcMain.handle('match-profile-for-app', (event, windowInfo, profiles) => {
+ipcMain.handle('match-profile-for-app', (event, windowInfo, profiles, customRules) => {
   if (!isTrustedRenderer(event)) return null;
-  return matchProfileForApplication(windowInfo, profiles);
+  return matchProfileForApplication(windowInfo, profiles, customRules);
 });
 
 // IPC Handlers for Native Windows Control
@@ -828,7 +832,12 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
       ...(isPersistenceSmokeTest() ? { diagnostics: getRendererTrustDiagnostics(event) } : {}),
     };
   }
-  if (!APP_SETTING_KEYS.has(key) || typeof value !== 'boolean') {
+  if (!APP_SETTING_KEYS.has(key)) {
+    return { ok: false, error: 'Invalid app setting' };
+  }
+  if (key === 'appProfileRules') {
+    if (!Array.isArray(value)) return { ok: false, error: 'Invalid rules array' };
+  } else if (typeof value !== 'boolean') {
     return { ok: false, error: 'Invalid app setting' };
   }
 

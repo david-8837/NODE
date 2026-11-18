@@ -78,6 +78,69 @@ describe('electron/activeWindowTracker.cjs', () => {
       );
       expect(match).toBeNull();
     });
+
+    it('matches an application through explicit custom mapping rules', () => {
+      const customRules = [
+        {
+          id: 'rule-fl',
+          processPattern: 'fl64.exe',
+          targetProfileName: 'Default Keys',
+          enabled: true,
+        },
+      ];
+      const match = matchProfileForApplication(
+        { processName: 'fl64.exe', title: 'FL Studio - MyTrack.flp' },
+        mockProfiles,
+        customRules
+      );
+      expect(match).not.toBeNull();
+      expect(match?.matchType).toBe('custom_rule');
+      expect(match?.profile.name).toBe('Default Keys');
+    });
+
+    it('matches with window title pattern filtering', () => {
+      const customRules = [
+        {
+          id: 'rule-yt',
+          processPattern: 'chrome.exe',
+          titlePattern: 'YouTube Music',
+          targetProfileName: 'Default Keys',
+          enabled: true,
+        },
+      ];
+      const hit = matchProfileForApplication(
+        { processName: 'chrome.exe', title: 'Song - YouTube Music - Google Chrome' },
+        mockProfiles,
+        customRules
+      );
+      expect(hit?.matchType).toBe('custom_rule');
+      expect(hit?.profile.name).toBe('Default Keys');
+
+      // Different title should not match the custom rule
+      const miss = matchProfileForApplication(
+        { processName: 'chrome.exe', title: 'Wikipedia - Google Chrome' },
+        mockProfiles,
+        customRules
+      );
+      expect(miss?.matchType).not.toBe('custom_rule');
+    });
+
+    it('ignores disabled custom rules', () => {
+      const customRules = [
+        {
+          id: 'rule-disabled',
+          processPattern: 'customapp.exe',
+          targetProfileName: 'Default Keys',
+          enabled: false,
+        },
+      ];
+      const match = matchProfileForApplication(
+        { processName: 'customapp.exe', title: 'Custom App Window' },
+        mockProfiles,
+        customRules
+      );
+      expect(match).toBeNull();
+    });
   });
 
   describe('createActiveWindowTracker', () => {

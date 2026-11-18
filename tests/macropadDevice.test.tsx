@@ -229,4 +229,38 @@ describe('MacropadDevice component', () => {
     expect(dial?.className).toContain('scale-[0.93]');
     expect(dial?.className).toContain('shadow-[0_0_20px_rgba(0,81,255,0.95)]');
   });
+
+  it('renders custom primary legend, secondary sub-legend, and custom keycap background tint', async () => {
+    const customLayer = {
+      ...INITIAL_LAYER_1,
+      r1c1: {
+        ...INITIAL_LAYER_1.r1c1,
+        label: 'Original Action',
+        binding: 'KC_F5',
+        customLegend: 'BUILD',
+        subLegend: 'F5',
+        keycapColor: 'rgb(0, 81, 255)',
+      },
+    };
+
+    await act(async () => {
+      root.render(
+        createElement(MacropadDevice, {
+          layer: customLayer,
+          selectedKey: null,
+          selectedEncoderSub: null,
+          dragOverTarget: null,
+          encoderAngle: 0,
+          onSelectKey: vi.fn(),
+          onSelectEncoderSub: vi.fn(),
+        })
+      );
+    });
+
+    const keyR1C1 = container.querySelector<HTMLButtonElement>('[data-drop-slot="r1c1"]');
+    expect(keyR1C1).not.toBeNull();
+    expect(keyR1C1?.textContent).toContain('BUILD');
+    expect(keyR1C1?.textContent).toContain('F5');
+    expect(keyR1C1?.style.backgroundColor).toBe('rgb(0, 81, 255)');
+  });
 });

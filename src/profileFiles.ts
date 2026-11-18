@@ -260,7 +260,7 @@ function normalizeProfile(input: unknown): JsonRecord {
     for (const [slot, assignment] of Object.entries(safeLayer)) {
       if (slot === 'presetId' || RESERVED_KEYS.has(slot)) continue;
       if (!isRecord(assignment)) throw makeError(`Profile layer ${index + 1} has an invalid ${slot} assignment`);
-      for (const field of ['label', 'binding', 'actionType', 'actionId', 'iconId', 'emoji']) {
+      for (const field of ['label', 'binding', 'actionType', 'actionId', 'iconId', 'emoji', 'customLegend', 'subLegend', 'keycapColor']) {
         if (assignment[field] !== undefined && typeof assignment[field] !== 'string') {
           throw makeError(`Profile layer ${index + 1} has an invalid ${slot} ${field}`);
         }

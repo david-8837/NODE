@@ -137,6 +137,9 @@ export function MacropadDevice({
                 binding={layer[slotId].binding}
                 iconId={layer[slotId].iconId}
                 color={showSlotNumbers ? undefined : layer[slotId].color}
+                customLegend={layer[slotId].customLegend}
+                subLegend={layer[slotId].subLegend}
+                keycapColor={showSlotNumbers ? undefined : layer[slotId].keycapColor}
                 slotNumber={showSlotNumbers ? index + 1 : undefined}
                 selected={selectedKey === slotId}
                 dragOver={dragOverTarget?.slotId === slotId}
@@ -163,6 +166,9 @@ export interface KeycapButtonProps {
   binding: string;
   iconId?: string;
   color?: string;
+  customLegend?: string;
+  subLegend?: string;
+  keycapColor?: string;
   slotNumber?: number;
   selected: boolean;
   dragOver?: boolean;
@@ -183,6 +189,9 @@ export function KeycapButton({
   binding,
   iconId,
   color,
+  customLegend,
+  subLegend,
+  keycapColor,
   slotNumber,
   selected,
   dragOver,
@@ -194,9 +203,11 @@ export function KeycapButton({
   onHoverSlot,
   previewHighlighted = false,
 }: KeycapButtonProps) {
+  const displayLabel = customLegend || label;
   const isEmpty =
-    !iconId && (!label || label === '—' || binding === 'blank');
-  const isMultiWordCustom = !iconId && !isEmpty && label.length > 4;
+    !iconId && !customLegend && (!label || label === '—' || binding === 'blank');
+  const isMultiWordCustom = !iconId && !isEmpty && displayLabel.length > 4;
+  const activeKeycapColor = keycapColor || color;
   const entranceProps =
     entranceIndex === undefined
       ? {}
@@ -214,8 +225,8 @@ export function KeycapButton({
       onMouseEnter={() => onHoverSlot?.(slotId)}
       onMouseLeave={() => onHoverSlot?.(null)}
       title={binding}
-      style={color && !isEmpty && !selected && !dragOver && !isDraggingSource && !isPressed
-        ? { backgroundColor: color, borderColor: color }
+      style={activeKeycapColor && !isEmpty && !selected && !dragOver && !isDraggingSource && !isPressed
+        ? { backgroundColor: activeKeycapColor, borderColor: activeKeycapColor }
         : undefined}
       className={`${slotNumber !== undefined ? 'group ' : ''}w-[42px] h-[42px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all duration-150 cursor-grab active:cursor-grabbing focus:outline-none select-none ${
         isMultiWordCustom
@@ -249,19 +260,35 @@ export function KeycapButton({
           {slotNumber}
         </span>
       ) : iconId ? (
-        <CustomPickerIcon id={iconId} size={17} />
+        <div className="flex flex-col items-center justify-center pointer-events-none">
+          <CustomPickerIcon id={iconId} size={subLegend ? 14 : 17} />
+          {subLegend && (
+            <span className="text-[7.5px] font-bold tracking-wider uppercase text-white/85 leading-none mt-[1px]">
+              {subLegend}
+            </span>
+          )}
+        </div>
       ) : isEmpty ? (
         <EmptyKeyPlusIcon size={16} stroke="#ffffff" />
       ) : (
-        <span
-          className={
-            isMultiWordCustom
-              ? 'leading-[1.08] break-words line-clamp-3'
-              : 'leading-none tracking-[0.01em]'
-          }
-        >
-          {label}
-        </span>
+        <div className="flex flex-col items-center justify-center w-full px-[2px] pointer-events-none">
+          <span
+            className={
+              subLegend
+                ? 'text-[10px] font-semibold leading-tight break-words line-clamp-1'
+                : isMultiWordCustom
+                ? 'leading-[1.08] break-words line-clamp-3'
+                : 'leading-none tracking-[0.01em]'
+            }
+          >
+            {displayLabel}
+          </span>
+          {subLegend && (
+            <span className="text-[7px] font-bold tracking-wider uppercase text-white/75 leading-none mt-[2px]">
+              {subLegend}
+            </span>
+          )}
+        </div>
       )}
     </motion.button>
   );

@@ -9,6 +9,9 @@ export interface KeyAction {
   actionType?: string;
   icon?: string;
   color?: string;
+  customLegend?: string;
+  subLegend?: string;
+  keycapColor?: string;
   encoderActions?: {
     cw: { label: string; binding: string };
     ccw: { label: string; binding: string };
@@ -78,6 +81,9 @@ export function validateProfile(input: any): { valid: boolean; profile?: Profile
         actionType: String(slotData.actionType || 'Shortcut'),
         icon: slotData.icon ? String(slotData.icon) : undefined,
         color: slotData.color ? String(slotData.color) : undefined,
+        customLegend: slotData.customLegend ? String(slotData.customLegend) : undefined,
+        subLegend: slotData.subLegend ? String(slotData.subLegend) : undefined,
+        keycapColor: slotData.keycapColor ? String(slotData.keycapColor) : undefined,
       };
     }
 

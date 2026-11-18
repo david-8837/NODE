@@ -11,7 +11,15 @@ export interface ActiveWindowInfo {
 export interface MatchedProfileResult<T = unknown> {
   profileIndex: number;
   profile: T;
-  matchType: 'process' | 'title' | 'keyword';
+  matchType: 'process' | 'title' | 'keyword' | 'custom_rule';
+}
+
+export interface AppProfileMappingRule {
+  id: string;
+  processPattern: string; // e.g. "code.exe" or "blender"
+  titlePattern?: string;  // optional title substring filter
+  targetProfileName: string;
+  enabled: boolean;
 }
 
 export interface NamedProfile {
@@ -35,6 +43,7 @@ export const COMMON_APP_PATTERNS = [
 export function matchProfileForApplication<T extends NamedProfile>(
   windowInfo: ActiveWindowInfo | null | undefined,
   profiles: T[] = [],
+  customRules: AppProfileMappingRule[] = [],
 ): MatchedProfileResult<T> | null {
   if (!windowInfo || !Array.isArray(profiles) || profiles.length === 0) return null;
   const proc = (windowInfo.processName || '').toLowerCase();
@@ -45,7 +54,34 @@ export function matchProfileForApplication<T extends NamedProfile>(
     return null;
   }
 
-  // 1. Direct name match in profile titles
+  // 1. Explicit user custom mapping rules (highest priority)
+  if (Array.isArray(customRules)) {
+    for (const rule of customRules) {
+      if (!rule || !rule.enabled) continue;
+      const ruleProc = (rule.processPattern || '').toLowerCase().trim();
+      const ruleTitle = (rule.titlePattern || '').toLowerCase().trim();
+      if (!ruleProc && !ruleTitle) continue;
+
+      const procMatches = !ruleProc || proc.includes(ruleProc);
+      const titleMatches = !ruleTitle || title.includes(ruleTitle);
+
+      if (procMatches && titleMatches) {
+        const targetName = (rule.targetProfileName || '').toLowerCase();
+        const targetIdx = profiles.findIndex(
+          (p) => (p?.name || '').toLowerCase() === targetName
+        );
+        if (targetIdx !== -1) {
+          return {
+            profileIndex: targetIdx,
+            profile: profiles[targetIdx],
+            matchType: 'custom_rule',
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Direct name match in profile titles
   for (let i = 0; i < profiles.length; i++) {
     const profName = (profiles[i]?.name || '').toLowerCase();
     if (!profName) continue;
@@ -54,7 +90,7 @@ export function matchProfileForApplication<T extends NamedProfile>(
     if (profName.length > 2 && title.includes(profName)) return { profileIndex: i, profile: profiles[i], matchType: 'title' };
   }
 
-  // 2. Pattern keyword matching
+  // 3. Pattern keyword matching
   for (const pattern of COMMON_APP_PATTERNS) {
     if (pattern.match.test(proc)) {
       for (let i = 0; i < profiles.length; i++) {

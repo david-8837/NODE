@@ -12,7 +12,7 @@ const args = ['build', '--release', '--locked', '--features', 'ffi', '--manifest
 let result;
 try {
   result = spawnSync('cargo', args, { cwd: root, stdio: 'inherit' });
-} catch (error) {
+} catch {
   console.warn('Rust cargo toolchain is not available; skipping optional rounded-blur native DLL compilation.');
   process.exit(0);
 }

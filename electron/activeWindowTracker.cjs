@@ -100,7 +100,7 @@ const COMMON_APP_PATTERNS = [
   { match: /excel\.exe/i, keywords: ['excel', 'spreadsheet', 'office', 'data'] },
 ];
 
-function matchProfileForApplication(windowInfo, profiles = []) {
+function matchProfileForApplication(windowInfo, profiles = [], customRules = []) {
   if (!windowInfo || !Array.isArray(profiles) || profiles.length === 0) return null;
   const proc = (windowInfo.processName || '').toLowerCase();
   const title = (windowInfo.title || '').toLowerCase();
@@ -110,7 +110,34 @@ function matchProfileForApplication(windowInfo, profiles = []) {
     return null;
   }
 
-  // 1. Direct name match in profile titles
+  // 1. Explicit user custom mapping rules (highest priority)
+  if (Array.isArray(customRules)) {
+    for (const rule of customRules) {
+      if (!rule || !rule.enabled) continue;
+      const ruleProc = (rule.processPattern || '').toLowerCase().trim();
+      const ruleTitle = (rule.titlePattern || '').toLowerCase().trim();
+      if (!ruleProc && !ruleTitle) continue;
+
+      const procMatches = !ruleProc || proc.includes(ruleProc);
+      const titleMatches = !ruleTitle || title.includes(ruleTitle);
+
+      if (procMatches && titleMatches) {
+        const targetName = (rule.targetProfileName || '').toLowerCase();
+        const targetIdx = profiles.findIndex(
+          (p) => (p?.name || '').toLowerCase() === targetName
+        );
+        if (targetIdx !== -1) {
+          return {
+            profileIndex: targetIdx,
+            profile: profiles[targetIdx],
+            matchType: 'custom_rule',
+          };
+        }
+      }
+    }
+  }
+
+  // 2. Direct name match in profile titles
   for (let i = 0; i < profiles.length; i++) {
     const profName = (profiles[i]?.name || '').toLowerCase();
     if (!profName) continue;

@@ -1,3 +1,5 @@
+import type { AppProfileMappingRule } from './activeWindow';
+
 export const APP_SETTINGS_STORAGE_KEY = 'node-studio.settings.v1';
 export const APP_VERSION_FALLBACK = '1.0.0';
 export const LATEST_FIRMWARE_RELEASE_API =
@@ -10,6 +12,7 @@ export interface AppSettings {
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
   autoSwitchProfile: boolean;
+  appProfileRules: AppProfileMappingRule[];
 }
 
 export type AppSettingKey = keyof AppSettings;
@@ -25,6 +28,7 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
   autoSwitchProfile: false,
+  appProfileRules: Object.freeze([]) as unknown as AppProfileMappingRule[],
 });
 
 export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
@@ -109,7 +113,10 @@ export interface ElectronApi {
   checkForUpdates?: () => Promise<UpdateCheckResult>;
   getInstalledApplications?: () => Promise<InstalledApplicationsResult>;
   getAppSettings?: () => Promise<NativeSettingsResult>;
-  setAppSetting?: (key: AppSettingKey, value: boolean) => Promise<NativeSettingsResult>;
+  setAppSetting?: (
+    key: AppSettingKey,
+    value: boolean | import('./activeWindow').AppProfileMappingRule[]
+  ) => Promise<NativeSettingsResult>;
   openExternal?: (url: string) => Promise<AppOperationResult>;
   flashFirmware?: () => Promise<AppOperationResult>;
   setSimulationEnabled?: (enabled: boolean) => Promise<SimulationToggleResult>;
@@ -125,7 +132,8 @@ export interface ElectronApi {
   onActiveWindowChanged?: (callback: (info: import('./activeWindow').ActiveWindowInfo) => void) => (() => void) | void;
   matchProfileForApp?: (
     windowInfo: import('./activeWindow').ActiveWindowInfo,
-    profiles: unknown[]
+    profiles: unknown[],
+    customRules?: import('./activeWindow').AppProfileMappingRule[]
   ) => Promise<import('./activeWindow').MatchedProfileResult | null>;
 }
 
@@ -133,7 +141,7 @@ export interface AppSettingsTools {
   read: () => AppSettings;
   save: (settings: Partial<AppSettings>) => AppSettings | null;
   getDesktop: () => Promise<NativeSettingsResult | null>;
-  set: (key: AppSettingKey, value: boolean) => Promise<NativeSettingsResult>;
+  set: (key: AppSettingKey, value: boolean | AppProfileMappingRule[]) => Promise<NativeSettingsResult>;
   openSupport: (link: SupportLinkKey | string) => Promise<AppOperationResult>;
   checkFirmware: () => Promise<FirmwareCheckResult>;
   flashFirmware: () => Promise<AppOperationResult>;
@@ -162,6 +170,11 @@ export function normalizeAppSettings(value: unknown): AppSettings {
     autoSwitchProfile: typeof raw.autoSwitchProfile === 'boolean'
       ? raw.autoSwitchProfile
       : DEFAULT_APP_SETTINGS.autoSwitchProfile,
+    appProfileRules: Array.isArray(raw.appProfileRules)
+      ? (raw.appProfileRules as AppProfileMappingRule[]).filter(
+          (r) => r && typeof r.id === 'string' && typeof r.processPattern === 'string'
+        )
+      : [],
   };
 }
 

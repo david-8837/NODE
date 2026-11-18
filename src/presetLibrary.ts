@@ -34,6 +34,9 @@ export interface KeyAssignment {
   iconId?: string;
   actionId?: string;
   color?: string;
+  customLegend?: string;
+  subLegend?: string;
+  keycapColor?: string;
   execution?: DesktopExecutionDefinition;
   encoderActions?: Record<EncoderSubActionId, EncoderSubBinding>;
 }

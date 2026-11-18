@@ -81,7 +81,7 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { EditLayoutModal } from './components/EditLayoutModal';
 import { CommunityProfileModal } from './components/CommunityProfileModal';
 import type { CommunityProfile } from './communityProfiles';
-import { matchProfileForApplication } from './activeWindow';
+import { matchProfileForApplication, type AppProfileMappingRule } from './activeWindow';
 import { IconPickerPopover } from './components/IconPickerPopover';
 import { PresetGrid } from './components/PresetGrid';
 import { PresetDetailPreview } from './components/PresetDetailPreview';
@@ -1604,7 +1604,7 @@ export default function App() {
     const offActiveWindow = api.onActiveWindowChanged((windowInfo) => {
       if (!appSettings.autoSwitchProfile) return;
       const currentProfiles = profilesRef.current;
-      const match = matchProfileForApplication(windowInfo, currentProfiles);
+      const match = matchProfileForApplication(windowInfo, currentProfiles, appSettings.appProfileRules);
       if (!match || match.profileIndex === activeProfileIndexRef.current) return;
       const layerCount = currentProfiles[match.profileIndex]?.layers?.length ?? 1;
       selectProfileInApp(match.profileIndex, layerCount);
@@ -1782,6 +1782,40 @@ export default function App() {
         ? 'Terminal commands enabled. Only run commands you trust.'
         : 'Terminal command execution disabled');
     }
+  };
+
+  const handleUpdateProfileRules = (rules: AppProfileMappingRule[]) => {
+    const nextSettings = { ...appSettings, appProfileRules: rules };
+    setAppSettings(nextSettings);
+    const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+    void tools.set('appProfileRules', rules);
+    showToast(`Updated app-to-profile rules (${rules.length})`);
+  };
+
+  const handleUpdateKeycapPersonalization = (
+    slotId: KeySlotId,
+    customLegend: string,
+    subLegend: string,
+    keycapColor: string
+  ) => {
+    const nextProfiles = profiles.map((p, pIdx) => {
+      if (pIdx !== activeProfileIndex) return p;
+      const nextLayers = p.layers.map((layer, lIdx) => {
+        if (lIdx !== activeLayerIndex) return layer;
+        const currentSlot = layer[slotId];
+        return {
+          ...layer,
+          [slotId]: {
+            ...currentSlot,
+            customLegend: customLegend.trim() || undefined,
+            subLegend: subLegend.trim() || undefined,
+            keycapColor: keycapColor.trim() || undefined,
+          },
+        };
+      });
+      return { ...p, layers: nextLayers };
+    });
+    pushState(nextProfiles);
   };
 
   const handleOpenSupportLink = async (key: SupportLinkKey, label: string) => {
@@ -3873,6 +3907,9 @@ export default function App() {
                     <PresetAppIcon id={id} size={size} />
                   ),
                   showToast,
+                  selectedKey,
+                  selectedKeyAssignment: selectedKey ? currentLayer[selectedKey] : null,
+                  onUpdateKeycapPersonalization: handleUpdateKeycapPersonalization,
                 }}
               />
             )}
@@ -3921,9 +3958,13 @@ export default function App() {
           allowTerminalSmartActions={allowTerminalSmartActions}
           allowDeviceNotifications={allowDeviceNotifications}
           autoSwitchProfile={autoSwitchProfile}
+          appProfileRules={appSettings.appProfileRules}
+          availableProfiles={profiles}
+          installedApps={installedApplications}
           firmwareCheckPending={firmwareCheckPending}
           appUpdateCheckPending={appUpdateCheckPending}
           handleAppSettingChange={handleAppSettingChange}
+          handleUpdateProfileRules={handleUpdateProfileRules}
           handleOpenSupportLink={handleOpenSupportLink}
           handleCheckFirmwareUpdate={handleCheckFirmwareUpdate}
           handleCheckAppUpdate={handleCheckAppUpdate}

@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import type { QmkViaStatus } from '../qmkViaBridge';
 import type {
   AppSettingKey,
+  InstalledApplication,
   SettingsCapabilities,
   SupportLinkKey,
 } from '../appSettings';
+import type { AppProfileMappingRule } from '../activeWindow';
 import { SettingsSwitch } from './SettingsSwitch';
 import { InfoCircleIcon, WarningTriangleIcon } from './UiIcons';
 
@@ -17,9 +19,13 @@ export interface SettingsScreenProps {
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
   autoSwitchProfile?: boolean;
+  appProfileRules?: AppProfileMappingRule[];
+  availableProfiles?: Array<{ name: string }>;
+  installedApps?: InstalledApplication[];
   firmwareCheckPending: boolean;
   appUpdateCheckPending?: boolean;
   handleAppSettingChange: (key: AppSettingKey, value: boolean) => Promise<void> | void;
+  handleUpdateProfileRules?: (rules: AppProfileMappingRule[]) => void;
   handleOpenSupportLink: (key: SupportLinkKey, label: string) => Promise<void> | void;
   handleCheckFirmwareUpdate: () => Promise<void> | void;
   handleCheckAppUpdate?: () => Promise<void> | void;
@@ -35,15 +41,23 @@ export function SettingsScreen({
   allowTerminalSmartActions,
   allowDeviceNotifications,
   autoSwitchProfile = false,
+  appProfileRules = [],
+  availableProfiles = [],
+  installedApps = [],
   firmwareCheckPending,
   appUpdateCheckPending = false,
   handleAppSettingChange,
+  handleUpdateProfileRules,
   handleOpenSupportLink,
   handleCheckFirmwareUpdate,
   handleCheckAppUpdate,
   handleResetLocalConfig,
   handleAdvanceFlash,
 }: SettingsScreenProps) {
+  const [showAddRule, setShowAddRule] = useState(false);
+  const [newProc, setNewProc] = useState('');
+  const [newTitle, setNewTitle] = useState('');
+  const [newProfile, setNewProfile] = useState(() => availableProfiles[0]?.name || '');
   return (
     <motion.main
       key="settings-screen"
@@ -155,6 +169,172 @@ export function SettingsScreen({
                 </div>
               </div>
             </div>
+
+            {autoSwitchProfile && (
+              <div className="bg-[#e3e3e3] rounded-[16px] px-[16px] py-[14px]">
+                <div className="flex items-center justify-between mb-[10px]">
+                  <h2 className="text-[13.5px] font-medium text-[#4a4a4a] flex items-center gap-[6px]">
+                    <span>App-to-Profile Rules</span>
+                    <span className="text-[10px] bg-black/10 px-[6px] py-[1px] rounded-full text-[#555] font-mono">
+                      {appProfileRules.length}
+                    </span>
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddRule(!showAddRule)}
+                    className="px-[8px] py-[2px] rounded-full bg-white hover:bg-[#0051ff] text-[9.5px] font-medium text-[#444] hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
+                  >
+                    {showAddRule ? 'Cancel' : '+ Add rule'}
+                  </button>
+                </div>
+
+                {showAddRule && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const targetProf = newProfile || availableProfiles[0]?.name;
+                      if (!newProc.trim() || !targetProf) return;
+                      const next = [
+                        ...appProfileRules,
+                        {
+                          id: `rule-${Date.now()}`,
+                          processPattern: newProc.trim(),
+                          titlePattern: newTitle.trim() || undefined,
+                          targetProfileName: targetProf,
+                          enabled: true,
+                        },
+                      ];
+                      handleUpdateProfileRules?.(next);
+                      setNewProc('');
+                      setNewTitle('');
+                      setShowAddRule(false);
+                    }}
+                    className="mb-[12px] p-[10px] rounded-[12px] bg-white/70 border border-black/[0.04] space-y-[8px] text-[10.5px]"
+                  >
+                    <div>
+                      <label className="block text-[#666] mb-[2px] font-medium">Application Executable</label>
+                      <div className="flex gap-[6px]">
+                        <input
+                          type="text"
+                          value={newProc}
+                          onChange={(e) => setNewProc(e.target.value)}
+                          placeholder="e.g. blender.exe or code.exe"
+                          required
+                          className="flex-1 h-[25px] bg-white rounded-[6px] px-[8px] text-[#222] border border-black/10 focus:outline-none focus:border-[#0051ff]"
+                        />
+                        {installedApps && installedApps.length > 0 && (
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                setNewProc(e.target.value);
+                              }
+                            }}
+                            className="h-[25px] bg-white rounded-[6px] px-[6px] text-[#444] border border-black/10 text-[9.5px] max-w-[120px] truncate"
+                          >
+                            <option value="">Pick app…</option>
+                            {installedApps.map((app) => (
+                              <option key={app.name} value={`${app.name.toLowerCase().replace(/\s+/g, '')}.exe`}>
+                                {app.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[#666] mb-[2px] font-medium">Window Title Filter (Optional)</label>
+                      <input
+                        type="text"
+                        value={newTitle}
+                        onChange={(e) => setNewTitle(e.target.value)}
+                        placeholder="e.g. YouTube or project-name"
+                        className="w-full h-[25px] bg-white rounded-[6px] px-[8px] text-[#222] border border-black/10 focus:outline-none focus:border-[#0051ff]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[#666] mb-[2px] font-medium">Target Profile</label>
+                      <select
+                        value={newProfile || availableProfiles[0]?.name || ''}
+                        onChange={(e) => setNewProfile(e.target.value)}
+                        required
+                        className="w-full h-[25px] bg-white rounded-[6px] px-[8px] text-[#222] border border-black/10 focus:outline-none focus:border-[#0051ff]"
+                      >
+                        {availableProfiles.map((p) => (
+                          <option key={p.name} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex justify-end pt-[2px]">
+                      <button
+                        type="submit"
+                        className="px-[12px] py-[4px] rounded-full bg-[#0051ff] text-white text-[10px] font-medium hover:bg-[#0043d4] transition-colors cursor-pointer"
+                      >
+                        Save Rule
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {appProfileRules.length === 0 ? (
+                  <p className="text-[10px] text-[#777] italic py-[4px]">
+                    No custom rules configured. Default matching is active for Code, Photoshop, Blender, OBS, and Chrome.
+                  </p>
+                ) : (
+                  <div className="space-y-[6px]">
+                    {appProfileRules.map((rule) => (
+                      <div
+                        key={rule.id}
+                        className="flex items-center justify-between p-[8px] rounded-[10px] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)] text-[10.5px]"
+                      >
+                        <div className="flex flex-col gap-[1px] min-w-0 flex-1 pr-[8px]">
+                          <div className="flex items-center gap-[6px]">
+                            <span className="font-mono font-medium text-[#222] truncate">
+                              {rule.processPattern}
+                            </span>
+                            {rule.titlePattern && (
+                              <span className="text-[9px] bg-black/5 px-[4px] py-[0.5px] rounded text-[#666] truncate max-w-[100px]">
+                                &ldquo;{rule.titlePattern}&rdquo;
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[9.5px] text-[#0051ff] font-medium flex items-center gap-[4px]">
+                            <span>→</span>
+                            <span className="truncate">{rule.targetProfileName}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-[8px] shrink-0">
+                          <SettingsSwitch
+                            checked={rule.enabled}
+                            title={rule.enabled ? 'Rule enabled' : 'Rule disabled'}
+                            onChange={() => {
+                              const updated = appProfileRules.map((r) =>
+                                r.id === rule.id ? { ...r, enabled: !r.enabled } : r
+                              );
+                              handleUpdateProfileRules?.(updated);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            title="Delete rule"
+                            onClick={() => {
+                              const updated = appProfileRules.filter((r) => r.id !== rule.id);
+                              handleUpdateProfileRules?.(updated);
+                            }}
+                            className="text-[#999] hover:text-[#dc2626] transition-colors p-[2px] cursor-pointer"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <path d="M2.5 3.5h9M5 3.5V2a1 1 0 011-1h2a1 1 0 011 1v1.5M11 3.5v8a1 1 0 01-1 1H4a1 1 0 01-1-1v-8" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-[12px]">

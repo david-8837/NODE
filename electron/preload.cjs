@@ -34,6 +34,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('active-window-changed', listener);
     return () => ipcRenderer.removeListener('active-window-changed', listener);
   },
-  matchProfileForApp: (windowInfo, profiles) =>
-    ipcRenderer.invoke('match-profile-for-app', windowInfo, profiles),
+  matchProfileForApp: (windowInfo, profiles, customRules) =>
+    ipcRenderer.invoke('match-profile-for-app', windowInfo, profiles, customRules),
 });
