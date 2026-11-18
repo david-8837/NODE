@@ -79,6 +79,8 @@ import { SettingsSwitch } from './components/SettingsSwitch';
 import { CustomPickerIcon } from './components/CustomPickerIcon';
 import { SettingsScreen } from './components/SettingsScreen';
 import { EditLayoutModal } from './components/EditLayoutModal';
+import { CommunityProfileModal } from './components/CommunityProfileModal';
+import type { CommunityProfile } from './communityProfiles';
 import { IconPickerPopover } from './components/IconPickerPopover';
 import { PresetGrid } from './components/PresetGrid';
 import { PresetDetailPreview } from './components/PresetDetailPreview';
@@ -742,6 +744,7 @@ export default function App() {
   const lastBackspaceTimeRef = useRef<number>(0);
 
   const [editLayoutModalOpen, setEditLayoutModalOpen] = useState(false);
+  const [communityHubOpen, setCommunityHubOpen] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<
     'profiles' | 'layers' | 'mapping' | 'drawer-mapping' | null
   >(null);
@@ -3410,6 +3413,24 @@ export default function App() {
     }
   };
 
+  const handleInstallCommunityProfile = (cp: CommunityProfile) => {
+    if (profiles.length >= 4) {
+      showToast('Profile limit reached (max 4). Delete or export an existing profile first.');
+      return;
+    }
+    const newProf: ProfileData = normalizeProfileForEditor({
+      ...cp.profile,
+      id: `profile-comm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: cp.name,
+      color: cp.color,
+    });
+    const updatedProfiles = [...profiles, newProf];
+    pushState(updatedProfiles);
+    selectProfileInApp(profiles.length, newProf.layers.length);
+    setCommunityHubOpen(false);
+    showToast(`Installed community profile "${cp.name}" by @${cp.author}`);
+  };
+
   const filteredPresets = useMemo(
     () => buildPresetLibrary(presetOs).filter(
       (preset) =>
@@ -3551,6 +3572,7 @@ export default function App() {
               handleConfirmDeleteProfile={handleConfirmDeleteProfile}
               handleAddProfile={handleAddProfile}
               handleImportProfile={handleImportProfile}
+              onOpenCommunityHub={() => setCommunityHubOpen(true)}
             />
 
             <LayersControlBar
@@ -3919,6 +3941,15 @@ export default function App() {
       <EditLayoutModal
         open={editLayoutModalOpen}
         onClose={() => setEditLayoutModalOpen(false)}
+      />
+
+      {/* COMMUNITY PROFILE HUB MODAL */}
+      <CommunityProfileModal
+        open={communityHubOpen}
+        onClose={() => setCommunityHubOpen(false)}
+        onInstallProfile={handleInstallCommunityProfile}
+        onExportCurrentProfile={() => handleExportProfile(activeProfileIndex)}
+        currentProfileName={currentProfile.name || 'Current Profile'}
       />
 
       {/* FLOATING BLACK KEYCAP DRAG PREVIEW WITH SUBTLE CORNER-HELD CIRCULAR MOTION */}
