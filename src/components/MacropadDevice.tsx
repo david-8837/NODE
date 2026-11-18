@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { EncoderPopupCapsule } from './EncoderPopupCapsule';
 import { FlatDialControl } from './FlatDialControl';
 import { CustomPickerIcon } from './CustomPickerIcon';

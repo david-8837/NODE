@@ -1,5 +1,5 @@
 import React from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'motion/react';
 import { ActionCreatorDrawer, type ActionCreatorDrawerProps } from './ActionCreatorDrawer';
 import { ActionLibrarySidebar, type ActionLibrarySidebarProps } from './ActionLibrarySidebar';
 import type { MappingTabId } from '../presetLibrary';

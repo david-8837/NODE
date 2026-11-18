@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, type MotionValue } from 'framer-motion';
+import { motion, type MotionValue } from 'motion/react';
 import { CustomPickerIcon } from './CustomPickerIcon';
 import { EmptyKeyPlusIcon } from './UiIcons';
 import {

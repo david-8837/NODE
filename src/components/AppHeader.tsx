@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { ChevronDown } from 'lucide-react';
 import { EntrancePhase, getEntranceMotionProps } from '../entranceAnimations';
 import { QmkViaStatus } from '../qmkViaBridge';

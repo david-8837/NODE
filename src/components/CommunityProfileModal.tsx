@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { Search, X, Check, ArrowDownToLine, Share2 } from 'lucide-react';
 import { COMMUNITY_PROFILES, type CommunityProfile } from '../communityProfiles';
 import type { ProfileData } from '../presetLibrary';

@@ -210,7 +210,7 @@ export function getPresetExecution(sequence: string, os: 'mac' | 'win'): Desktop
     : { kind: 'text', value: sequence };
 }
 
-export function makePresetActionItem(
+function makePresetActionItem(
   id: string,
   name: string,
   binding: string,

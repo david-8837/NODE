@@ -22,7 +22,7 @@ export const DEFAULT_LAYER_LED_CONFIGS: [
   { preset: 'Solid', light: 100, speed: 50, hue: 347, colorHex: '#E11D48' },
 ];
 
-export function hueToHex(h: number): string {
+function hueToHex(h: number): string {
   const s = 1;
   const l = 0.5;
   const c = (1 - Math.abs(2 * l - 1)) * s;
