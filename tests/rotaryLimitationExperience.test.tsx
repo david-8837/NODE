@@ -4,6 +4,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActionLibrarySidebar } from '../src/components/ActionLibrarySidebar';
 import { ProfileSelectorCapsule } from '../src/components/ProfileSelectorCapsule';
+import { EncoderPopupCapsule } from '../src/components/EncoderPopupCapsule';
+import { FlatDialControl } from '../src/components/FlatDialControl';
+import { KeycapButton } from '../src/components/MacropadDevice';
 import { GRID_MACRO_ENCODER_SLOT } from '../src/deviceLayout';
 
 let container: HTMLDivElement;
@@ -138,5 +141,105 @@ describe('Rotary limitation experience and clean drawer UI', () => {
     const hubButton = buttons.find((b) => b.textContent?.trim() === 'Hub');
     expect(hubButton).toBeUndefined();
     expect(container.textContent).not.toContain('Hub');
+  });
+
+  it('glows RED when dragging a disallowed item over rotary sub-buttons, and BLUE for valid targets', async () => {
+    const dummyActions = {
+      cw: { binding: 'Volume Up', label: 'vol' },
+      press: { binding: 'Play/Pause', label: 'play' },
+      ccw: { binding: 'Volume Down', label: 'vol' },
+    };
+
+    // 1. Render EncoderPopupCapsule with dragOver on CW and dragOverDisallowed = true
+    await act(async () => {
+      root.render(
+        createElement(EncoderPopupCapsule, {
+          slotId: GRID_MACRO_ENCODER_SLOT,
+          side: 'right',
+          actions: dummyActions,
+          selectedSub: null,
+          dragOverSub: 'cw',
+          dragOverDisallowed: true,
+          onSelectSub: vi.fn(),
+          onStartSubDrag: vi.fn(),
+        })
+      );
+    });
+
+    const buttons = Array.from(container.querySelectorAll('button'));
+    const cwButton = buttons[0];
+    expect(cwButton).toBeDefined();
+
+    // Verify RED glow styling on CW button
+    expect(cwButton.className).toContain('bg-[#ef4444]');
+    expect(cwButton.className).toContain('border-[#ef4444]');
+    expect(cwButton.className).toContain('shadow-[0_0_18px_rgba(239,68,68,0.95)]');
+
+    // Verify floating pill tooltip indicates limitation
+    expect(container.textContent).toContain('Cannot assign here');
+
+    // 2. Re-render with dragOver on Press (valid target, dragOverDisallowed = false)
+    await act(async () => {
+      root.render(
+        createElement(EncoderPopupCapsule, {
+          slotId: GRID_MACRO_ENCODER_SLOT,
+          side: 'right',
+          actions: dummyActions,
+          selectedSub: null,
+          dragOverSub: 'press',
+          dragOverDisallowed: false,
+          onSelectSub: vi.fn(),
+          onStartSubDrag: vi.fn(),
+        })
+      );
+    });
+
+    const pressButton = container.querySelectorAll('button')[1];
+    expect(pressButton).toBeDefined();
+
+    // Verify BLUE glow styling on Press button
+    expect(pressButton.className).toContain('border-[#0051ff]');
+    expect(pressButton.className).toContain('shadow-[0_0_10px_rgba(0,81,255,0.5)]');
+    expect(pressButton.className).not.toContain('bg-[#ef4444]');
+  });
+
+  it('glows RED on FlatDialControl and KeycapButton when dragOverDisallowed is active', async () => {
+    // 1. Test FlatDialControl with disallowed drag
+    await act(async () => {
+      root.render(
+        createElement(FlatDialControl, {
+          selected: false,
+          angle: 0,
+          title: 'Dial',
+          onClick: vi.fn(),
+          dragOver: true,
+          dragOverDisallowed: true,
+        })
+      );
+    });
+
+    const dialButton = container.querySelector('button');
+    expect(dialButton?.className).toContain('border-[#ef4444]');
+    expect(dialButton?.className).toContain('shadow-[0_0_20px_rgba(239,68,68,0.95)]');
+
+    // 2. Test KeycapButton with disallowed drag
+    await act(async () => {
+      root.render(
+        createElement(KeycapButton, {
+          slotId: 'r1c1',
+          label: 'A',
+          binding: 'Key A',
+          selected: false,
+          dragOver: true,
+          dragOverDisallowed: true,
+          isDraggingSource: false,
+          onClick: vi.fn(),
+        })
+      );
+    });
+
+    const keyButton = container.querySelector('button');
+    expect(keyButton?.className).toContain('border-[#ef4444]');
+    expect(keyButton?.className).toContain('shadow-[0_0_16px_rgba(239,68,68,0.95)]');
   });
 });

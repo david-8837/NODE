@@ -17,12 +17,14 @@ export interface DraggedTilePreviewProps {
   };
   dragSpringBobY: MotionValue<number>;
   dragSpringRotate: MotionValue<number>;
+  isDisallowedTarget?: boolean;
 }
 
 export function DraggedTilePreview({
   draggedTile,
   dragSpringBobY,
   dragSpringRotate,
+  isDisallowedTarget = false,
 }: DraggedTilePreviewProps) {
   return (
     <motion.div
@@ -38,7 +40,11 @@ export function DraggedTilePreview({
         rotate: dragSpringRotate,
         transformOrigin: '22% 20%',
       }}
-      className="fixed w-[54px] h-[54px] rounded-[9px] bg-[#000000] text-white shadow-[0_14px_28px_rgba(0,0,0,0.34)] flex flex-col items-center justify-center px-1 text-center pointer-events-none z-[100] select-none"
+      className={`fixed w-[54px] h-[54px] rounded-[9px] bg-[#000000] text-white shadow-[0_14px_28px_rgba(0,0,0,0.34)] flex flex-col items-center justify-center px-1 text-center pointer-events-none z-[100] select-none transition-all duration-150 ${
+        isDisallowedTarget
+          ? 'ring-2 ring-[#ef4444] shadow-[0_0_20px_rgba(239,68,68,0.7)]'
+          : ''
+      }`}
     >
       {draggedTile.item.iconId ? (
         <CustomPickerIcon id={draggedTile.item.iconId} size={20} />

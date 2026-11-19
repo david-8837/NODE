@@ -1,4 +1,5 @@
 import React from 'react';
+import { GRID_MACRO_ENCODER_SLOT } from '../deviceLayout';
 
 export interface FlatDialControlProps {
   selected: boolean;
@@ -6,6 +7,8 @@ export interface FlatDialControlProps {
   title: string;
   onClick: () => void;
   isPressed?: boolean;
+  dragOver?: boolean;
+  dragOverDisallowed?: boolean;
 }
 
 export function FlatDialControl({
@@ -14,14 +17,24 @@ export function FlatDialControl({
   title,
   onClick,
   isPressed = false,
+  dragOver = false,
+  dragOverDisallowed = false,
 }: FlatDialControlProps) {
+  const isRedGlow = dragOver && dragOverDisallowed;
+  const isBlueGlow = !isRedGlow && (selected || isPressed || dragOver);
+
   return (
     <button
+      data-drop-slot={GRID_MACRO_ENCODER_SLOT}
       onClick={onClick}
       title={title}
       className={`w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-        isPressed
+        isRedGlow
+          ? 'border-[#ef4444] shadow-[0_0_20px_rgba(239,68,68,0.95)] ring-2 ring-red-400/40 z-20'
+          : isPressed
           ? 'scale-[0.93] border-[#0051ff] shadow-[0_0_20px_rgba(0,81,255,0.95)] z-20'
+          : dragOver
+          ? 'border-[#0051ff] shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
           : selected
           ? 'border-[#0051ff] shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
           : 'border-transparent hover:border-[#0051ff] hover:z-10'
@@ -48,13 +61,25 @@ export function FlatDialControl({
             <stop offset="51%" stopColor="#003ec7" />
             <stop offset="100%" stopColor="#004be8" />
           </linearGradient>
+          <linearGradient id="dialDisallowedRed" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ef4444" />
+            <stop offset="49%" stopColor="#ef4444" />
+            <stop offset="51%" stopColor="#dc2626" />
+            <stop offset="100%" stopColor="#b91c1c" />
+          </linearGradient>
         </defs>
         <circle
           cx="20"
           cy="20"
           r="19"
-          fill={selected || isPressed ? 'url(#dialSelectedBlue)' : 'url(#dialUpperLeft)'}
-          stroke={selected || isPressed ? '#0051ff' : '#262626'}
+          fill={
+            isRedGlow
+              ? 'url(#dialDisallowedRed)'
+              : isBlueGlow
+              ? 'url(#dialSelectedBlue)'
+              : 'url(#dialUpperLeft)'
+          }
+          stroke={isRedGlow ? '#ef4444' : isBlueGlow ? '#0051ff' : '#262626'}
           strokeWidth="0.8"
         />
         <line
@@ -62,7 +87,13 @@ export function FlatDialControl({
           y1="33.5"
           x2="33.5"
           y2="6.5"
-          stroke={selected || isPressed ? 'rgba(255,255,255,0.45)' : '#4a4a4a'}
+          stroke={
+            isRedGlow
+              ? 'rgba(255,255,255,0.7)'
+              : isBlueGlow
+              ? 'rgba(255,255,255,0.45)'
+              : '#4a4a4a'
+          }
           strokeWidth="1.1"
           strokeOpacity="0.7"
         />

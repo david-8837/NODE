@@ -816,6 +816,7 @@
                                             "tag": "button",
                                             "attributes": {
                                               "class": "w-[39px] h-[39px] rounded-full relative flex items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none border-transparent hover:border-[#0051ff] hover:z-10",
+                                              "data-drop-slot": "dial-tl",
                                               "title": "Dial: blank"
                                             },
                                             "text": "",
@@ -936,6 +937,55 @@
                                                             "attributes": {
                                                               "offset": "100%",
                                                               "stop-color": "#004be8"
+                                                            },
+                                                            "text": "",
+                                                            "children": []
+                                                          }
+                                                        ]
+                                                      },
+                                                      {
+                                                        "tag": "lineargradient",
+                                                        "attributes": {
+                                                          "id": "dialDisallowedRed",
+                                                          "x1": "0%",
+                                                          "x2": "100%",
+                                                          "y1": "0%",
+                                                          "y2": "100%"
+                                                        },
+                                                        "text": "",
+                                                        "children": [
+                                                          {
+                                                            "tag": "stop",
+                                                            "attributes": {
+                                                              "offset": "0%",
+                                                              "stop-color": "#ef4444"
+                                                            },
+                                                            "text": "",
+                                                            "children": []
+                                                          },
+                                                          {
+                                                            "tag": "stop",
+                                                            "attributes": {
+                                                              "offset": "49%",
+                                                              "stop-color": "#ef4444"
+                                                            },
+                                                            "text": "",
+                                                            "children": []
+                                                          },
+                                                          {
+                                                            "tag": "stop",
+                                                            "attributes": {
+                                                              "offset": "51%",
+                                                              "stop-color": "#dc2626"
+                                                            },
+                                                            "text": "",
+                                                            "children": []
+                                                          },
+                                                          {
+                                                            "tag": "stop",
+                                                            "attributes": {
+                                                              "offset": "100%",
+                                                              "stop-color": "#b91c1c"
                                                             },
                                                             "text": "",
                                                             "children": []

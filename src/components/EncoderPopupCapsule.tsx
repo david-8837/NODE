@@ -9,6 +9,7 @@ export interface EncoderPopupCapsuleProps {
   actions: Record<EncoderSubActionId, EncoderSubBinding>;
   selectedSub: EncoderSubActionId | null;
   dragOverSub: EncoderSubActionId | null;
+  dragOverDisallowed?: boolean;
   onSelectSub: (sub: EncoderSubActionId) => void;
   onStartSubDrag: (e: React.PointerEvent, sub: EncoderSubActionId) => void;
 }
@@ -19,6 +20,7 @@ export function EncoderPopupCapsule({
   actions,
   selectedSub,
   dragOverSub,
+  dragOverDisallowed = false,
   onSelectSub,
   onStartSubDrag,
 }: EncoderPopupCapsuleProps) {
@@ -62,12 +64,17 @@ export function EncoderPopupCapsule({
         const subData = actions[item.id];
         const isSelected = selectedSub === item.id;
         const isDragOver = dragOverSub === item.id;
+        const isDisallowedDrag = isDragOver && Boolean(dragOverDisallowed);
         const isHovered = hoveredSub === item.id || isDragOver;
-        const accentStroke = isSelected ? '#ffffff' : '#0051ff';
+        const accentStroke = isDisallowedDrag
+          ? '#ffffff'
+          : isSelected
+          ? '#ffffff'
+          : '#0051ff';
 
         return (
           <div key={item.id} className="relative flex items-center justify-center">
-            {/* Floating white assigned-key pill above hovered sub-button */}
+            {/* Floating assigned-key pill above hovered sub-button (turns red if disallowed) */}
             <AnimatePresence>
               {isHovered && (
                 <motion.div
@@ -75,9 +82,13 @@ export function EncoderPopupCapsule({
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 4, scale: 0.94 }}
                   transition={{ duration: 0.15, ease: [0.32, 0.72, 0, 1] }}
-                  className="absolute -top-[36px] left-1/2 -translate-x-1/2 h-[27px] px-[13px] rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.07)] flex items-center justify-center text-[11px] font-medium text-[#555555] whitespace-nowrap pointer-events-none z-40"
+                  className={`absolute -top-[36px] left-1/2 -translate-x-1/2 h-[27px] px-[13px] rounded-full flex items-center justify-center text-[11px] font-medium whitespace-nowrap pointer-events-none z-40 transition-colors ${
+                    isDisallowedDrag
+                      ? 'bg-[#ef4444] text-white shadow-[0_2px_10px_rgba(239,68,68,0.5)]'
+                      : 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.07)] text-[#555555]'
+                  }`}
                 >
-                  {subData.binding}
+                  {isDisallowedDrag ? 'Cannot assign here' : subData.binding}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -93,7 +104,9 @@ export function EncoderPopupCapsule({
               onMouseEnter={() => setHoveredSub(item.id)}
               onMouseLeave={() => setHoveredSub(null)}
               className={`w-[46px] h-[46px] rounded-full relative flex flex-col items-center justify-center border-[1.5px] transition-all duration-150 cursor-pointer focus:outline-none select-none ${
-                isSelected
+                isDisallowedDrag
+                  ? 'bg-[#ef4444] border-[#ef4444] text-white shadow-[0_0_18px_rgba(239,68,68,0.95)] ring-2 ring-red-400/40 z-20'
+                  : isSelected
                   ? 'bg-[#0051ff] border-[#0051ff] text-white shadow-[0_0_14px_rgba(0,81,255,0.85)]'
                   : isDragOver
                   ? 'bg-[#313131] text-white border-[#0051ff] shadow-[0_0_10px_rgba(0,81,255,0.5)]'

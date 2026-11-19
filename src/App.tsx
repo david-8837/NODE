@@ -793,6 +793,7 @@ export default function App() {
   const [dragOverTarget, setDragOverTarget] = useState<{
     slotId: KeySlotId;
     subAction?: EncoderSubActionId;
+    isDisallowed?: boolean;
   } | null>(null);
   const dragSessionRef = useRef<{
     item: BasicTileItem;
@@ -2621,6 +2622,62 @@ export default function App() {
     };
   }, [creatorModalTab, actionAdvanceMode, actionRecordingStatus]);
 
+  const isDragItemDisallowedForTarget = (
+    targetSlotId: KeySlotId,
+    targetSub?: EncoderSubActionId
+  ): boolean => {
+    const session = dragSessionRef.current;
+    if (!session) return false;
+
+    // Checks apply when hovering over encoder rotary rotation (CW or CCW)
+    const effectiveSub =
+      targetSub ||
+      (targetSlotId === GRID_MACRO_ENCODER_SLOT ? selectedEncoderSub : undefined);
+
+    if (
+      targetSlotId === GRID_MACRO_ENCODER_SLOT &&
+      (effectiveSub === 'cw' || effectiveSub === 'ccw')
+    ) {
+      if (session.fromSlotId) {
+        const sourceItem = currentLayer[session.fromSlotId];
+        if (session.fromSubAction) {
+          const encoderActions = getEncoderActions(sourceItem);
+          const subItem = encoderActions[session.fromSubAction];
+          const check = isActionAllowedOnEncoderRotation({
+            binding: subItem?.binding,
+          });
+          return !check.allowed;
+        }
+        const check = isActionAllowedOnEncoderRotation({
+          actionType: sourceItem?.actionType,
+          execution: sourceItem?.execution,
+          binding: sourceItem?.binding || sourceItem?.label,
+        });
+        return !check.allowed;
+      }
+
+      if (session.item && !session.item.isClearIcon) {
+        const actionTypeMap: Record<MappingTabId, string> = {
+          Basic: 'Basic input',
+          Action: 'Shortcut',
+          'Multi-A': 'Multi-step action',
+          'Smart-A': 'Smart Action',
+        };
+        const check = isActionAllowedOnEncoderRotation({
+          actionType: actionTypeMap[session.sourceTab],
+          execution: session.item.execution,
+          binding:
+            session.item.listLabel ||
+            session.item.main.replace(/\n/g, ' ') ||
+            'blank',
+        });
+        return !check.allowed;
+      }
+    }
+
+    return false;
+  };
+
   useEffect(() => {
     const handleWindowPointerMove = (e: PointerEvent) => {
       // 1. Handle keycap tile drag with subtle corner-held circular swing
@@ -2679,7 +2736,8 @@ export default function App() {
               'data-drop-encoder-sub'
             ) as EncoderSubActionId | null;
             if (slotId && subAction) {
-              setDragOverTarget({ slotId, subAction });
+              const isDisallowed = isDragItemDisallowedForTarget(slotId, subAction);
+              setDragOverTarget({ slotId, subAction, isDisallowed });
               return;
             }
           }
@@ -2689,7 +2747,8 @@ export default function App() {
               'data-drop-slot'
             ) as KeySlotId | null;
             if (slotId) {
-              setDragOverTarget({ slotId });
+              const isDisallowed = isDragItemDisallowedForTarget(slotId);
+              setDragOverTarget({ slotId, isDisallowed });
               return;
             }
           }
@@ -4179,6 +4238,7 @@ export default function App() {
             draggedTile={draggedTile}
             dragSpringBobY={dragSpringBobY}
             dragSpringRotate={dragSpringRotate}
+            isDisallowedTarget={Boolean(dragOverTarget?.isDisallowed)}
           />
         )}
       </AnimatePresence>

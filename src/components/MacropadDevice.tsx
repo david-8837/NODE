@@ -24,7 +24,11 @@ export interface MacropadDeviceProps {
   layer: LayerKeymap;
   selectedKey: KeySlotId | null;
   selectedEncoderSub: EncoderSubActionId | null;
-  dragOverTarget: { slotId: KeySlotId; subAction?: EncoderSubActionId } | null;
+  dragOverTarget: {
+    slotId: KeySlotId;
+    subAction?: EncoderSubActionId;
+    isDisallowed?: boolean;
+  } | null;
   draggedFromSlot?: KeySlotId | null;
   encoderAngle: number;
   onSelectKey: (slotId: KeySlotId) => void;
@@ -82,6 +86,10 @@ export function MacropadDevice({
                 ? dragOverTarget.subAction || null
                 : null
             }
+            dragOverDisallowed={
+              dragOverTarget?.slotId === GRID_MACRO_ENCODER_SLOT &&
+              Boolean(dragOverTarget.isDisallowed)
+            }
             onSelectSub={(sub) =>
               onSelectEncoderSub(GRID_MACRO_ENCODER_SLOT, sub)
             }
@@ -122,6 +130,15 @@ export function MacropadDevice({
                 title={`Dial: ${layer[GRID_MACRO_ENCODER_SLOT].binding}`}
                 onClick={() => onSelectKey(GRID_MACRO_ENCODER_SLOT)}
                 isPressed={isDialPressed}
+                dragOver={
+                  dragOverTarget?.slotId === GRID_MACRO_ENCODER_SLOT &&
+                  !dragOverTarget.subAction
+                }
+                dragOverDisallowed={
+                  dragOverTarget?.slotId === GRID_MACRO_ENCODER_SLOT &&
+                  !dragOverTarget.subAction &&
+                  Boolean(dragOverTarget.isDisallowed)
+                }
               />
             </motion.div>
           </div>
@@ -143,6 +160,10 @@ export function MacropadDevice({
                 slotNumber={showSlotNumbers ? index + 1 : undefined}
                 selected={selectedKey === slotId}
                 dragOver={dragOverTarget?.slotId === slotId}
+                dragOverDisallowed={
+                  dragOverTarget?.slotId === slotId &&
+                  Boolean(dragOverTarget.isDisallowed)
+                }
                 isDraggingSource={draggedFromSlot === slotId}
                 isPressed={activePressedSlot === slotId}
                 onClick={() => onSelectKey(slotId)}
@@ -172,6 +193,7 @@ export interface KeycapButtonProps {
   slotNumber?: number;
   selected: boolean;
   dragOver?: boolean;
+  dragOverDisallowed?: boolean;
   isDraggingSource?: boolean;
   isPressed?: boolean;
   isLowercase?: boolean;
@@ -195,6 +217,7 @@ export function KeycapButton({
   slotNumber,
   selected,
   dragOver,
+  dragOverDisallowed = false,
   isDraggingSource,
   isPressed = false,
   isLowercase,
@@ -243,8 +266,10 @@ export function KeycapButton({
           ? 'bg-[#1e1e1e] text-[#6d6d6d] border-transparent'
           : selected
           ? 'bg-[#0051ff] border-[#0051ff] text-white shadow-[0_0_16px_rgba(0,81,255,0.85)] z-10'
+          : dragOver && dragOverDisallowed
+          ? 'bg-[#313131] text-white border-[#ef4444] shadow-[0_0_16px_rgba(239,68,68,0.95)] ring-2 ring-red-400/40 z-20'
           : dragOver
-          ? 'bg-[#313131] text-[#f3f3f3] border-[#0051ff] z-10'
+          ? 'bg-[#313131] text-[#f3f3f3] border-[#0051ff] shadow-[0_0_12px_rgba(0,81,255,0.65)] z-10'
           : 'bg-[#313131] text-[#f3f3f3] border-t-[#3e3e3e] border-l-[#3e3e3e] border-b-[#252525] border-r-[#252525] hover:border-[#0051ff] hover:z-10 active:scale-[0.97]'
       }`}
     >
