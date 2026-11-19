@@ -2192,6 +2192,31 @@ export default function App() {
           const actionsB = getEncoderActions(copy[slotB]);
           const entryA = { ...actionsA[subA] };
           const entryB = { ...actionsB[subB] };
+
+          // Verify limitations when swapping encoder directions
+          if ((subB === 'cw' || subB === 'ccw') && entryA.binding && entryA.binding !== 'blank') {
+            const check = isActionAllowedOnEncoderRotation({
+              execution: entryA.execution,
+              binding: entryA.binding,
+              label: entryA.label,
+            });
+            if (!check.allowed) {
+              handleRotaryLimitationAttempt(subB, check.reason, entryA.label || entryA.binding);
+              return copy;
+            }
+          }
+          if ((subA === 'cw' || subA === 'ccw') && entryB.binding && entryB.binding !== 'blank') {
+            const check = isActionAllowedOnEncoderRotation({
+              execution: entryB.execution,
+              binding: entryB.binding,
+              label: entryB.label,
+            });
+            if (!check.allowed) {
+              handleRotaryLimitationAttempt(subA, check.reason, entryB.label || entryB.binding);
+              return copy;
+            }
+          }
+
           if (slotA === slotB) {
             copy[slotA].encoderActions = {
               ...actionsA,
@@ -2212,6 +2237,20 @@ export default function App() {
           const isBEmpty =
             !itemB.iconId &&
             (!itemB.label || itemB.label === '—' || itemB.binding === 'blank');
+
+          if ((subA === 'cw' || subA === 'ccw') && !isBEmpty) {
+            const check = isActionAllowedOnEncoderRotation({
+              actionType: itemB.actionType,
+              execution: itemB.execution,
+              binding: itemB.binding || itemB.label,
+              label: itemB.label,
+            });
+            if (!check.allowed) {
+              handleRotaryLimitationAttempt(subA, check.reason, itemB.label || itemB.binding);
+              return copy;
+            }
+          }
+
           copy[slotA].encoderActions = {
             ...actionsA,
             [subA]: {
@@ -2240,6 +2279,7 @@ export default function App() {
               actionType: itemA.actionType,
               execution: itemA.execution,
               binding: itemA.binding || itemA.label,
+              label: itemA.label,
             });
             if (!check.allowed) {
               handleRotaryLimitationAttempt(subB, check.reason, itemA.label || itemA.binding);
@@ -2261,6 +2301,11 @@ export default function App() {
               binding: itemA.binding || itemA.label,
             },
           };
+          return copy;
+        }
+
+        // Avoid swapping the entire encoder slot object with a matrix key slot
+        if (slotA === GRID_MACRO_ENCODER_SLOT || slotB === GRID_MACRO_ENCODER_SLOT) {
           return copy;
         }
 
@@ -3141,12 +3186,6 @@ export default function App() {
     }
     setSelectedKey(slotId);
     setSelectedEncoderSub(subAction);
-    if (
-      (subAction === 'cw' || subAction === 'ccw') &&
-      (mappingTab === 'Multi-A' || mappingTab === 'Smart-A')
-    ) {
-      setMappingTab('Basic');
-    }
     setMappingDrawerOpen(true);
     setMappingStackExpanded(false);
     setHoveredMappingType(null);
@@ -3746,6 +3785,14 @@ export default function App() {
     ),
   })).filter((sec) => sec.items.length > 0);
 
+  const handleHideToTray = useCallback(() => {
+    if (window.electronAPI?.hideToTray) {
+      void window.electronAPI.hideToTray();
+    } else {
+      showToast('Hide to tray is active in the desktop app');
+    }
+  }, [showToast]);
+
   // Editing stays locked until the firmware has answered. Returning here means
   // the configurator below is never mounted, so no control can reach a device
   // that is absent. Profile state lives above this branch and is preserved.
@@ -3777,6 +3824,7 @@ export default function App() {
         onRedo={handleRedo}
         deviceStatus={deviceStatus}
         onToggleDeviceConnection={handleToggleDeviceConnection}
+        onHideToTray={handleHideToTray}
         onLogoClick={() => {
           setPreviewPreset(null);
           setActiveNav('Keymap');
@@ -3938,14 +3986,18 @@ export default function App() {
             </motion.div>
           </div>
 
-          {/* BOTTOM-LEFT TIP WIDGET */}
+          {/* BOTTOM-LEFT TIP WIDGET (Standard bar or Floating pill dock) */}
           <motion.div
             {...getEntranceMotionProps(entrancePhase, {
               delay: 0.35,
               duration: 0.4,
               fadeOnly: true,
             })}
-            className="px-[27px] pb-[24px] flex items-start"
+            className={
+              appSettings.floatingDock
+                ? 'fixed bottom-[18px] left-[27px] z-20 bg-white/90 backdrop-blur-md px-[18px] py-[8px] rounded-full border border-black/[0.06] shadow-[0_4px_16px_rgba(0,0,0,0.06)] flex items-center transition-all'
+                : 'px-[27px] pb-[24px] flex items-start transition-all'
+            }
           >
             <div
               onClick={() => setTipIndex((i) => (i + 1) % TIPS.length)}
@@ -4187,6 +4239,8 @@ export default function App() {
           deviceStatus={deviceStatus}
           appVersion={appVersion}
           launchAtStartup={launchAtStartup}
+          startHiddenInTray={appSettings.startHiddenInTray}
+          floatingDock={appSettings.floatingDock}
           settingsCapabilities={settingsCapabilities}
           allowTerminalSmartActions={allowTerminalSmartActions}
           allowDeviceNotifications={allowDeviceNotifications}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Globe, Plus, X } from 'lucide-react';
 import { InfoCircleIcon } from './UiIcons';
 import { getEntranceMotionProps, type EntrancePhase } from '../entranceAnimations';
 import type { ProfileData } from '../presetLibrary';
@@ -134,6 +134,19 @@ export function ProfileSelectorCapsule({
             <ChevronDown className="w-[13px] h-[13px] stroke-[1.8]" />
           )}
         </button>
+
+        {onOpenCommunityHub && (
+          <button
+            type="button"
+            onClick={onOpenCommunityHub}
+            aria-label="Community Hub"
+            title="Community Profile Hub"
+            className="h-[26px] px-[10px] rounded-full bg-black hover:bg-neutral-800 text-white flex items-center gap-[5.5px] text-[11px] font-medium transition-all shadow-[0_1px_2px_rgba(0,0,0,0.1)] cursor-pointer shrink-0"
+          >
+            <Globe className="w-[12px] h-[12px] stroke-[1.8]" />
+            <span>Hub</span>
+          </button>
+        )}
 
         <AnimatePresence>
           {profileMenuOpen && (

@@ -9,6 +9,8 @@ export const FIRMWARE_BUILD_WORKFLOW_URL =
 
 export interface AppSettings {
   launchAtStartup: boolean;
+  startHiddenInTray: boolean;
+  floatingDock: boolean;
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
   autoSwitchProfile: boolean;
@@ -28,6 +30,8 @@ export type SupportLinkKey =
 
 export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   launchAtStartup: false,
+  startHiddenInTray: false,
+  floatingDock: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
   autoSwitchProfile: false,
@@ -135,6 +139,7 @@ export interface ElectronApi {
   commandCheatSheet?: (command: import('./cheatSheet').CheatSheetCommand, token?: string) => Promise<boolean>;
   minimize?: () => Promise<void>;
   maximize?: () => Promise<void>;
+  hideToTray?: () => Promise<void>;
   close?: () => Promise<void>;
   isMaximized?: () => Promise<boolean>;
   onHardwareSync?: (callback: () => void) => (() => void) | void;
@@ -175,6 +180,12 @@ export function normalizeAppSettings(value: unknown): AppSettings {
     launchAtStartup: typeof raw.launchAtStartup === 'boolean'
       ? raw.launchAtStartup
       : DEFAULT_APP_SETTINGS.launchAtStartup,
+    startHiddenInTray: typeof raw.startHiddenInTray === 'boolean'
+      ? raw.startHiddenInTray
+      : DEFAULT_APP_SETTINGS.startHiddenInTray,
+    floatingDock: typeof raw.floatingDock === 'boolean'
+      ? raw.floatingDock
+      : DEFAULT_APP_SETTINGS.floatingDock,
     allowTerminalSmartActions: typeof raw.allowTerminalSmartActions === 'boolean'
       ? raw.allowTerminalSmartActions
       : DEFAULT_APP_SETTINGS.allowTerminalSmartActions,

@@ -15,6 +15,8 @@ export interface SettingsScreenProps {
   deviceStatus: QmkViaStatus;
   appVersion: string;
   launchAtStartup: boolean;
+  startHiddenInTray?: boolean;
+  floatingDock?: boolean;
   settingsCapabilities: SettingsCapabilities;
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
@@ -41,6 +43,8 @@ export function SettingsScreen({
   deviceStatus,
   appVersion,
   launchAtStartup,
+  startHiddenInTray = false,
+  floatingDock = false,
   settingsCapabilities,
   allowTerminalSmartActions,
   allowDeviceNotifications,
@@ -129,7 +133,12 @@ export function SettingsScreen({
               </h2>
               <div className="divide-y divide-[#dadada] text-[10.5px]">
                 <div className="py-[8px] flex items-center justify-between">
-                  <span className="text-[#585858]">Launch app at startup</span>
+                  <div className="flex flex-col pr-4">
+                    <span className="text-[#585858]">Launch app at startup</span>
+                    <span className="text-[#888888] text-[9.5px] mt-[1px] leading-tight">
+                      Automatically start NODE studio when you turn on your laptop or sign in.
+                    </span>
+                  </div>
                   <SettingsSwitch
                     checked={launchAtStartup}
                     disabled={!settingsCapabilities.launchAtStartup}
@@ -137,6 +146,32 @@ export function SettingsScreen({
                       ? 'Start the installed app when you sign in'
                       : 'Available only in the installed desktop app'}
                     onChange={() => void handleAppSettingChange('launchAtStartup', !launchAtStartup)}
+                  />
+                </div>
+                <div className="py-[8px] flex items-center justify-between">
+                  <div className="flex flex-col pr-4">
+                    <span className="text-[#585858]">Start hidden in the tray</span>
+                    <span className="text-[#888888] text-[9.5px] mt-[1px] leading-tight">
+                      Every time NODE starts, it runs in the background with its window hidden. Click the tray icon or open NODE again to show it.
+                    </span>
+                  </div>
+                  <SettingsSwitch
+                    checked={startHiddenInTray}
+                    title="Every time NODE starts, it runs in the background with its window hidden. Click the tray icon or open NODE again to show it."
+                    onChange={() => void handleAppSettingChange('startHiddenInTray', !startHiddenInTray)}
+                  />
+                </div>
+                <div className="py-[8px] flex items-center justify-between">
+                  <div className="flex flex-col pr-4">
+                    <span className="text-[#585858]">Floating dock</span>
+                    <span className="text-[#888888] text-[9.5px] mt-[1px] leading-tight">
+                      Show the bottom bar as a floating pill instead of a full-width bar.
+                    </span>
+                  </div>
+                  <SettingsSwitch
+                    checked={floatingDock}
+                    title="Show the bottom bar as a floating pill instead of a full-width bar."
+                    onChange={() => void handleAppSettingChange('floatingDock', !floatingDock)}
                   />
                 </div>
                 <div className="py-[8px] flex items-center justify-between">

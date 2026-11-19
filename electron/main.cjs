@@ -159,6 +159,8 @@ function updateCheatSheetGlobalHotkey(settings) {
 
 const DEFAULT_APP_SETTINGS = Object.freeze({
   launchAtStartup: false,
+  startHiddenInTray: false,
+  floatingDock: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
   autoSwitchProfile: false,
@@ -179,6 +181,8 @@ function readStoredAppSettings() {
     const stored = JSON.parse(fs.readFileSync(getAppSettingsPath(), 'utf8'));
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
       for (const key of [
+        'startHiddenInTray',
+        'floatingDock',
         'allowTerminalSmartActions',
         'allowDeviceNotifications',
         'autoSwitchProfile',
@@ -746,7 +750,11 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    if (!isPersistenceSmokeTest()) mainWindow.show();
+    const isAutoStartHidden = process.argv.includes('--hidden') || (
+      readStoredAppSettings().startHiddenInTray === true &&
+      (Boolean(app.getLoginItemSettings?.().wasOpenedAtLogin) || process.argv.includes('--hidden'))
+    );
+    if (!isPersistenceSmokeTest() && !isAutoStartHidden) mainWindow.show();
     if (isDev) {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
@@ -859,6 +867,10 @@ ipcMain.handle('window-close', (event) => {
   if (isTrustedRenderer(event) && mainWindow) mainWindow.close();
 });
 
+ipcMain.handle('window-hide-to-tray', (event) => {
+  if (isTrustedRenderer(event) && mainWindow) mainWindow.hide();
+});
+
 ipcMain.handle('window-is-maximized', (event) => {
   return isTrustedRenderer(event) && mainWindow ? mainWindow.isMaximized() : false;
 });
@@ -931,7 +943,24 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
       if (!getSettingsCapabilities().launchAtStartup) {
         return { ok: false, error: 'Launch at startup is only supported by an installed Windows or macOS app' };
       }
-      app.setLoginItemSettings({ openAtLogin: value, path: process.execPath });
+      const stored = readStoredAppSettings();
+      const args = stored.startHiddenInTray ? ['--hidden'] : [];
+      app.setLoginItemSettings({ openAtLogin: Boolean(value), path: process.execPath, args });
+      return getNativeAppSettings();
+    }
+
+    if (key === 'startHiddenInTray') {
+      const settings = { ...readStoredAppSettings(), startHiddenInTray: Boolean(value) };
+      writeStoredAppSettings(settings);
+      if (getSettingsCapabilities().launchAtStartup) {
+        try {
+          const login = app.getLoginItemSettings();
+          if (login.openAtLogin) {
+            const args = value ? ['--hidden'] : [];
+            app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args });
+          }
+        } catch {}
+      }
       return getNativeAppSettings();
     }
 

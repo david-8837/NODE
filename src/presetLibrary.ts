@@ -53,7 +53,23 @@ export function formatEncoderShortLabel(text: string): string {
 export function getEncoderActions(
   assignment: KeyAssignment
 ): Record<EncoderSubActionId, EncoderSubBinding> {
-  return assignment.encoderActions || BLANK_ENCODER_ACTIONS;
+  const actions = assignment?.encoderActions || BLANK_ENCODER_ACTIONS;
+  let sanitized: Record<EncoderSubActionId, EncoderSubBinding> | null = null;
+  for (const dir of ['cw', 'ccw'] as const) {
+    const entry = actions[dir];
+    if (entry && entry.binding && entry.binding !== 'blank') {
+      const check = isActionAllowedOnEncoderRotation({
+        execution: entry.execution,
+        binding: entry.binding,
+        label: entry.label,
+      });
+      if (!check.allowed) {
+        if (!sanitized) sanitized = { ...actions };
+        sanitized[dir] = { label: '—', binding: 'blank' };
+      }
+    }
+  }
+  return sanitized || actions;
 }
 
 export interface ProfileData {
@@ -244,6 +260,7 @@ export function isActionAllowedOnEncoderRotation(item: {
   actionType?: string;
   execution?: { kind?: string; actionType?: string } | null;
   binding?: string;
+  label?: string;
 }): { allowed: boolean; reason?: string } {
   if (item.execution) {
     if (item.execution.kind === 'multi') {
@@ -253,11 +270,27 @@ export function isActionAllowedOnEncoderRotation(item: {
       return { allowed: false, reason: 'Smart actions (Apps, text blocks, commands) cannot be assigned to rotary rotation (CW/CCW)' };
     }
   }
-  if (item.actionType === 'Multi-step action') {
+  if (item.actionType === 'Multi-step action' || item.actionType === 'Multi-A') {
     return { allowed: false, reason: 'Multi-actions cannot be assigned to rotary rotation (CW/CCW)' };
   }
-  if (item.actionType === 'Smart Action') {
+  if (item.actionType === 'Smart Action' || item.actionType === 'Smart-A') {
     return { allowed: false, reason: 'Smart actions cannot be assigned to rotary rotation (CW/CCW)' };
+  }
+  const textToCheck = [item.binding, item.label].filter(Boolean).join(' ').toLowerCase();
+  if (textToCheck) {
+    if (
+      textToCheck.includes('multi') ||
+      textToCheck.includes('smart') ||
+      textToCheck.startsWith('app:') ||
+      textToCheck.startsWith('cmd:') ||
+      textToCheck.startsWith('txt:') ||
+      textToCheck.startsWith('web:')
+    ) {
+      return {
+        allowed: false,
+        reason: 'Multi-actions and Smart actions cannot be assigned to rotary rotation (CW/CCW)',
+      };
+    }
   }
   if (item.binding) {
     const normalized = item.binding.toLowerCase().replace(/\s+/g, ' ').trim();

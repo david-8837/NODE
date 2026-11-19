@@ -230,4 +230,33 @@ describe('AppHeader component', () => {
     expect(statusBtn).not.toBeNull();
     expect(statusBtn?.textContent).toContain('Not connected');
   });
+
+  it('renders hide to tray button and invokes onHideToTray when clicked', async () => {
+    const onHideToTray = vi.fn();
+    await act(async () => {
+      root.render(
+        createElement(AppHeader, {
+          activeNav: 'Keymap',
+          canUndo: false,
+          canRedo: false,
+          onUndo: vi.fn(),
+          onRedo: vi.fn(),
+          deviceStatus: { state: 'disconnected' },
+          onToggleDeviceConnection: vi.fn(),
+          onHideToTray,
+          onLogoClick: vi.fn(),
+          onNavTabClick: vi.fn(),
+        })
+      );
+    });
+
+    const hideBtn = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Hide to tray"]'
+    );
+    expect(hideBtn).not.toBeNull();
+    act(() => {
+      hideBtn?.click();
+    });
+    expect(onHideToTray).toHaveBeenCalledTimes(1);
+  });
 });
