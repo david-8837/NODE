@@ -26,7 +26,8 @@ export interface SettingsScreenProps {
   appUpdateCheckPending?: boolean;
   cheatSheetGlobalHotkeyEnabled?: boolean;
   cheatSheetGlobalHotkey?: string;
-  handleAppSettingChange: (key: AppSettingKey, value: boolean | string) => Promise<void> | void;
+  rotaryStepMultiplier?: number;
+  handleAppSettingChange: (key: AppSettingKey, value: boolean | string | number) => Promise<void> | void;
   handleUpdateProfileRules?: (rules: AppProfileMappingRule[]) => void;
   handleToggleCheatSheet?: () => void;
   handleOpenSupportLink: (key: SupportLinkKey, label: string) => Promise<void> | void;
@@ -51,6 +52,7 @@ export function SettingsScreen({
   appUpdateCheckPending = false,
   cheatSheetGlobalHotkeyEnabled = true,
   cheatSheetGlobalHotkey = 'Ctrl+Alt+M',
+  rotaryStepMultiplier = 1,
   handleAppSettingChange,
   handleUpdateProfileRules,
   handleToggleCheatSheet,
@@ -412,6 +414,44 @@ export function SettingsScreen({
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* ROTARY DIAL SENSITIVITY & STEP MULTIPLIER CARD */}
+            <div className="bg-[#e3e3e3] rounded-[16px] px-[16px] py-[14px]">
+              <div className="flex items-center justify-between mb-[3px]">
+                <h2 className="text-[13.5px] font-medium text-[#4a4a4a]">
+                  Rotary Dial Sensitivity
+                </h2>
+                <span className="font-mono text-[10px] bg-white px-[8px] py-[2px] rounded-[6px] text-[#0051ff] font-semibold border border-black/10 shadow-[0_1px_1px_rgba(0,0,0,0.02)]">
+                  {rotaryStepMultiplier}× multiplier
+                </span>
+              </div>
+              <p className="text-[10px] text-[#666] mb-[10px]">
+                Pulses dispatched per detent click. Increase for faster volume control, timeline scrubbing, or brush sizing.
+              </p>
+
+              <div className="flex items-center gap-[6px]">
+                {[
+                  { value: 1, label: '1× (Normal)' },
+                  { value: 2, label: '2× (Fast)' },
+                  { value: 3, label: '3× (Faster)' },
+                  { value: 4, label: '4×' },
+                  { value: 5, label: '5× (Max)' },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => void handleAppSettingChange('rotaryStepMultiplier', value)}
+                    className={`flex-1 py-[4px] px-[6px] rounded-[8px] text-[10px] font-medium transition-all cursor-pointer text-center ${
+                      rotaryStepMultiplier === value
+                        ? 'bg-[#0051ff] text-white shadow-[0_1px_3px_rgba(0,81,255,0.3)]'
+                        : 'bg-white text-[#555] hover:bg-black/5 border border-black/10'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>

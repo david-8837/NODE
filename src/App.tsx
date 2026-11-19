@@ -1696,7 +1696,7 @@ export default function App() {
     setIconPickerTab(tab);
   };
 
-  const handleAppSettingChange = async (key: AppSettingKey, value: boolean | string) => {
+  const handleAppSettingChange = async (key: AppSettingKey, value: boolean | string | number) => {
     const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
     const result = await tools.set(key, value);
     if (!result.ok || !result.settings) {
@@ -1715,6 +1715,8 @@ export default function App() {
         : 'Cheat Sheet global hotkey disabled');
     } else if (key === 'cheatSheetGlobalHotkey') {
       showToast(`Global hotkey set to ${value}`);
+    } else if (key === 'rotaryStepMultiplier') {
+      showToast(`Rotary multiplier set to ${value}×`);
     }
   };
 
@@ -2898,7 +2900,10 @@ export default function App() {
       flashSimulatedPress(slotId);
       if (slotId === GRID_MACRO_ENCODER_SLOT) {
         setEncoderAngle((angle) => (angle + 30) % 360);
-        runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
+        const mult = appSettings.rotaryStepMultiplier || 1;
+        for (let i = 0; i < mult; i++) {
+          runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
+        }
       } else if (cheatSheetCommand(currentLayer[slotId]?.binding) !== 'hold-start') {
         runSimulationAction(currentLayer[slotId]);
       }
@@ -2940,7 +2945,13 @@ export default function App() {
       flashSimulatedPress(slotId);
       if (subAction === 'cw') setEncoderAngle((angle) => (angle + 30) % 360);
       if (subAction === 'ccw') setEncoderAngle((angle) => (angle - 30 + 360) % 360);
-      runSimulationAction(getEncoderActions(currentLayer[slotId])[subAction]);
+      const mult =
+        subAction === 'cw' || subAction === 'ccw'
+          ? appSettings.rotaryStepMultiplier || 1
+          : 1;
+      for (let i = 0; i < mult; i++) {
+        runSimulationAction(getEncoderActions(currentLayer[slotId])[subAction]);
+      }
       return;
     }
     if (selectedDrawerTile) {
@@ -4000,6 +4011,7 @@ export default function App() {
           appUpdateCheckPending={appUpdateCheckPending}
           cheatSheetGlobalHotkeyEnabled={appSettings.cheatSheetGlobalHotkeyEnabled}
           cheatSheetGlobalHotkey={appSettings.cheatSheetGlobalHotkey}
+          rotaryStepMultiplier={appSettings.rotaryStepMultiplier}
           handleAppSettingChange={handleAppSettingChange}
           handleUpdateProfileRules={handleUpdateProfileRules}
           handleToggleCheatSheet={handleToggleCheatSheet}

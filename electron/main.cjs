@@ -165,6 +165,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   appProfileRules: [],
   cheatSheetGlobalHotkeyEnabled: true,
   cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
+  rotaryStepMultiplier: 1,
 });
 const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
 
@@ -187,6 +188,9 @@ function readStoredAppSettings() {
       }
       if (typeof stored.cheatSheetGlobalHotkey === 'string' && stored.cheatSheetGlobalHotkey.trim()) {
         settings.cheatSheetGlobalHotkey = stored.cheatSheetGlobalHotkey.trim();
+      }
+      if (typeof stored.rotaryStepMultiplier === 'number' && stored.rotaryStepMultiplier >= 1 && stored.rotaryStepMultiplier <= 5) {
+        settings.rotaryStepMultiplier = Math.round(stored.rotaryStepMultiplier);
       }
       if (Array.isArray(stored.appProfileRules)) {
         settings.appProfileRules = stored.appProfileRules;
@@ -892,6 +896,8 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
     if (!Array.isArray(value)) return { ok: false, error: 'Invalid rules array' };
   } else if (key === 'cheatSheetGlobalHotkey') {
     if (typeof value !== 'string' || !value.trim()) return { ok: false, error: 'Invalid hotkey string' };
+  } else if (key === 'rotaryStepMultiplier') {
+    if (typeof value !== 'number' || value < 1 || value > 5) return { ok: false, error: 'Invalid rotary multiplier' };
   } else if (typeof value !== 'boolean') {
     return { ok: false, error: 'Invalid app setting' };
   }

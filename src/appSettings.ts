@@ -15,6 +15,7 @@ export interface AppSettings {
   appProfileRules: AppProfileMappingRule[];
   cheatSheetGlobalHotkeyEnabled: boolean;
   cheatSheetGlobalHotkey: string;
+  rotaryStepMultiplier: number;
 }
 
 export type AppSettingKey = keyof AppSettings;
@@ -33,6 +34,7 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   appProfileRules: Object.freeze([]) as unknown as AppProfileMappingRule[],
   cheatSheetGlobalHotkeyEnabled: true,
   cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
+  rotaryStepMultiplier: 1,
 });
 
 export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
@@ -119,7 +121,7 @@ export interface ElectronApi {
   getAppSettings?: () => Promise<NativeSettingsResult>;
   setAppSetting?: (
     key: AppSettingKey,
-    value: boolean | string | import('./activeWindow').AppProfileMappingRule[]
+    value: boolean | string | number | import('./activeWindow').AppProfileMappingRule[]
   ) => Promise<NativeSettingsResult>;
   registerCheatSheetHotkey?: (options: {
     enabled: boolean;
@@ -151,7 +153,7 @@ export interface AppSettingsTools {
   getDesktop: () => Promise<NativeSettingsResult | null>;
   set: (
     key: AppSettingKey,
-    value: boolean | string | AppProfileMappingRule[]
+    value: boolean | string | number | AppProfileMappingRule[]
   ) => Promise<NativeSettingsResult>;
   openSupport: (link: SupportLinkKey | string) => Promise<AppOperationResult>;
   checkFirmware: () => Promise<FirmwareCheckResult>;
@@ -192,6 +194,12 @@ export function normalizeAppSettings(value: unknown): AppSettings {
     cheatSheetGlobalHotkey: typeof raw.cheatSheetGlobalHotkey === 'string' && raw.cheatSheetGlobalHotkey.trim()
       ? raw.cheatSheetGlobalHotkey.trim()
       : DEFAULT_APP_SETTINGS.cheatSheetGlobalHotkey,
+    rotaryStepMultiplier:
+      typeof raw.rotaryStepMultiplier === 'number' &&
+      raw.rotaryStepMultiplier >= 1 &&
+      raw.rotaryStepMultiplier <= 5
+        ? Math.round(raw.rotaryStepMultiplier)
+        : DEFAULT_APP_SETTINGS.rotaryStepMultiplier,
   };
 }
 
@@ -461,7 +469,7 @@ export function createAppSettingsTools(host?: SettingsHost): AppSettingsTools {
       }
       return {
         ok: false,
-        currentVersion: '1.1.11',
+        currentVersion: '1.1.12',
         error: 'Update checking is only available in the desktop application',
       };
     },

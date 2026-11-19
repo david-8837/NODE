@@ -84,7 +84,7 @@ function fetchLatestRelease(customFetch) {
 
 async function checkForAppUpdates({ currentVersion, fetchFn } = {}) {
   const version =
-    currentVersion || (typeof app?.getVersion === 'function' ? app.getVersion() : '1.1.11');
+    currentVersion || (typeof app?.getVersion === 'function' ? app.getVersion() : '1.1.12');
 
   try {
     const result = await fetchLatestRelease(fetchFn);

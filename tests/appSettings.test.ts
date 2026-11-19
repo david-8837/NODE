@@ -121,6 +121,30 @@ describe('Settings persistence and native capabilities', () => {
     });
   });
 
+  it('configures, validates, and bounds rotaryStepMultiplier between 1 and 5', async () => {
+    const host = createWindow();
+    const tools = createAppSettingsTools(host);
+    expect(tools.read().rotaryStepMultiplier).toBe(1);
+
+    const multResult = await tools.set('rotaryStepMultiplier', 3);
+    expect(multResult).toMatchObject({
+      ok: true,
+      settings: { rotaryStepMultiplier: 3 },
+    });
+    expect(tools.read().rotaryStepMultiplier).toBe(3);
+
+    // Tests localStorage persistence with out-of-range bounds
+    host.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
+      rotaryStepMultiplier: 10,
+    }));
+    expect(tools.read().rotaryStepMultiplier).toBe(1);
+
+    host.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
+      rotaryStepMultiplier: 4.2,
+    }));
+    expect(tools.read().rotaryStepMultiplier).toBe(4);
+  });
+
   it('opens only configured support links and checks the real firmware release feed', async () => {
     const host = createWindow();
     const open = vi.fn(() => ({ opener: null }));
@@ -166,7 +190,7 @@ describe('Settings persistence and native capabilities', () => {
 
     const mockCheck = vi.fn().mockResolvedValue({
       ok: true,
-      currentVersion: '1.1.11',
+      currentVersion: '1.1.12',
       latestVersion: '1.2.0',
       hasUpdate: true,
     });
