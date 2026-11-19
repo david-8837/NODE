@@ -106,46 +106,59 @@ export default function DeviceConnectionGate({ status, onRetry }: DeviceConnecti
   return (
     <div
       data-testid="device-connection-gate"
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#f4f4f4] px-6 text-center"
+      className="fixed inset-0 z-[9999] flex flex-col bg-[#f4f4f4]"
     >
-      <MicroPadIllustration active={status.state === 'connected'} />
-
-      <h1 className="mt-7 text-[22px] font-semibold tracking-[-0.01em] text-[#111318]">
-        Connect your Micro Pad to continue.
-      </h1>
-
-      <div className="mt-3 flex items-center gap-2" role="status" aria-live="polite">
-        <span
-          aria-hidden
-          className={`inline-block h-[9px] w-[9px] rounded-full ${
-            status.state === 'connected'
-              ? 'bg-[#12b76a]'
-              : busy
-                ? 'bg-[#f79009] animate-pulse'
-                : 'bg-[#98a2b3]'
-          }`}
-        />
-        <span className="text-[13.5px] font-medium text-[#344054]">{copy.label}</span>
-      </div>
-
-      <p className="mt-1.5 max-w-[380px] text-[12.5px] leading-[1.55] text-[#667085]">
-        {status.error ? status.error : copy.detail}
-      </p>
-
-      <button
-        type="button"
-        onClick={() => { void handleRetry(); }}
-        disabled={busy}
-        data-testid="device-gate-retry"
-        className="mt-6 min-w-[190px] rounded-full bg-[#0051ff] px-7 py-[11px] text-[13.5px] font-medium text-white transition-opacity duration-150 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
+      {/* Sleek native titlebar integrating seamlessly with Electron's titleBarOverlay */}
+      <header
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        className="h-[38px] w-full bg-[#0e0e0e] flex items-center justify-between px-[18px] shrink-0 select-none border-b border-[#1c1c1c]"
       >
-        {busy ? 'Checking…' : 'Retry Connection'}
-      </button>
+        <div className="flex items-center gap-[4px]">
+          <span className="font-bold text-[13px] tracking-[0.16em] text-white leading-none">NODE</span>
+          <span className="text-[11px] text-[#8e8e93] font-medium tracking-wide">studio</span>
+        </div>
+      </header>
 
-      <p className="mt-5 max-w-[420px] text-[11.5px] leading-[1.6] text-[#98a2b3]">
-        Your profiles, layers and presets are saved on this computer and stay intact while the
-        device is unplugged. Editing unlocks once the Micro Pad responds.
-      </p>
+      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+        <MicroPadIllustration active={status.state === 'connected'} />
+
+        <h1 className="mt-7 text-[22px] font-semibold tracking-[-0.01em] text-[#111318]">
+          Connect your Micro Pad to continue.
+        </h1>
+
+        <div className="mt-3 flex items-center gap-2" role="status" aria-live="polite">
+          <span
+            aria-hidden
+            className={`inline-block h-[9px] w-[9px] rounded-full ${
+              status.state === 'connected'
+                ? 'bg-[#12b76a]'
+                : busy
+                  ? 'bg-[#f79009] animate-pulse'
+                  : 'bg-[#98a2b3]'
+            }`}
+          />
+          <span className="text-[13.5px] font-medium text-[#344054]">{copy.label}</span>
+        </div>
+
+        <p className="mt-1.5 max-w-[380px] text-[12.5px] leading-[1.55] text-[#667085]">
+          {status.error ? status.error : copy.detail}
+        </p>
+
+        <button
+          type="button"
+          onClick={() => { void handleRetry(); }}
+          disabled={busy}
+          data-testid="device-gate-retry"
+          className="mt-6 min-w-[190px] rounded-full bg-[#0051ff] px-7 py-[11px] text-[13.5px] font-medium text-white transition-opacity duration-150 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55 cursor-pointer"
+        >
+          {busy ? 'Checking…' : 'Retry Connection'}
+        </button>
+
+        <p className="mt-5 max-w-[420px] text-[11.5px] leading-[1.6] text-[#98a2b3]">
+          Your profiles, layers and presets are saved on this computer and stay intact while the
+          device is unplugged. Editing unlocks once the Micro Pad responds.
+        </p>
+      </div>
     </div>
   );
 }
