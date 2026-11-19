@@ -118,7 +118,7 @@ describe('Cheat-Sheet hardware path', () => {
 });
 
 describe('HUD document', () => {
-  it('uses white outlines with transparent interiors and a 3×3 grid', () => {
+  it('uses white outlines with frosted acrylic backdrop and a 3×3 grid', () => {
     const css = readFileSync('electron/cheatSheet.css', 'utf8');
     const html = readFileSync('electron/cheatSheet.html', 'utf8');
     const script = readFileSync('electron/cheatSheetRenderer.js', 'utf8');
@@ -128,12 +128,15 @@ describe('HUD document', () => {
     const style = dom.window.document.createElement('style');
     style.textContent = css;
     dom.window.document.head.appendChild(style);
-    for (const selector of ['html', 'body', 'main', '.dial-action', '.key', '.dial']) {
+    for (const selector of ['html', 'body']) {
       const element = dom.window.document.querySelector(selector)!;
       const computed = dom.window.getComputedStyle(element);
       expect(['transparent', 'rgba(0, 0, 0, 0)']).toContain(computed.backgroundColor);
       expect(computed.backgroundImage === '' || computed.backgroundImage === 'none').toBe(true);
     }
+    const mainEl = dom.window.document.querySelector('main')!;
+    const mainComputed = dom.window.getComputedStyle(mainEl);
+    expect(mainComputed.backgroundColor).toBe('rgba(14, 14, 18, 0.86)');
     expect(css).toContain('grid-template-columns: repeat(3, 1fr)');
     expect(css).toContain('grid-template-rows: repeat(3, 1fr)');
     expect(css).toContain('border: 1px solid white');
@@ -148,7 +151,8 @@ describe('HUD document', () => {
     }
     expect(dom.window.getComputedStyle(dom.window.document.querySelector('main')!).overflow).toBe('visible');
     expect(dom.window.getComputedStyle(dom.window.document.querySelector('.keys')!).overflow).toBe('visible');
-    expect(css).not.toMatch(/gradient|box-shadow|backdrop-filter/);
+    expect(css).toContain('backdrop-filter: blur(28px) saturate(190%)');
+    expect(css).toContain('box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65)');
     expect(dom.window.document.querySelectorAll('.key')).toHaveLength(9);
     expect(dom.window.document.querySelectorAll('.dial-action')).toHaveLength(3);
     dom.window.close();

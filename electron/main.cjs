@@ -389,7 +389,7 @@ async function captureVisualSmokeScreenshot() {
         hasDial: !!document.querySelector('.dial'),
         actionPanels: document.querySelectorAll('.dial-action').length,
         hasCopyIcon: !!document.querySelector('.key svg'),
-        transparent: ['html', 'body', 'main', '.key', '.dial-action', '.dial'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none'; }),
+        transparent: ['html', 'body'].every(selector => { const style = getComputedStyle(document.querySelector(selector)); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none'; }),
         outlines: keys.length === 9 && getComputedStyle(panel).overflow === 'visible' && getComputedStyle(grid).overflow === 'visible' && getComputedStyle(panel).borderTopWidth === '1px' && getComputedStyle(panel).borderTopStyle === 'solid' && getComputedStyle(panel).borderRadius === '22px' && keys.every(node => {
           const style = getComputedStyle(node), rect = node.getBoundingClientRect();
           return ['Top', 'Right', 'Bottom', 'Left'].every(side => style['border' + side + 'Width'] === '1px' && style['border' + side + 'Style'] === 'solid' && style['border' + side + 'Color'] === 'rgba(255, 255, 255, 0.85)') && style.borderRadius === '14px' && rect.width > 0 && rect.height > 0 && rect.left >= panelRect.left && rect.top >= panelRect.top && rect.right <= panelRect.right && rect.bottom <= panelRect.bottom;
