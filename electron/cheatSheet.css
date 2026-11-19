@@ -12,8 +12,9 @@ html, body {
 /* Only the white outlines, icons and text are painted: the desktop is visible
    through the panel, dial-action cells and keys, including the corners. */
 main {
-  width: 100%;
-  height: 100%;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  margin: 2px;
   overflow: visible;
   padding: 10px;
   border: 1px solid white;
