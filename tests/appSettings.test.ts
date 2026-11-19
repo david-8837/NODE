@@ -97,6 +97,30 @@ describe('Settings persistence and native capabilities', () => {
     expect(tools.read().allowDeviceNotifications).toBe(true);
   });
 
+  it('configures and persists Acrylic Cheat Sheet global hotkey settings', async () => {
+    const host = createWindow();
+    const tools = createAppSettingsTools(host);
+    expect(tools.read().cheatSheetGlobalHotkeyEnabled).toBe(true);
+    expect(tools.read().cheatSheetGlobalHotkey).toBe('Ctrl+Alt+M');
+
+    const toggleResult = await tools.set('cheatSheetGlobalHotkeyEnabled', false);
+    expect(toggleResult).toMatchObject({
+      ok: true,
+      settings: { cheatSheetGlobalHotkeyEnabled: false },
+    });
+
+    const keyResult = await tools.set('cheatSheetGlobalHotkey', 'Ctrl+Shift+Space');
+    expect(keyResult).toMatchObject({
+      ok: true,
+      settings: { cheatSheetGlobalHotkey: 'Ctrl+Shift+Space' },
+    });
+
+    expect(tools.read()).toMatchObject({
+      cheatSheetGlobalHotkeyEnabled: false,
+      cheatSheetGlobalHotkey: 'Ctrl+Shift+Space',
+    });
+  });
+
   it('opens only configured support links and checks the real firmware release feed', async () => {
     const host = createWindow();
     const open = vi.fn(() => ({ opener: null }));

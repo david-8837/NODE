@@ -13,6 +13,8 @@ export interface AppSettings {
   allowDeviceNotifications: boolean;
   autoSwitchProfile: boolean;
   appProfileRules: AppProfileMappingRule[];
+  cheatSheetGlobalHotkeyEnabled: boolean;
+  cheatSheetGlobalHotkey: string;
 }
 
 export type AppSettingKey = keyof AppSettings;
@@ -29,6 +31,8 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   allowDeviceNotifications: false,
   autoSwitchProfile: false,
   appProfileRules: Object.freeze([]) as unknown as AppProfileMappingRule[],
+  cheatSheetGlobalHotkeyEnabled: true,
+  cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
 });
 
 export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
@@ -115,8 +119,12 @@ export interface ElectronApi {
   getAppSettings?: () => Promise<NativeSettingsResult>;
   setAppSetting?: (
     key: AppSettingKey,
-    value: boolean | import('./activeWindow').AppProfileMappingRule[]
+    value: boolean | string | import('./activeWindow').AppProfileMappingRule[]
   ) => Promise<NativeSettingsResult>;
+  registerCheatSheetHotkey?: (options: {
+    enabled: boolean;
+    hotkey?: string;
+  }) => Promise<{ ok: boolean; registered?: boolean; error?: string }>;
   openExternal?: (url: string) => Promise<AppOperationResult>;
   flashFirmware?: () => Promise<AppOperationResult>;
   setSimulationEnabled?: (enabled: boolean) => Promise<SimulationToggleResult>;
@@ -141,7 +149,10 @@ export interface AppSettingsTools {
   read: () => AppSettings;
   save: (settings: Partial<AppSettings>) => AppSettings | null;
   getDesktop: () => Promise<NativeSettingsResult | null>;
-  set: (key: AppSettingKey, value: boolean | AppProfileMappingRule[]) => Promise<NativeSettingsResult>;
+  set: (
+    key: AppSettingKey,
+    value: boolean | string | AppProfileMappingRule[]
+  ) => Promise<NativeSettingsResult>;
   openSupport: (link: SupportLinkKey | string) => Promise<AppOperationResult>;
   checkFirmware: () => Promise<FirmwareCheckResult>;
   flashFirmware: () => Promise<AppOperationResult>;
@@ -175,6 +186,12 @@ export function normalizeAppSettings(value: unknown): AppSettings {
           (r) => r && typeof r.id === 'string' && typeof r.processPattern === 'string'
         )
       : [],
+    cheatSheetGlobalHotkeyEnabled: typeof raw.cheatSheetGlobalHotkeyEnabled === 'boolean'
+      ? raw.cheatSheetGlobalHotkeyEnabled
+      : DEFAULT_APP_SETTINGS.cheatSheetGlobalHotkeyEnabled,
+    cheatSheetGlobalHotkey: typeof raw.cheatSheetGlobalHotkey === 'string' && raw.cheatSheetGlobalHotkey.trim()
+      ? raw.cheatSheetGlobalHotkey.trim()
+      : DEFAULT_APP_SETTINGS.cheatSheetGlobalHotkey,
   };
 }
 

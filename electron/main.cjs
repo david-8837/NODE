@@ -1,5 +1,5 @@
 // electron/main.cjs - NODE studio Desktop Application Entry Point for Windows
-const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell, Tray } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath, pathToFileURL } = require('url');
@@ -128,12 +128,43 @@ function getRendererTrustDiagnostics(event) {
   };
 }
 
+let currentCheatSheetHotkey = null;
+
+function updateCheatSheetGlobalHotkey(settings) {
+  try {
+    if (currentCheatSheetHotkey) {
+      globalShortcut.unregister(currentCheatSheetHotkey);
+      currentCheatSheetHotkey = null;
+    }
+  } catch {}
+  const isEnabled = settings ? settings.cheatSheetGlobalHotkeyEnabled !== false : true;
+  if (!isEnabled) return;
+  const rawHotkey = (settings && typeof settings.cheatSheetGlobalHotkey === 'string' && settings.cheatSheetGlobalHotkey.trim())
+    ? settings.cheatSheetGlobalHotkey.trim()
+    : 'Ctrl+Alt+M';
+  const accelerator = rawHotkey.replace(/\bCtrl\b/g, 'CommandOrControl');
+  try {
+    const registered = globalShortcut.register(accelerator, () => {
+      cheatSheet.command('toggle');
+    });
+    if (registered) {
+      currentCheatSheetHotkey = accelerator;
+    } else {
+      console.warn(`Could not register global hotkey: ${accelerator}`);
+    }
+  } catch (error) {
+    console.warn(`Error registering global hotkey ${accelerator}:`, error?.message || error);
+  }
+}
+
 const DEFAULT_APP_SETTINGS = Object.freeze({
   launchAtStartup: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
   autoSwitchProfile: false,
   appProfileRules: [],
+  cheatSheetGlobalHotkeyEnabled: true,
+  cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
 });
 const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
 
@@ -146,8 +177,16 @@ function readStoredAppSettings() {
   try {
     const stored = JSON.parse(fs.readFileSync(getAppSettingsPath(), 'utf8'));
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
-      for (const key of ['allowTerminalSmartActions', 'allowDeviceNotifications', 'autoSwitchProfile']) {
+      for (const key of [
+        'allowTerminalSmartActions',
+        'allowDeviceNotifications',
+        'autoSwitchProfile',
+        'cheatSheetGlobalHotkeyEnabled',
+      ]) {
         if (typeof stored[key] === 'boolean') settings[key] = stored[key];
+      }
+      if (typeof stored.cheatSheetGlobalHotkey === 'string' && stored.cheatSheetGlobalHotkey.trim()) {
+        settings.cheatSheetGlobalHotkey = stored.cheatSheetGlobalHotkey.trim();
       }
       if (Array.isArray(stored.appProfileRules)) {
         settings.appProfileRules = stored.appProfileRules;
@@ -755,6 +794,20 @@ ipcMain.handle('cheat-sheet-update', (event, snapshot) =>
 ipcMain.handle('cheat-sheet-command', (event, command, token) =>
   isTrustedRenderer(event) && typeof command === 'string' && cheatSheet.command(command, token));
 
+ipcMain.handle('register-cheatsheet-hotkey', (event, options) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  const settings = readStoredAppSettings();
+  if (options && typeof options.enabled === 'boolean') {
+    settings.cheatSheetGlobalHotkeyEnabled = options.enabled;
+  }
+  if (options && typeof options.hotkey === 'string' && options.hotkey.trim()) {
+    settings.cheatSheetGlobalHotkey = options.hotkey.trim();
+  }
+  writeStoredAppSettings(settings);
+  updateCheatSheetGlobalHotkey(settings);
+  return { ok: true, registered: Boolean(currentCheatSheetHotkey) };
+});
+
 ipcMain.handle('match-profile-for-app', (event, windowInfo, profiles, customRules) => {
   if (!isTrustedRenderer(event)) return null;
   return matchProfileForApplication(windowInfo, profiles, customRules);
@@ -837,6 +890,8 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
   }
   if (key === 'appProfileRules') {
     if (!Array.isArray(value)) return { ok: false, error: 'Invalid rules array' };
+  } else if (key === 'cheatSheetGlobalHotkey') {
+    if (typeof value !== 'string' || !value.trim()) return { ok: false, error: 'Invalid hotkey string' };
   } else if (typeof value !== 'boolean') {
     return { ok: false, error: 'Invalid app setting' };
   }
@@ -852,6 +907,9 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
 
     const settings = { ...readStoredAppSettings(), [key]: value };
     writeStoredAppSettings(settings);
+    if (key === 'cheatSheetGlobalHotkeyEnabled' || key === 'cheatSheetGlobalHotkey') {
+      updateCheatSheetGlobalHotkey(settings);
+    }
     return getNativeAppSettings();
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -1036,6 +1094,7 @@ app.whenReady().then(() => {
   writeVisualSmokeDiagnostics({ stage: 'app-ready', packaged: app.isPackaged });
   createWindow();
   createSystemTray();
+  updateCheatSheetGlobalHotkey(readStoredAppSettings());
 
   const template = [
     {
@@ -1109,6 +1168,9 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', (event) => {
+  try {
+    globalShortcut.unregisterAll();
+  } catch {}
   if (appTray) {
     appTray.destroy();
     appTray = null;

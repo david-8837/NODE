@@ -1694,7 +1694,7 @@ export default function App() {
     setIconPickerTab(tab);
   };
 
-  const handleAppSettingChange = async (key: AppSettingKey, value: boolean) => {
+  const handleAppSettingChange = async (key: AppSettingKey, value: boolean | string) => {
     const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
     const result = await tools.set(key, value);
     if (!result.ok || !result.settings) {
@@ -1707,6 +1707,21 @@ export default function App() {
       showToast(value
         ? 'Terminal commands enabled. Only run commands you trust.'
         : 'Terminal command execution disabled');
+    } else if (key === 'cheatSheetGlobalHotkeyEnabled') {
+      showToast(value
+        ? 'Cheat Sheet global hotkey enabled'
+        : 'Cheat Sheet global hotkey disabled');
+    } else if (key === 'cheatSheetGlobalHotkey') {
+      showToast(`Global hotkey set to ${value}`);
+    }
+  };
+
+  const handleToggleCheatSheet = () => {
+    if (window.electronAPI?.commandCheatSheet) {
+      void window.electronAPI.commandCheatSheet('toggle');
+      showToast('Toggled Acrylic Cheat Sheet HUD');
+    } else {
+      showToast('Acrylic Cheat Sheet HUD is available in the desktop app');
     }
   };
 
@@ -3881,8 +3896,11 @@ export default function App() {
           installedApps={installedApplications}
           firmwareCheckPending={firmwareCheckPending}
           appUpdateCheckPending={appUpdateCheckPending}
+          cheatSheetGlobalHotkeyEnabled={appSettings.cheatSheetGlobalHotkeyEnabled}
+          cheatSheetGlobalHotkey={appSettings.cheatSheetGlobalHotkey}
           handleAppSettingChange={handleAppSettingChange}
           handleUpdateProfileRules={handleUpdateProfileRules}
+          handleToggleCheatSheet={handleToggleCheatSheet}
           handleOpenSupportLink={handleOpenSupportLink}
           handleCheckFirmwareUpdate={handleCheckFirmwareUpdate}
           handleCheckAppUpdate={handleCheckAppUpdate}

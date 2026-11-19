@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   executeSmartAction: (payload) => ipcRenderer.invoke('execute-smart-action', payload),
   updateCheatSheet: (snapshot) => ipcRenderer.invoke('cheat-sheet-update', snapshot),
   commandCheatSheet: (command, token) => ipcRenderer.invoke('cheat-sheet-command', command, token),
+  registerCheatSheetHotkey: (options) => ipcRenderer.invoke('register-cheatsheet-hotkey', options),
   onHardwareSync: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('trigger-hardware-sync', listener);
