@@ -619,6 +619,51 @@ export default function App() {
     if (!iconPickerOpen) setIconPickerPage(0);
   }, [iconPickerOpen]);
 
+  // Rotary rotation limitation modal & suppression preference
+  const [rotaryLimitationModal, setRotaryLimitationModal] = useState<{
+    open: boolean;
+    direction: 'cw' | 'ccw';
+    reason?: string;
+    actionTitle?: string;
+  } | null>(null);
+
+  const [suppressRotaryModal, setSuppressRotaryModal] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('node-studio.suppress-rotary-limitation-modal') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSuppressRotaryModal = (suppress: boolean) => {
+    setSuppressRotaryModal(suppress);
+    try {
+      localStorage.setItem('node-studio.suppress-rotary-limitation-modal', String(suppress));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRotaryLimitationAttempt = (
+    direction: 'cw' | 'ccw',
+    reason?: string,
+    actionTitle?: string
+  ) => {
+    if (suppressRotaryModal) {
+      showToast(
+        reason ||
+          `Rotary ${direction.toUpperCase()} only supports single instantaneous actions. Assign to Keys 1-9 or Dial Press instead.`
+      );
+      return;
+    }
+    setRotaryLimitationModal({
+      open: true,
+      direction,
+      reason,
+      actionTitle,
+    });
+  };
+
   // Multiaction editor states
   const [multiGestures, setMultiGestures] = useState<
     Record<MultiGestureKey, string>
@@ -2025,10 +2070,7 @@ export default function App() {
           binding: displayBinding,
         });
         if (!check.allowed) {
-          showToast(
-            check.reason ||
-              `Action cannot be assigned to rotary rotation (${subTarget.toUpperCase()})`
-          );
+          handleRotaryLimitationAttempt(subTarget, check.reason, item.listLabel || item.main);
           return;
         }
       }
@@ -2169,10 +2211,7 @@ export default function App() {
               binding: itemA.binding || itemA.label,
             });
             if (!check.allowed) {
-              showToast(
-                check.reason ||
-                  `Cannot assign this action to rotary rotation (${subB.toUpperCase()})`
-              );
+              handleRotaryLimitationAttempt(subB, check.reason, itemA.label || itemA.binding);
               return copy;
             }
           }
@@ -3025,17 +3064,6 @@ export default function App() {
   };
 
   const handleOpenDrawerWithTab = (tab: MappingTabId) => {
-    if (
-      selectedKey === GRID_MACRO_ENCODER_SLOT &&
-      (selectedEncoderSub === 'cw' || selectedEncoderSub === 'ccw')
-    ) {
-      if (tab === 'Multi-A' || tab === 'Smart-A') {
-        showToast(
-          `Multi-Actions and Smart Actions cannot be assigned to rotary rotation (${selectedEncoderSub.toUpperCase()}).`
-        );
-        return;
-      }
-    }
     setMappingTab(tab);
     setMappingDrawerOpen(true);
     setMappingStackExpanded(false);
@@ -3082,17 +3110,6 @@ export default function App() {
     tab: Exclude<MappingTabId, 'Basic'>,
     existingItem?: BasicTileItem
   ) => {
-    if (
-      selectedKey === GRID_MACRO_ENCODER_SLOT &&
-      (selectedEncoderSub === 'cw' || selectedEncoderSub === 'ccw')
-    ) {
-      if (tab === 'Multi-A' || tab === 'Smart-A') {
-        showToast(
-          `Multi-Actions and Smart Actions cannot be created for rotary rotation (${selectedEncoderSub.toUpperCase()}). Select a key or Dial Press first.`
-        );
-        return;
-      }
-    }
     setCreatorModalTab(tab);
     setIconPickerOpen(false);
     setIconPickerSearch('');
@@ -4163,6 +4180,117 @@ export default function App() {
             dragSpringBobY={dragSpringBobY}
             dragSpringRotate={dragSpringRotate}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ROTARY ROTATION LIMITATION MODAL */}
+      <AnimatePresence>
+        {rotaryLimitationModal?.open && (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rotary-limitation-modal-title"
+            onClick={() => setRotaryLimitationModal(null)}
+          >
+            <div
+              className="w-full max-w-[440px] rounded-2xl bg-white p-6 shadow-2xl border border-neutral-200/90 flex flex-col gap-4 text-left animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-neutral-100 border border-neutral-200 flex items-center justify-center text-neutral-800 shrink-0">
+                  <svg
+                    className="w-5 h-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 6v6l4 2" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3
+                      id="rotary-limitation-modal-title"
+                      className="text-[15px] font-semibold text-neutral-900 tracking-tight"
+                    >
+                      Rotary Dial Limitation
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium uppercase bg-neutral-100 text-neutral-600 border border-neutral-200">
+                      Rotary {rotaryLimitationModal.direction.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-neutral-500 mt-0.5 truncate">
+                    {rotaryLimitationModal.actionTitle
+                      ? `Cannot assign "${rotaryLimitationModal.actionTitle}" to rotation`
+                      : 'Action cannot be assigned to rotary rotation'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Explanation card */}
+              <div className="p-3.5 rounded-xl bg-neutral-50 border border-neutral-200/80 text-[12px] text-neutral-700 leading-relaxed flex flex-col gap-2.5">
+                <div>
+                  <span className="font-semibold text-neutral-900 block mb-0.5">
+                    Why can't this be assigned to rotation?
+                  </span>
+                  <p className="text-neutral-600">
+                    {rotaryLimitationModal.reason ||
+                      'Turning the rotary dial triggers rapid, instantaneous detent pulses (ideal for Volume, Scrolling, Zoom, or Brush Sizing). Multi-step sequences and Smart Action background scripts cannot run reliably per detent click.'}
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-neutral-200/70">
+                  <span className="font-semibold text-neutral-900 block mb-0.5">
+                    Where can you assign it instead?
+                  </span>
+                  <p className="text-neutral-600">
+                    You can assign Multi-Actions and Smart Actions to any of the <span className="font-medium text-neutral-900">9 Grid Keys</span> or to <span className="font-medium text-neutral-900">Dial Press</span> (the center push switch on the rotary knob).
+                  </p>
+                </div>
+              </div>
+
+              {/* Setting: Don't show again */}
+              <label className="flex items-center gap-2.5 px-1 py-0.5 cursor-pointer select-none text-[12px] text-neutral-600 hover:text-neutral-900">
+                <input
+                  type="checkbox"
+                  checked={suppressRotaryModal}
+                  onChange={(e) => handleToggleSuppressRotaryModal(e.target.checked)}
+                  className="w-4 h-4 rounded border-neutral-300 text-black focus:ring-black cursor-pointer"
+                />
+                <span>
+                  Don't show this notification again{' '}
+                  <span className="text-neutral-400 text-[11px]">(show a subtle toast at the bottom instead)</span>
+                </span>
+              </label>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRotaryLimitationModal(null);
+                    setSelectedKey(GRID_MACRO_ENCODER_SLOT);
+                    setSelectedEncoderSub('press');
+                  }}
+                  className="px-3.5 py-2 rounded-xl text-[12px] font-medium text-neutral-700 hover:bg-neutral-100 transition-colors cursor-pointer"
+                >
+                  Switch to Dial Press
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRotaryLimitationModal(null)}
+                  className="px-4 py-2 rounded-xl text-[12px] font-medium bg-black text-white hover:bg-neutral-800 transition-colors cursor-pointer shadow-sm"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
