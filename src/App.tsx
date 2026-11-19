@@ -3773,11 +3773,11 @@ export default function App() {
                 })}
                 onClick={() => void toggleSimulationMode()}
                 disabled={simulationTransition}
-                className="mt-[15px] h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
+                className="mt-[15px] h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-black/30 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
               >
                 <span
                   className={`w-[8px] h-[8px] rounded-full transition-colors ${
-                    simulationMode ? 'bg-[#0051ff]' : 'bg-[#b5b5b5]'
+                    simulationMode ? 'bg-[#10b981]' : 'bg-[#b5b5b5]'
                   }`}
                 />
                 <span>{simulationMode ? 'Simulation on' : 'Simulation off'}</span>

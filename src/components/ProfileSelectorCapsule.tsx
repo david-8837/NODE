@@ -94,7 +94,7 @@ export function ProfileSelectorCapsule({
           onClick={() => {
             if (!profileMenuOpen) setProfileMenuOpen(true);
           }}
-          className="h-[30px] w-[142px] px-[10px] rounded-full bg-[#e2e2e2] hover:bg-[#dadada] border-[1.5px] border-transparent hover:border-[#0051ff] focus-within:border-[#0051ff] flex items-center gap-[6px] transition-all cursor-pointer"
+          className="h-[30px] w-[142px] px-[10px] rounded-full bg-[#e2e2e2] hover:bg-[#dadada] border-[1.5px] border-transparent hover:border-black/30 focus-within:border-black/40 flex items-center gap-[6px] transition-all cursor-pointer"
         >
           <svg
             width="10"
@@ -125,7 +125,7 @@ export function ProfileSelectorCapsule({
           className={`w-[26px] h-[26px] rounded-full border-[1.5px] flex items-center justify-center transition-all cursor-pointer ${
             profileMenuOpen
               ? 'bg-[#000000] text-white border-[#000000]'
-              : 'bg-white hover:bg-neutral-50 text-[#4a4a4a] border-transparent hover:border-[#0051ff] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
+              : 'bg-white hover:bg-neutral-50 text-[#4a4a4a] border-transparent hover:border-black/30 shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
           }`}
         >
           {profileMenuOpen ? (
@@ -278,9 +278,9 @@ export function ProfileSelectorCapsule({
                               selectProfileInApp(idx, prof.layers.length);
                               setDeletingProfileId(null);
                             }}
-                            className={`flex-1 h-[27px] min-w-0 px-[10px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center gap-[6px] text-[11px] font-medium transition-all cursor-text ${
+                            className={`flex-1 h-[27px] min-w-0 px-[10px] rounded-full border-[1.5px] border-transparent hover:border-black/30 flex items-center gap-[6px] text-[11px] font-medium transition-all cursor-text ${
                               isSelected
-                                ? 'bg-[#0051ff] text-white'
+                                ? 'bg-[#18181b] text-white'
                                 : 'bg-white text-[#444444] hover:bg-neutral-50'
                             }`}
                           >
@@ -430,7 +430,7 @@ export function ProfileSelectorCapsule({
                       onOpenCommunityHub();
                     }}
                     title="Browse & install community-shared profiles"
-                    className="h-[28px] px-[9px] rounded-full bg-white hover:bg-[#0051ff] hover:text-white border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center gap-[4px] text-[10.5px] font-medium text-[#444444] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
+                    className="h-[28px] px-[9px] rounded-full bg-white hover:bg-black hover:text-white border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center gap-[4px] text-[10.5px] font-medium text-[#444444] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
                   >
                     <svg
                       width="11"

@@ -144,12 +144,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               ? 'WebHID unavailable; use Chrome or Edge over HTTPS or localhost'
               : deviceStatus.error ?? 'Connect Grid Macro 1 using VIA Raw HID'
         }
-        className={`h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 justify-self-end transition-colors cursor-pointer disabled:cursor-wait ${
-          deviceStatus.state === 'connected' ? 'bg-[#0051ff]' : 'bg-[#4a4a4a]'
+        className={`h-[28px] my-auto px-[12px] rounded-full flex items-center gap-[10px] text-white shrink-0 justify-self-end transition-all cursor-pointer disabled:cursor-wait border ${
+          deviceStatus.state === 'connected'
+            ? 'bg-[#18181b] hover:bg-[#242427] border-white/20 text-white shadow-[0_1px_4px_rgba(0,0,0,0.4)]'
+            : 'bg-[#141416] hover:bg-[#1e1e21] border-white/10 text-white/60'
         }`}
       >
-        <ChevronDown className="w-[13px] h-[13px] stroke-[2] text-white/95 shrink-0" />
-        <span className="text-[12px] font-normal tracking-[0.01em] whitespace-nowrap">
+        <ChevronDown className="w-[12px] h-[12px] stroke-[2] text-white/80 shrink-0" />
+        <span className="text-[11.5px] font-medium tracking-[0.01em] whitespace-nowrap">
           {deviceStatus.state === 'connected'
             ? deviceStatus.device || 'Grid Macro 1'
             : deviceStatus.state === 'searching'
@@ -158,7 +160,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 ? 'Connecting…'
                 : 'Not connected'}
         </span>
-        <div className="h-[15px] w-[1px] bg-white/35" />
+        <div className="h-[12px] w-[1px] bg-white/20" />
         <svg
           width="11"
           height="14"
@@ -166,18 +168,18 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
           aria-label={`USB ${deviceStatus.state === 'connected' ? 'Connected' : 'Not connected'}`}
-          className={deviceStatus.state === 'connected' ? 'opacity-100' : 'opacity-50'}
+          className={deviceStatus.state === 'connected' ? 'opacity-100 text-white' : 'opacity-40 text-white'}
         >
           <path
             d="M6 1.5V12M6 1.5L4.3 3.5H7.7L6 1.5ZM6 9.5L2.8 7.3V4.8M6 8.2L9.2 6V4.2"
-            stroke="white"
+            stroke="currentColor"
             strokeWidth="1.25"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <circle cx="2.8" cy="4.4" r="1.1" fill="white" />
-          <rect x="8.1" y="2.8" width="2.1" height="2.1" fill="white" />
-          <circle cx="6" cy="12.5" r="1.5" fill="white" />
+          <circle cx="2.8" cy="4.4" r="1.1" fill="currentColor" />
+          <rect x="8.1" y="2.8" width="2.1" height="2.1" fill="currentColor" />
+          <circle cx="6" cy="12.5" r="1.5" fill="currentColor" />
         </svg>
       </button>
     </motion.header>

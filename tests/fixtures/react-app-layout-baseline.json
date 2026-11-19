@@ -173,7 +173,7 @@
             "tag": "button",
             "attributes": {
               "aria-label": "Disconnect Grid Macro 1",
-              "class": "h-full pl-[12px] pr-[14px] flex items-center gap-[14px] text-white shrink-0 justify-self-end transition-colors cursor-pointer disabled:cursor-wait bg-[#0051ff]",
+              "class": "h-[28px] my-auto px-[12px] rounded-full flex items-center gap-[10px] text-white shrink-0 justify-self-end transition-all cursor-pointer disabled:cursor-wait border bg-[#18181b] hover:bg-[#242427] border-white/20 text-white shadow-[0_1px_4px_rgba(0,0,0,0.4)]",
               "title": "Firmware VIA 01020304 on VIA 4 layers",
               "type": "button"
             },
@@ -183,7 +183,7 @@
                 "tag": "svg",
                 "attributes": {
                   "aria-hidden": "true",
-                  "class": "lucide lucide-chevron-down w-[13px] h-[13px] stroke-[2] text-white/95 shrink-0",
+                  "class": "lucide lucide-chevron-down w-[12px] h-[12px] stroke-[2] text-white/80 shrink-0",
                   "fill": "none",
                   "height": "24",
                   "stroke": "currentColor",
@@ -209,7 +209,7 @@
               {
                 "tag": "span",
                 "attributes": {
-                  "class": "text-[12px] font-normal tracking-[0.01em] whitespace-nowrap"
+                  "class": "text-[11.5px] font-medium tracking-[0.01em] whitespace-nowrap"
                 },
                 "text": "Grid Macro 1 (test)",
                 "children": []
@@ -217,7 +217,7 @@
               {
                 "tag": "div",
                 "attributes": {
-                  "class": "h-[15px] w-[1px] bg-white/35"
+                  "class": "h-[12px] w-[1px] bg-white/20"
                 },
                 "text": "",
                 "children": []
@@ -226,7 +226,7 @@
                 "tag": "svg",
                 "attributes": {
                   "aria-label": "USB Connected",
-                  "class": "opacity-100",
+                  "class": "opacity-100 text-white",
                   "fill": "none",
                   "height": "14",
                   "viewBox": "0 0 12 15",
@@ -239,7 +239,7 @@
                     "tag": "path",
                     "attributes": {
                       "d": "M6 1.5V12M6 1.5L4.3 3.5H7.7L6 1.5ZM6 9.5L2.8 7.3V4.8M6 8.2L9.2 6V4.2",
-                      "stroke": "white",
+                      "stroke": "currentColor",
                       "stroke-linecap": "round",
                       "stroke-linejoin": "round",
                       "stroke-width": "1.25"
@@ -252,7 +252,7 @@
                     "attributes": {
                       "cx": "2.8",
                       "cy": "4.4",
-                      "fill": "white",
+                      "fill": "currentColor",
                       "r": "1.1"
                     },
                     "text": "",
@@ -261,7 +261,7 @@
                   {
                     "tag": "rect",
                     "attributes": {
-                      "fill": "white",
+                      "fill": "currentColor",
                       "height": "2.1",
                       "width": "2.1",
                       "x": "8.1",
@@ -275,7 +275,7 @@
                     "attributes": {
                       "cx": "6",
                       "cy": "12.5",
-                      "fill": "white",
+                      "fill": "currentColor",
                       "r": "1.5"
                     },
                     "text": "",
@@ -388,7 +388,7 @@
                       {
                         "tag": "div",
                         "attributes": {
-                          "class": "h-[30px] w-[142px] px-[10px] rounded-full bg-[#e2e2e2] hover:bg-[#dadada] border-[1.5px] border-transparent hover:border-[#0051ff] focus-within:border-[#0051ff] flex items-center gap-[6px] transition-all cursor-pointer"
+                          "class": "h-[30px] w-[142px] px-[10px] rounded-full bg-[#e2e2e2] hover:bg-[#dadada] border-[1.5px] border-transparent hover:border-black/30 focus-within:border-black/40 flex items-center gap-[6px] transition-all cursor-pointer"
                         },
                         "text": "",
                         "children": [
@@ -429,7 +429,7 @@
                         "tag": "button",
                         "attributes": {
                           "aria-label": "Toggle profile list",
-                          "class": "w-[26px] h-[26px] rounded-full border-[1.5px] flex items-center justify-center transition-all cursor-pointer bg-white hover:bg-neutral-50 text-[#4a4a4a] border-transparent hover:border-[#0051ff] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                          "class": "w-[26px] h-[26px] rounded-full border-[1.5px] flex items-center justify-center transition-all cursor-pointer bg-white hover:bg-neutral-50 text-[#4a4a4a] border-transparent hover:border-black/30 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
                         },
                         "text": "",
                         "children": [
@@ -554,7 +554,7 @@
                         "tag": "button",
                         "attributes": {
                           "aria-pressed": "true",
-                          "class": "w-[26px] h-[26px] rounded-full border-[1.5px] text-[11.5px] font-medium flex items-center justify-center transition-colors duration-200 tabular-nums cursor-pointer bg-[#0051ff] border-[#0051ff] text-white",
+                          "class": "w-[26px] h-[26px] rounded-full border-[1.5px] text-[11.5px] font-medium flex items-center justify-center transition-colors duration-200 tabular-nums cursor-pointer bg-[#111111] border-[#111111] text-white shadow-[0_1px_4px_rgba(0,0,0,0.22)]",
                           "data-active-layer": "true",
                           "tabindex": "0",
                           "title": "Layer 1"
@@ -565,7 +565,7 @@
                       {
                         "tag": "button",
                         "attributes": {
-                          "class": "w-[26px] h-[26px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555555] hover:bg-black/5 transition-all cursor-pointer",
+                          "class": "w-[26px] h-[26px] rounded-full border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center text-[#555555] hover:text-black hover:bg-black/5 transition-all cursor-pointer",
                           "tabindex": "0",
                           "title": "Add Layer"
                         },
@@ -695,7 +695,7 @@
                       {
                         "tag": "button",
                         "attributes": {
-                          "class": "w-[49px] h-[49px] bg-white rounded-[11px] border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_14px_rgba(0,81,255,0.18)] flex items-center justify-center text-[#333333] transition-all cursor-pointer",
+                          "class": "w-[49px] h-[49px] bg-white rounded-[11px] border-[1.5px] border-transparent hover:border-black/30 shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] flex items-center justify-center text-[#333333] transition-all cursor-pointer",
                           "title": "Open Key Mapping"
                         },
                         "text": "",
@@ -1593,7 +1593,7 @@
                   {
                     "tag": "button",
                     "attributes": {
-                      "class": "mt-[15px] h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
+                      "class": "mt-[15px] h-[28px] w-[124px] justify-center px-[12px] bg-white hover:bg-neutral-50 rounded-full border-[1.5px] border-transparent hover:border-black/30 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-center gap-[6px] text-[#3a3a3a] text-[11px] font-medium transition-all cursor-pointer"
                     },
                     "text": "",
                     "children": [

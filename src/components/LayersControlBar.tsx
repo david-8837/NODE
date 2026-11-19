@@ -149,10 +149,8 @@ export function LayersControlBar({
                 data-active-layer={isActive ? 'true' : 'false'}
                 className={`w-[26px] h-[26px] rounded-full border-[1.5px] text-[11.5px] font-medium flex items-center justify-center transition-colors duration-200 tabular-nums cursor-pointer ${
                   isActive
-                    ? layerToolbarOpen
-                      ? 'bg-[#000000] border-[#000000] text-white'
-                      : 'bg-[#0051ff] border-[#0051ff] text-white'
-                    : 'bg-white text-[#444444] border-transparent hover:border-[#0051ff] shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+                    ? 'bg-[#111111] border-[#111111] text-white shadow-[0_1px_4px_rgba(0,0,0,0.22)]'
+                    : 'bg-white text-[#444444] border-transparent hover:border-black/30 hover:text-black shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
                 }`}
               >
                 {idx + 1}
@@ -167,7 +165,7 @@ export function LayersControlBar({
             whileTap={{ scale: 0.92 }}
             onClick={handleAddLayer}
             title="Add Layer"
-            className="w-[26px] h-[26px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555555] hover:bg-black/5 transition-all cursor-pointer"
+            className="w-[26px] h-[26px] rounded-full border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center text-[#555555] hover:text-black hover:bg-black/5 transition-all cursor-pointer"
           >
             <svg
               width="11"
@@ -230,7 +228,7 @@ export function LayersControlBar({
                       damping: 28,
                     }}
                     onClick={() => setLayerDeleteConfirm(false)}
-                    className="h-[28px] px-[13px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[11px] font-medium text-[#555555] shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-colors cursor-pointer"
+                    className="h-[28px] px-[13px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-black/30 text-[11px] font-medium text-[#555555] shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-colors cursor-pointer"
                   >
                     Cancel
                   </motion.button>
@@ -291,7 +289,7 @@ export function LayersControlBar({
                   className="flex items-center gap-[6px]"
                 >
                   {/* Layer Name Input Pill */}
-                  <div className="w-[144px] h-[28px] px-[12px] rounded-full bg-[#e2e2e2] border-[1.5px] border-transparent focus-within:border-[#0051ff] flex items-center transition-colors">
+                  <div className="w-[144px] h-[28px] px-[12px] rounded-full bg-[#e2e2e2] border-[1.5px] border-transparent focus-within:border-black/40 flex items-center transition-colors">
                     <input
                       type="text"
                       value={currentLayerName}
@@ -319,7 +317,7 @@ export function LayersControlBar({
                     className={`w-[58px] h-[28px] rounded-full border-[1.5px] flex items-center justify-center transition-colors cursor-pointer ${
                       layerLightingOpen
                         ? 'bg-[#000000] text-white border-[#000000]'
-                        : 'bg-white hover:bg-neutral-50 text-[#555555] border-transparent hover:border-[#0051ff] shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+                        : 'bg-white hover:bg-neutral-50 text-[#555555] border-transparent hover:border-black/30 shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
                     }`}
                   >
                     <svg

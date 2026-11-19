@@ -149,7 +149,7 @@ export default function DeviceConnectionGate({ status, onRetry }: DeviceConnecti
           onClick={() => { void handleRetry(); }}
           disabled={busy}
           data-testid="device-gate-retry"
-          className="mt-6 min-w-[190px] rounded-full bg-[#0051ff] px-7 py-[11px] text-[13.5px] font-medium text-white transition-opacity duration-150 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55 cursor-pointer"
+          className="mt-6 min-w-[190px] rounded-full bg-[#111111] hover:bg-[#222222] px-7 py-[11px] text-[13.5px] font-medium text-white transition-all duration-150 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-55 cursor-pointer"
         >
           {busy ? 'Checking…' : 'Retry Connection'}
         </button>

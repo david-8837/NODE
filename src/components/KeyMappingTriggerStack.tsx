@@ -98,7 +98,7 @@ export function KeyMappingTriggerStack({
             onMouseEnter={() => setMappingStackExpanded(true)}
             onClick={() => handleOpenDrawerWithTab('Basic')}
             title="Open Key Mapping"
-            className="w-[49px] h-[49px] bg-white rounded-[11px] border-[1.5px] border-transparent hover:border-[#0051ff] shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_14px_rgba(0,81,255,0.18)] flex items-center justify-center text-[#333333] transition-all cursor-pointer"
+            className="w-[49px] h-[49px] bg-white rounded-[11px] border-[1.5px] border-transparent hover:border-black/30 shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] flex items-center justify-center text-[#333333] transition-all cursor-pointer"
           >
             <svg
               width="15"
@@ -162,8 +162,8 @@ export function KeyMappingTriggerStack({
                     onClick={() => handleOpenDrawerWithTab(entry.tab)}
                     className={`w-[49px] h-[49px] rounded-[11px] border-[1.5px] flex items-center justify-center transition-all cursor-pointer ${
                       isHovered
-                        ? 'bg-[#0051ff] border-[#0051ff] text-black shadow-[0_4px_14px_rgba(0,81,255,0.35)]'
-                        : 'bg-white border-transparent hover:border-[#0051ff] text-[#444444] shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
+                        ? 'bg-[#18181b] border-[#18181b] text-white shadow-[0_4px_14px_rgba(0,0,0,0.22)]'
+                        : 'bg-white border-transparent hover:border-black/30 text-[#444444] shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
                     }`}
                   >
                     <IsometricKeyIcon
