@@ -74,17 +74,33 @@
               <span class="release-date">November 2026</span>
             </div>
             <div class="release-body">
-              <h4>Documentation &amp; Community</h4>
+              <h4>Active Window Profile Auto-Switching &amp; Rules Engine</h4>
               <ul>
-                <li>Released official web documentation, hardware specifications, and support portal.</li>
-                <li>Added open-source Source-Available license and contributor guidelines (<code>CONTRIBUTING.md</code>).</li>
-                <li>Pinned Node 22 engine environment across <code>.nvmrc</code> and <code>package.json</code>.</li>
-                <li>Added flat ESLint v9/v10 and Prettier formatting rules to CI pipeline.</li>
+                <li>Implemented background active window tracking using Win32 API hooks via <code>koffi</code>.</li>
+                <li>Added Custom App-to-Profile Mapping Rule Editor in Settings with process and window title regex filters.</li>
+                <li>Added automatic installed application picker to populate rules with a single click.</li>
               </ul>
-              <h4>Desktop &amp; Hardware Bridge</h4>
+              <h4>Keycap Legend &amp; Color Personalization</h4>
               <ul>
-                <li>Integrated web documentation routes directly into the in-app Support menu.</li>
-                <li>Restricted external web navigation in Electron to verified official domain origins.</li>
+                <li>Added custom primary text and subscript sub-legend personalization per keycap.</li>
+                <li>Added 7-swatch keycap tint color palette with real-time hardware canvas previews.</li>
+                <li>Preserved legend and color styling across profile import, export, and JSON backups.</li>
+              </ul>
+              <h4>Acrylic Cheat Sheet HUD Global Hotkey</h4>
+              <ul>
+                <li>Added system-wide OS global hotkey registration (default: <code>Ctrl+Alt+M</code>) to summon the HUD over any fullscreen game or app without stealing window focus.</li>
+                <li>Added hotkey customization presets and 1-click overlay preview test in Settings.</li>
+              </ul>
+              <h4>Community Profile Hub &amp; Visual Tutorial</h4>
+              <ul>
+                <li>Launched Community Profile Sharing Hub with 1-click install for Blender, VS Code, Photoshop, and DaVinci Resolve.</li>
+                <li>Added comprehensive Interactive Visual Tutorial page (<code>tutorial.html</code>) with 10 feature deep-dives and hardware architecture guide.</li>
+              </ul>
+              <h4>Architecture &amp; Code Quality</h4>
+              <ul>
+                <li>Decomposed <code>App.tsx</code> into modular custom hooks (<code>useTipRotation</code>, <code>useInstalledApplications</code>, <code>useDeviceNotifications</code>, <code>useKeymapHistory</code>, <code>useAppSettings</code>).</li>
+                <li>Purged 980 lines of dead code and pruned 22 unreferenced dependencies; migrated animations to native Motion v12.</li>
+                <li>100% automated test suite passing across 57 test files (496 tests) and 10 E2E Playwright specs.</li>
               </ul>
             </div>
             <div class="release-actions">
