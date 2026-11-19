@@ -6,7 +6,7 @@
   place-items: center;
   overflow: hidden;
   isolation: isolate;
-  background: radial-gradient(circle at 50% 45%, #ffffff 0%, #f7f7f9 60%, #ececef 100%), #fbfbfd;
+  background: radial-gradient(circle at 50% 48%, #ffffff 0%, #f7f7f9 60%, #ececef 100%), #fbfbfd;
   color: #1d1d1f;
   opacity: 1;
   visibility: visible;
@@ -32,10 +32,12 @@
 
 .node-loading-content {
   position: relative;
-  display: grid;
-  justify-items: center;
-  gap: 16px;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 32px;
   transform: translateY(0) scale(1);
   transition:
     transform 340ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -43,135 +45,54 @@
 }
 
 #app-loading-screen.is-hidden .node-loading-content {
-  transform: translateY(-6px) scale(0.98);
+  transform: translateY(-8px) scale(0.98);
   filter: blur(2px);
 }
 
-/* Sleek Apple-minimalist Grid Macro 1 architectural micro-mark (#08090d anodized chassis) */
-.node-loading-device {
-  display: grid;
-  gap: 6px;
-  width: 76px;
-  padding: 9px 8px 8px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(165deg, #1c1d22 0%, #101115 50%, #08090d 100%);
-  box-shadow:
-    0 20px 40px -12px rgba(0, 0, 0, 0.22),
-    0 8px 16px -4px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0.5px rgba(255, 255, 255, 0.18);
-  transition: transform 0.3s ease;
-}
-
-.node-loading-device-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px 1px 5px;
-}
-
-.node-loading-led {
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 0 6px 1px rgba(255, 255, 255, 0.7);
-  animation: node-led-pulse 2s ease-in-out infinite;
-}
-
-.node-loading-encoder {
-  position: relative;
-  width: 17px;
-  height: 17px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: radial-gradient(circle at 35% 30%, #30333a, #16171b 80%);
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0.5px rgba(255, 255, 255, 0.22);
-}
-
-.node-loading-encoder::after {
-  position: absolute;
-  top: 2px;
-  left: 50%;
-  width: 1.5px;
-  height: 4px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.85);
-  transform: translateX(-50%);
-  content: "";
-}
-
-.node-loading-mark {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-}
-
-.node-loading-key {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
-  background: linear-gradient(155deg, #26272e, #141519);
-  box-shadow:
-    0 1.5px 2px rgba(0, 0, 0, 0.45),
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease;
-}
-
-.node-loading-key.is-active {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: linear-gradient(145deg, #32343c, #1a1b20);
-  box-shadow:
-    0 0 10px rgba(255, 255, 255, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  animation: node-key-breathe 2.4s ease-in-out infinite;
-}
-
 .node-loading-brand {
-  display: grid;
-  justify-items: center;
-  gap: 3px;
-  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
 }
 
 .node-loading-brand strong {
-  padding-left: 0.26em;
+  padding-left: 0.28em;
   color: #111111;
   font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 700;
-  letter-spacing: 0.26em;
-  line-height: 1.1;
+  letter-spacing: 0.28em;
+  line-height: 1;
 }
 
 .node-loading-brand span {
   padding-left: 0.22em;
   color: #86868b;
   font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.22em;
   text-transform: uppercase;
 }
 
 .node-loading-status {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   width: 100%;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .node-loading-progress {
   display: block;
-  width: 120px;
+  width: 130px;
   height: 2px;
   overflow: hidden;
   border-radius: 99px;
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.07);
 }
 
 .node-loading-progress span {
@@ -186,7 +107,7 @@
 .node-loading-label {
   color: #86868b;
   font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
   letter-spacing: -0.01em;
 }
@@ -207,22 +128,6 @@
   pointer-events: none;
 }
 
-@keyframes node-led-pulse {
-  0%, 100% { opacity: 0.65; transform: scale(0.95); }
-  50% { opacity: 1; transform: scale(1.08); }
-}
-
-@keyframes node-key-breathe {
-  0%, 100% {
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  }
-  50% {
-    border-color: rgba(255, 255, 255, 0.45);
-    box-shadow: 0 0 14px rgba(255, 255, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-  }
-}
-
 @keyframes node-progress-sweep {
   from { transform: translateX(-140%); }
   to { transform: translateX(360%); }
@@ -235,11 +140,6 @@
     transition-duration: 0.01ms !important;
   }
 
-  .node-loading-device,
-  .node-loading-led,
-  .node-loading-encoder,
-  .node-loading-key,
-  .node-loading-key.is-active,
   .node-loading-progress span {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;

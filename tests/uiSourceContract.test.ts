@@ -70,7 +70,8 @@ describe('Production React source regression checks', () => {
     expect(htmlContent).toContain('<span>studio</span>');
     expect(htmlContent).not.toContain('GRID MACRO 1 STUDIO');
     expect(htmlContent).toContain('Preparing your workspace');
-    expect((htmlContent.match(/class="node-loading-key(?: is-active)?"/g) ?? [])).toHaveLength(9);
+    expect(htmlContent).not.toContain('node-loading-device');
+    expect(htmlContent).not.toContain('node-loading-key');
     expect(loadingScript).toContain('const minimumVisibleMs = 350');
     expect(loadingScript).toContain("loadingScreen.setAttribute('aria-busy', 'false')");
     expect(loadingScript).toContain('new MutationObserver');
@@ -78,8 +79,6 @@ describe('Production React source regression checks', () => {
     expect(loadingScript).toContain('hidden || appRoot.childElementCount === 0');
     expect(loadingScript).toContain("appRoot.classList.add('is-ready')");
     expect(loadingStyles).toContain('#app-loading-screen.is-hidden');
-    expect(loadingStyles).toContain('#08090d');
-    expect(loadingStyles).toContain('.node-loading-key.is-active');
     expect(loadingStyles).toContain('@keyframes node-progress-sweep');
     expect(loadingScript).toContain('window.dispatchEvent(new Event(APP_READY_EVENT))');
     expect(loadingStyles).toContain('#root.is-ready .app-shell::before');
