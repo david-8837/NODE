@@ -277,5 +277,27 @@ describe('QMK profile-to-VIA configuration', () => {
       expect(profile.layers[1].r1c1.binding).toBe('Layer 1');
       expect(profile.layers[1].r1c1.label).toBe('L1');
     });
+
+    it('encodes and decodes standard QMK mouse keys (clicks, wheels, movement)', () => {
+      // Test keycode encoding
+      expect(actionToViaKeycode({ t: 'keys', k: ['MS_BTN1'] })).toBe(0x00d1);
+      expect(actionToViaKeycode({ t: 'keys', k: ['MS_BTN2'] })).toBe(0x00d2);
+      expect(actionToViaKeycode({ t: 'keys', k: ['MS_BTN3'] })).toBe(0x00d3);
+      expect(actionToViaKeycode({ t: 'keys', k: ['MS_WH_UP'] })).toBe(0x00d9);
+      expect(actionToViaKeycode({ t: 'keys', k: ['MS_WH_DOWN'] })).toBe(0x00da);
+
+      // Test reverse decoding from hardware snapshot
+      expect(decodeViaKeycode(0x00d1)).toEqual({ label: 'L-Clk', binding: 'left click', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00d2)).toEqual({ label: 'R-Clk', binding: 'right click', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00d3)).toEqual({ label: 'M-Clk', binding: 'middle click', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00d4)).toEqual({ label: 'M4', binding: 'mouse 4', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00d5)).toEqual({ label: 'M5', binding: 'mouse 5', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00d9)).toEqual({ label: 'Wh-Up', binding: 'wheel up', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00da)).toEqual({ label: 'Wh-Dn', binding: 'wheel down', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00db)).toEqual({ label: 'Wh-L', binding: 'wheel left', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00dc)).toEqual({ label: 'Wh-R', binding: 'wheel right', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00cd)).toEqual({ label: 'M-↑', binding: 'mouse up', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00ce)).toEqual({ label: 'M-↓', binding: 'mouse down', actionType: 'Basic input' });
+    });
   });
 });

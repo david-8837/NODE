@@ -159,6 +159,15 @@ export const PRESET_DIAL_LABELS: Record<string, string> = {
   Redo: 'rdo',
   Undo: 'und',
   'View Selected': 'sel',
+  'Wheel Up': 'wh+',
+  'Wheel Down': 'wh-',
+  'wheel up': 'wh+',
+  'wheel down': 'wh-',
+  'Wheel Left': 'wh<',
+  'Wheel Right': 'wh>',
+  'Left Click': 'lclk',
+  'Right Click': 'rclk',
+  'Middle Click': 'mclk',
 };
 
 export const ROTARY_PAIRS: Record<string, string> = {
@@ -174,6 +183,16 @@ export const ROTARY_PAIRS: Record<string, string> = {
   'scroll down': 'Scroll Up',
   'wheel up': 'Wheel Down',
   'wheel down': 'Wheel Up',
+  'wheel left': 'Wheel Right',
+  'wheel right': 'Wheel Left',
+  'mouse up': 'Mouse Down',
+  'mouse down': 'Mouse Up',
+  'mouse left': 'Mouse Right',
+  'mouse right': 'Mouse Left',
+  'mouse ↑': 'mouse ↓',
+  'mouse ↓': 'mouse ↑',
+  'mouse ←': 'mouse →',
+  'mouse →': 'mouse ←',
   'next tab': 'Prev Tab',
   'prev tab': 'Next Tab',
   'previous tab': 'Next Tab',
@@ -192,6 +211,29 @@ export const ROTARY_PAIRS: Record<string, string> = {
   'up': 'Down',
   'down': 'Up',
 };
+
+export const ROTARY_DISALLOWED_MOUSE_BUTTONS = new Set([
+  'left click',
+  'right click',
+  'middle click',
+  'mouse 4',
+  'mouse 5',
+  'btn-1',
+  'btn-2',
+  'btn-3',
+  'btn-4',
+  'btn-5',
+  'ms_btn1',
+  'ms_btn2',
+  'ms_btn3',
+  'ms_btn4',
+  'ms_btn5',
+  'l-clk',
+  'r-clk',
+  'm-clk',
+  'm4',
+  'm5',
+]);
 
 export function isActionAllowedOnEncoderRotation(item: {
   actionType?: string;
@@ -212,8 +254,17 @@ export function isActionAllowedOnEncoderRotation(item: {
   if (item.actionType === 'Smart Action') {
     return { allowed: false, reason: 'Smart actions cannot be assigned to rotary rotation (CW/CCW)' };
   }
-  if (item.binding && /^MO\(\d+\)$/i.test(item.binding)) {
-    return { allowed: false, reason: 'Momentary layer switch (MO) requires holding a key down and cannot be used on rotation' };
+  if (item.binding) {
+    const normalized = item.binding.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (ROTARY_DISALLOWED_MOUSE_BUTTONS.has(normalized)) {
+      return {
+        allowed: false,
+        reason: 'Mouse click buttons cannot be assigned to rotary rotation (CW/CCW). Assign to Keys 1–9 or Dial Press instead.',
+      };
+    }
+    if (/^MO\(\d+\)$/i.test(item.binding)) {
+      return { allowed: false, reason: 'Momentary layer switch (MO) requires holding a key down and cannot be used on rotation' };
+    }
   }
   return { allowed: true };
 }

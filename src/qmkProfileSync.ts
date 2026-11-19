@@ -89,6 +89,23 @@ const KEY_ALIASES: Record<string, string> = {
   'print screen': 'PRINT_SCREEN',
   pause: 'PAUSE',
   'num enter': 'KEYPAD_ENTER',
+  'left click': 'MS_BTN1',
+  'right click': 'MS_BTN2',
+  'middle click': 'MS_BTN3',
+  'mouse 4': 'MS_BTN4',
+  'mouse 5': 'MS_BTN5',
+  'wheel up': 'MS_WH_UP',
+  'wheel down': 'MS_WH_DOWN',
+  'wheel left': 'MS_WH_LEFT',
+  'wheel right': 'MS_WH_RIGHT',
+  'mouse up': 'MS_UP',
+  'mouse down': 'MS_DOWN',
+  'mouse left': 'MS_LEFT',
+  'mouse right': 'MS_RIGHT',
+  'mouse ↑': 'MS_UP',
+  'mouse ↓': 'MS_DOWN',
+  'mouse ←': 'MS_LEFT',
+  'mouse →': 'MS_RIGHT',
   '-': 'MINUS',
   '=': 'EQUALS',
   '[': 'LEFT_BRACKET',
@@ -592,10 +609,27 @@ const REVERSE_MODIFIERS: Record<number, { label: string; binding: string }> = {
   0xe7: { label: 'rwin', binding: 'right win' },
 };
 
+const REVERSE_MOUSE_KEYCODES: Record<number, { label: string; binding: string }> = {
+  0x00cd: { label: 'M-↑', binding: 'mouse up' },
+  0x00ce: { label: 'M-↓', binding: 'mouse down' },
+  0x00cf: { label: 'M-←', binding: 'mouse left' },
+  0x00d0: { label: 'M-→', binding: 'mouse right' },
+  0x00d1: { label: 'L-Clk', binding: 'left click' },
+  0x00d2: { label: 'R-Clk', binding: 'right click' },
+  0x00d3: { label: 'M-Clk', binding: 'middle click' },
+  0x00d4: { label: 'M4', binding: 'mouse 4' },
+  0x00d5: { label: 'M5', binding: 'mouse 5' },
+  0x00d9: { label: 'Wh-Up', binding: 'wheel up' },
+  0x00da: { label: 'Wh-Dn', binding: 'wheel down' },
+  0x00db: { label: 'Wh-L', binding: 'wheel left' },
+  0x00dc: { label: 'Wh-R', binding: 'wheel right' },
+};
+
 function decodeSingleKeycode(kc: number): { label: string; binding: string } | null {
   if (REVERSE_SPECIAL_KEYCODES[kc]) return REVERSE_SPECIAL_KEYCODES[kc];
   if (REVERSE_MEDIA_KEYCODES[kc]) return REVERSE_MEDIA_KEYCODES[kc];
   if (REVERSE_MODIFIERS[kc]) return REVERSE_MODIFIERS[kc];
+  if (REVERSE_MOUSE_KEYCODES[kc]) return REVERSE_MOUSE_KEYCODES[kc];
 
   if (kc >= 0x04 && kc <= 0x1d) {
     const char = String.fromCharCode(65 + (kc - 0x04));

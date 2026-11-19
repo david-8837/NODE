@@ -335,6 +335,25 @@ const BASIC_KEY_SECTIONS: BasicSection[] = [
     ],
   },
   {
+    title: 'Mouse keys',
+    listPreview: '[ left click, right click, middle click, wh... ]',
+    items: [
+      { id: 'btn-1', main: 'left\nclick', listLabel: 'left click', macropadLabel: 'L-Clk' },
+      { id: 'btn-2', main: 'right\nclick', listLabel: 'right click', macropadLabel: 'R-Clk' },
+      { id: 'btn-3', main: 'middle\nclick', listLabel: 'middle click', macropadLabel: 'M-Clk' },
+      { id: 'btn-4', main: 'mouse 4', listLabel: 'mouse 4', macropadLabel: 'M4' },
+      { id: 'btn-5', main: 'mouse 5', listLabel: 'mouse 5', macropadLabel: 'M5' },
+      { id: 'wh-up', main: 'wheel\nup', listLabel: 'wheel up', macropadLabel: 'Wh-Up' },
+      { id: 'wh-down', main: 'wheel\ndown', listLabel: 'wheel down', macropadLabel: 'Wh-Dn' },
+      { id: 'wh-left', main: 'wheel\nleft', listLabel: 'wheel left', macropadLabel: 'Wh-L' },
+      { id: 'wh-right', main: 'wheel\nright', listLabel: 'wheel right', macropadLabel: 'Wh-R' },
+      { id: 'ms-up', main: 'mouse\n↑', listLabel: 'mouse up', macropadLabel: 'M-↑' },
+      { id: 'ms-down', main: 'mouse\n↓', listLabel: 'mouse down', macropadLabel: 'M-↓' },
+      { id: 'ms-left', main: 'mouse\n←', listLabel: 'mouse left', macropadLabel: 'M-←' },
+      { id: 'ms-right', main: 'mouse\n→', listLabel: 'mouse right', macropadLabel: 'M-→' },
+    ],
+  },
+  {
     title: 'Extra Keys',
     listPreview: '[ power down, sleep, stop, bright up, b...',
     items: [
@@ -4309,7 +4328,7 @@ export default function App() {
                     Where can you assign it instead?
                   </span>
                   <p className="text-neutral-600">
-                    You can assign Multi-Actions and Smart Actions to any of the <span className="font-medium text-neutral-900">9 Grid Keys</span> or to <span className="font-medium text-neutral-900">Dial Press</span> (the center push switch on the rotary knob).
+                    You can assign mouse clicks, Multi-Actions, and key actions to any of the <span className="font-medium text-neutral-900">9 Grid Keys</span> or to <span className="font-medium text-neutral-900">Dial Press</span> (the center push switch on the rotary knob).
                   </p>
                 </div>
               </div>

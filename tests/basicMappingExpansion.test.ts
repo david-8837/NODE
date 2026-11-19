@@ -39,6 +39,28 @@ describe('basic mapping keycodes', () => {
     const values: Record<string, number> = { ctrl: 0xe0, shift: 0xe1, alt: 0xe2, win: 0xe3, 'right ctrl': 0xe4, 'right shift': 0xe5, 'right alt': 0xe6, 'right win': 0xe7, 'right arrow': 0x4f, 'left arrow': 0x50, 'down arrow': 0x51, 'up arrow': 0x52, lock: 0x39, mute: 0xa8, 'volume +': 0xa9, 'volume -': 0xaa, 'next track': 0xab, 'previous track': 0xac, 'media stop': 0xad, play: 0xae, 'fast forward': 0xbb, rewind: 0xbc, 'bright up': 0xbd, 'bright down': 0xbe, 'power down': 0xa5, sleep: 0xa6 };
     for (const [name, expected] of Object.entries(values)) expect(code(name), name).toBe(expected);
   });
+  it('encodes mouse clicks, scroll wheels, and cursor movement', () => {
+    const values: Record<string, number> = {
+      'left click': 0x00d1,
+      'right click': 0x00d2,
+      'middle click': 0x00d3,
+      'mouse 4': 0x00d4,
+      'mouse 5': 0x00d5,
+      'wheel up': 0x00d9,
+      'wheel down': 0x00da,
+      'wheel left': 0x00db,
+      'wheel right': 0x00dc,
+      'mouse up': 0x00cd,
+      'mouse down': 0x00ce,
+      'mouse left': 0x00cf,
+      'mouse right': 0x00d0,
+      'mouse ↑': 0x00cd,
+      'mouse ↓': 0x00ce,
+      'mouse ←': 0x00cf,
+      'mouse →': 0x00d0,
+    };
+    for (const [name, expected] of Object.entries(values)) expect(code(name), name).toBe(expected);
+  });
 });
 
 describe('reference safety', () => {

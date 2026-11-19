@@ -242,4 +242,35 @@ describe('Rotary limitation experience and clean drawer UI', () => {
     expect(keyButton?.className).toContain('border-[#ef4444]');
     expect(keyButton?.className).toContain('shadow-[0_0_16px_rgba(239,68,68,0.95)]');
   });
+
+  it('supports wheel up and wheel down inverse pairing on rotary encoders', async () => {
+    const { ROTARY_PAIRS, PRESET_DIAL_LABELS } = await import('../src/presetLibrary');
+    expect(ROTARY_PAIRS['wheel up']).toBe('Wheel Down');
+    expect(ROTARY_PAIRS['wheel down']).toBe('Wheel Up');
+    expect(ROTARY_PAIRS['wheel left']).toBe('Wheel Right');
+    expect(ROTARY_PAIRS['wheel right']).toBe('Wheel Left');
+    expect(PRESET_DIAL_LABELS['wheel up']).toBe('wh+');
+    expect(PRESET_DIAL_LABELS['wheel down']).toBe('wh-');
+    expect(PRESET_DIAL_LABELS['Wheel Up']).toBe('wh+');
+    expect(PRESET_DIAL_LABELS['Wheel Down']).toBe('wh-');
+  });
+
+  it('enforces rotary rotation limitation for mouse click buttons while allowing scroll wheels and navigation', async () => {
+    const { isActionAllowedOnEncoderRotation } = await import('../src/presetLibrary');
+
+    // Disallowed mouse click buttons on rotation
+    const disallowedClicks = ['left click', 'right click', 'middle click', 'mouse 4', 'mouse 5', 'L-Clk', 'R-Clk', 'M-Clk'];
+    for (const click of disallowedClicks) {
+      const check = isActionAllowedOnEncoderRotation({ binding: click });
+      expect(check.allowed).toBe(false);
+      expect(check.reason).toContain('Mouse click buttons cannot be assigned to rotary rotation');
+    }
+
+    // Allowed rotary actions: scroll wheels and cursor nudges
+    const allowedMouseActions = ['wheel up', 'wheel down', 'wheel left', 'wheel right', 'mouse up', 'mouse down', 'mouse ↑', 'mouse ↓', 'mouse ←', 'mouse →'];
+    for (const action of allowedMouseActions) {
+      const check = isActionAllowedOnEncoderRotation({ binding: action });
+      expect(check.allowed).toBe(true);
+    }
+  });
 });
