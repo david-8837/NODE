@@ -1737,32 +1737,6 @@ export default function App() {
     showToast(`Updated app-to-profile rules (${rules.length})`);
   };
 
-  const handleUpdateKeycapPersonalization = (
-    slotId: KeySlotId,
-    customLegend: string,
-    subLegend: string,
-    keycapColor: string
-  ) => {
-    const nextProfiles = profiles.map((p, pIdx) => {
-      if (pIdx !== activeProfileIndex) return p;
-      const nextLayers = p.layers.map((layer, lIdx) => {
-        if (lIdx !== activeLayerIndex) return layer;
-        const currentSlot = layer[slotId];
-        return {
-          ...layer,
-          [slotId]: {
-            ...currentSlot,
-            customLegend: customLegend.trim() || undefined,
-            subLegend: subLegend.trim() || undefined,
-            keycapColor: keycapColor.trim() || undefined,
-          },
-        };
-      });
-      return { ...p, layers: nextLayers };
-    });
-    pushState(nextProfiles);
-  };
-
   const handleOpenSupportLink = async (key: SupportLinkKey, label: string) => {
     const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
     const result = await tools.openSupport(key);
@@ -3955,7 +3929,6 @@ export default function App() {
                   selectedEncoderSub:
                     selectedKey === GRID_MACRO_ENCODER_SLOT ? selectedEncoderSub : null,
                   selectedKeyAssignment: selectedKey ? currentLayer[selectedKey] : null,
-                  onUpdateKeycapPersonalization: handleUpdateKeycapPersonalization,
                 }}
               />
             )}

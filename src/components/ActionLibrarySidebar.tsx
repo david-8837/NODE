@@ -53,12 +53,6 @@ export interface ActionLibrarySidebarProps {
   selectedKey?: KeySlotId | null;
   selectedEncoderSub?: EncoderSubActionId | null;
   selectedKeyAssignment?: KeyAssignment | null;
-  onUpdateKeycapPersonalization?: (
-    slotId: KeySlotId,
-    customLegend: string,
-    subLegend: string,
-    keycapColor: string
-  ) => void;
 }
 
 export function ActionLibrarySidebar({
@@ -85,7 +79,6 @@ export function ActionLibrarySidebar({
   selectedKey,
   selectedEncoderSub,
   selectedKeyAssignment,
-  onUpdateKeycapPersonalization,
 }: ActionLibrarySidebarProps) {
   const renderCustomItemGroups = (
     tab: Exclude<MappingTabId, 'Basic'>,
@@ -315,104 +308,6 @@ export function ActionLibrarySidebar({
           )}
         </AnimatePresence>
       </div>
-
-      {/* Keycap Custom Text & Legend Personalization Capsule */}
-      {selectedKey && selectedKey !== 'dial-tl' && onUpdateKeycapPersonalization && (
-        <div className="mx-[15px] mb-[10px] p-[10px] rounded-[14px] bg-[#e6e6e6] border border-black/[0.04] text-[11px] shrink-0">
-          <div className="flex items-center justify-between mb-[8px]">
-            <span className="font-semibold text-[#444] flex items-center gap-[6px]">
-              <span>Keycap Legend &amp; Color</span>
-              <span className="text-[9.5px] font-mono uppercase bg-white/80 px-[5px] py-[1px] rounded text-[#555]">
-                {selectedKey.toUpperCase()}
-              </span>
-            </span>
-            {(selectedKeyAssignment?.customLegend ||
-              selectedKeyAssignment?.subLegend ||
-              selectedKeyAssignment?.keycapColor) && (
-              <button
-                type="button"
-                onClick={() => onUpdateKeycapPersonalization(selectedKey, '', '', '')}
-                className="text-[9.5px] text-[#0051ff] hover:underline cursor-pointer"
-              >
-                Reset style
-              </button>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-[6px] mb-[8px]">
-            <div>
-              <label className="block text-[9.5px] text-[#666] mb-[2px]">Custom Legend</label>
-              <input
-                type="text"
-                value={selectedKeyAssignment?.customLegend ?? ''}
-                onChange={(e) =>
-                  onUpdateKeycapPersonalization(
-                    selectedKey,
-                    e.target.value,
-                    selectedKeyAssignment?.subLegend ?? '',
-                    selectedKeyAssignment?.keycapColor ?? ''
-                  )
-                }
-                placeholder={selectedKeyAssignment?.label || 'Custom text'}
-                maxLength={12}
-                className="w-full h-[24px] bg-white rounded-[6px] px-[7px] text-[10.5px] text-[#222] placeholder:text-[#aaa] focus:outline-none focus:ring-1 focus:ring-[#0051ff]"
-              />
-            </div>
-            <div>
-              <label className="block text-[9.5px] text-[#666] mb-[2px]">Sub-Legend (Subscript)</label>
-              <input
-                type="text"
-                value={selectedKeyAssignment?.subLegend ?? ''}
-                onChange={(e) =>
-                  onUpdateKeycapPersonalization(
-                    selectedKey,
-                    selectedKeyAssignment?.customLegend ?? '',
-                    e.target.value,
-                    selectedKeyAssignment?.keycapColor ?? ''
-                  )
-                }
-                placeholder="e.g. F5, MIC"
-                maxLength={6}
-                className="w-full h-[24px] bg-white rounded-[6px] px-[7px] text-[10.5px] text-[#222] placeholder:text-[#aaa] focus:outline-none focus:ring-1 focus:ring-[#0051ff]"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-[9.5px] text-[#666] mb-[4px]">Keycap Color</label>
-            <div className="flex items-center gap-[6px]">
-              {[
-                { name: 'Default', hex: '' },
-                { name: 'Blue', hex: '#0051ff' },
-                { name: 'Red', hex: '#dc2626' },
-                { name: 'Green', hex: '#16a34a' },
-                { name: 'Amber', hex: '#d97706' },
-                { name: 'Purple', hex: '#9333ea' },
-                { name: 'Dark', hex: '#18181b' },
-              ].map((swatch) => {
-                const isSelected = (selectedKeyAssignment?.keycapColor || '') === swatch.hex;
-                return (
-                  <button
-                    key={swatch.name}
-                    type="button"
-                    title={swatch.name}
-                    onClick={() =>
-                      onUpdateKeycapPersonalization(
-                        selectedKey,
-                        selectedKeyAssignment?.customLegend ?? '',
-                        selectedKeyAssignment?.subLegend ?? '',
-                        swatch.hex
-                      )
-                    }
-                    className={`w-[18px] h-[18px] rounded-full border-2 transition-all cursor-pointer ${
-                      isSelected ? 'border-[#0051ff] scale-110 shadow-sm' : 'border-white/80 hover:scale-105'
-                    }`}
-                    style={{ backgroundColor: swatch.hex || '#313131' }}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Search Bar + List/Grid View Toggle */}
       <div className="px-[15px] flex items-center gap-[7px] shrink-0">
