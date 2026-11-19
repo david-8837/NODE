@@ -95,6 +95,16 @@ describe('Rotary encoder rotation limitations and guardrails', () => {
     expect(ROTARY_PAIRS['page up']).toBe('Page Down');
   });
 
+  it('disallows mouse click buttons on rotary rotation', () => {
+    const mouseClicks = ['left click', 'right click', 'middle click', 'mouse 4', 'mouse 5'];
+    for (const click of mouseClicks) {
+      expect(isActionAllowedOnEncoderRotation({ binding: click })).toEqual({
+        allowed: false,
+        reason: 'Mouse click buttons cannot be assigned to rotary rotation (CW/CCW). Assign to Keys 1–9 or Dial Press instead.',
+      });
+    }
+  });
+
   it('formats short dial labels correctly for paired actions', () => {
     expect(formatEncoderShortLabel('vol')).toBe('vol');
     expect(formatEncoderShortLabel('')).toBe('—');

@@ -2115,16 +2115,27 @@ export default function App() {
             pairedOpposite = {
               sub: oppositeSub,
               binding: counterpart,
-              label: formatEncoderShortLabel(counterpart),
+              label:
+                PRESET_DIAL_LABELS[counterpart] ||
+                PRESET_DIAL_LABELS[counterpart.toLowerCase()] ||
+                formatEncoderShortLabel(counterpart),
             };
           }
         }
       }
 
+      const assignedEncoderLabel = item.isClearIcon
+        ? '—'
+        : PRESET_DIAL_LABELS[displayBinding] ||
+          PRESET_DIAL_LABELS[displayBinding.toLowerCase()] ||
+          (item.macropadLabel && item.macropadLabel.length <= 4
+            ? item.macropadLabel.toLowerCase()
+            : formatEncoderShortLabel(displayBinding));
+
       const updatedActions: Record<EncoderSubActionId, EncoderSubBinding> = {
         ...existingActions,
         [subTarget]: {
-          label: item.isClearIcon ? '—' : formatEncoderShortLabel(displayBinding),
+          label: assignedEncoderLabel,
           binding: item.isClearIcon ? 'blank' : displayBinding,
           execution: item.isClearIcon ? undefined : item.execution,
         },

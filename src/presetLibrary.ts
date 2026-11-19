@@ -165,9 +165,14 @@ export const PRESET_DIAL_LABELS: Record<string, string> = {
   'wheel down': 'wh-',
   'Wheel Left': 'wh<',
   'Wheel Right': 'wh>',
+  'wheel left': 'wh<',
+  'wheel right': 'wh>',
   'Left Click': 'lclk',
   'Right Click': 'rclk',
   'Middle Click': 'mclk',
+  'left click': 'lclk',
+  'right click': 'rclk',
+  'middle click': 'mclk',
 };
 
 export const ROTARY_PAIRS: Record<string, string> = {

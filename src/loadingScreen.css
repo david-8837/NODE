@@ -6,10 +6,8 @@
   place-items: center;
   overflow: hidden;
   isolation: isolate;
-  background:
-    radial-gradient(circle at 50% 42%, rgb(255 255 255 / 85%) 0%, rgb(239 239 239 / 98%) 56%, #e6e6e6 100%),
-    #efefef;
-  color: #141416;
+  background: radial-gradient(circle at 50% 45%, #ffffff 0%, #f7f7f9 60%, #ececef 100%), #fbfbfd;
+  color: #1d1d1f;
   opacity: 1;
   visibility: visible;
   transition: opacity 320ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s;
@@ -20,7 +18,7 @@
   position: absolute;
   z-index: -1;
   inset: 0;
-  background: radial-gradient(circle at 50% 44%, rgb(0 81 255 / 7%), transparent 46%);
+  background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.02) 0%, transparent 60%);
   content: "";
   pointer-events: none;
 }
@@ -36,74 +34,71 @@
   position: relative;
   display: grid;
   justify-items: center;
-  gap: 20px;
-  padding: 16px;
+  gap: 16px;
+  padding: 24px;
   transform: translateY(0) scale(1);
   transition:
-    transform 340ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 340ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform 340ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 340ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #app-loading-screen.is-hidden .node-loading-content {
-  transform: translateY(-8px) scale(0.975);
-  filter: blur(4px);
+  transform: translateY(-6px) scale(0.98);
+  filter: blur(2px);
 }
 
-/* Miniature Grid Macro 1 Hardware Silhouette (#08090d anodized chassis) */
+/* Sleek Apple-minimalist Grid Macro 1 architectural micro-mark (#08090d anodized chassis) */
 .node-loading-device {
   display: grid;
-  gap: 8px;
-  width: 96px;
-  padding: 12px 11px 11px;
-  border-radius: 20px;
-  border: 1px solid rgb(255 255 255 / 10%);
-  background: linear-gradient(160deg, #1b1c20 0%, #0d0e12 58%, #08090d 100%);
+  gap: 6px;
+  width: 76px;
+  padding: 9px 8px 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(165deg, #1c1d22 0%, #101115 50%, #08090d 100%);
   box-shadow:
-    0 22px 44px -10px rgb(0 0 0 / 22%),
-    0 8px 18px -4px rgb(0 0 0 / 12%),
-    inset 0 1px 0.5px rgb(255 255 255 / 16%);
-  animation: node-device-float 2.4s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+    0 20px 40px -12px rgba(0, 0, 0, 0.22),
+    0 8px 16px -4px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.18);
+  transition: transform 0.3s ease;
 }
 
 .node-loading-device-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1px 4px 2px 6px;
+  padding: 0 4px 1px 5px;
 }
 
 .node-loading-led {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 999px;
-  background: #0051ff;
-  box-shadow:
-    0 0 8px 2px rgb(0 81 255 / 85%),
-    0 0 16px 4px rgb(0 81 255 / 45%);
-  animation: node-led-pulse 1.6s ease-in-out infinite;
+  background: #ffffff;
+  box-shadow: 0 0 6px 1px rgba(255, 255, 255, 0.7);
+  animation: node-led-pulse 2s ease-in-out infinite;
 }
 
 .node-loading-encoder {
   position: relative;
-  width: 22px;
-  height: 22px;
+  width: 17px;
+  height: 17px;
   border-radius: 999px;
-  border: 1px solid rgb(255 255 255 / 12%);
-  background: radial-gradient(circle at 35% 30%, #2c2f36, #14161a 78%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: radial-gradient(circle at 35% 30%, #30333a, #16171b 80%);
   box-shadow:
-    0 3px 6px rgb(0 0 0 / 45%),
-    inset 0 1px 0.5px rgb(255 255 255 / 18%);
-  animation: node-encoder-spin 3.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+    0 2px 4px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.22);
 }
 
 .node-loading-encoder::after {
   position: absolute;
-  top: 3px;
+  top: 2px;
   left: 50%;
   width: 1.5px;
-  height: 5px;
+  height: 4px;
   border-radius: 99px;
-  background: rgb(255 255 255 / 70%);
+  background: rgba(255, 255, 255, 0.85);
   transform: translateX(-50%);
   content: "";
 }
@@ -111,103 +106,96 @@
 .node-loading-mark {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
+  gap: 4px;
   width: 100%;
   aspect-ratio: 1 / 1;
 }
 
 .node-loading-key {
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 5.5px;
-  background: linear-gradient(155deg, #272930, #17191e);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  background: linear-gradient(155deg, #26272e, #141519);
   box-shadow:
-    0 2px 3px rgb(0 0 0 / 45%),
-    inset 0 1px 0 rgb(255 255 255 / 9%);
-  animation: node-key-wave 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    0 1.5px 2px rgba(0, 0, 0, 0.45),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
 }
 
-.node-loading-key:nth-child(1) { animation-delay: 0ms; }
-.node-loading-key:nth-child(2) { animation-delay: 90ms; }
-.node-loading-key:nth-child(3) { animation-delay: 180ms; }
-.node-loading-key:nth-child(4) { animation-delay: 90ms; }
-.node-loading-key:nth-child(5) { animation-delay: 180ms; }
-.node-loading-key:nth-child(6) { animation-delay: 270ms; }
-.node-loading-key:nth-child(7) { animation-delay: 180ms; }
-.node-loading-key:nth-child(8) { animation-delay: 270ms; }
-.node-loading-key:nth-child(9) { animation-delay: 360ms; }
-
 .node-loading-key.is-active {
-  border-color: #3b7dff;
-  background: linear-gradient(145deg, #2b73ff, #0051ff);
+  border-color: rgba(255, 255, 255, 0.35);
+  background: linear-gradient(145deg, #32343c, #1a1b20);
   box-shadow:
-    0 0 14px rgb(0 81 255 / 55%),
-    inset 0 1px 0 rgb(255 255 255 / 35%);
-  animation: node-key-breathe 1.6s ease-in-out infinite;
+    0 0 10px rgba(255, 255, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  animation: node-key-breathe 2.4s ease-in-out infinite;
 }
 
 .node-loading-brand {
   display: grid;
   justify-items: center;
-  gap: 5px;
-  margin-top: 2px;
+  gap: 3px;
+  margin-top: 4px;
 }
 
 .node-loading-brand strong {
-  padding-left: 0.22em;
+  padding-left: 0.26em;
   color: #111111;
-  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  font-size: 16px;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.26em;
+  line-height: 1.1;
 }
 
 .node-loading-brand span {
-  padding-left: 0.18em;
-  color: #767676;
-  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  font-size: 8.5px;
+  padding-left: 0.22em;
+  color: #86868b;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 }
 
 .node-loading-status {
   display: grid;
   justify-items: center;
-  gap: 9px;
+  gap: 8px;
   width: 100%;
+  margin-top: 6px;
 }
 
 .node-loading-progress {
   display: block;
-  width: 132px;
-  height: 2.5px;
+  width: 120px;
+  height: 2px;
   overflow: hidden;
   border-radius: 99px;
-  background: rgb(0 0 0 / 8%);
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .node-loading-progress span {
   display: block;
-  width: 42%;
+  width: 38%;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, transparent, #0051ff, #3b82f6, transparent);
-  animation: node-progress-sweep 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  background: linear-gradient(90deg, transparent, #111111 40%, #2c2c2e 60%, transparent);
+  animation: node-progress-sweep 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .node-loading-label {
-  color: #888888;
-  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  font-size: 10px;
+  color: #86868b;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.03em;
+  letter-spacing: -0.01em;
 }
 
 #root .app-shell::before {
   position: absolute;
   z-index: 999;
   inset: 0;
-  background: #efefef;
+  background: #fbfbfd;
   content: "";
   opacity: 1;
   pointer-events: auto;
@@ -219,48 +207,25 @@
   pointer-events: none;
 }
 
-@keyframes node-device-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-
 @keyframes node-led-pulse {
-  0%, 100% { opacity: 0.82; transform: scale(0.95); }
-  50% { opacity: 1; transform: scale(1.12); }
-}
-
-@keyframes node-encoder-spin {
-  0% { transform: rotate(-28deg); }
-  50% { transform: rotate(42deg); }
-  100% { transform: rotate(-28deg); }
-}
-
-@keyframes node-key-wave {
-  0%, 65%, 100% {
-    transform: translateY(0) scale(1);
-    border-color: rgb(255 255 255 / 8%);
-  }
-  30% {
-    transform: translateY(0.8px) scale(0.95);
-    border-color: rgb(0 81 255 / 42%);
-    box-shadow: 0 0 8px rgb(0 81 255 / 22%), inset 0 1px 0 rgb(255 255 255 / 16%);
-  }
+  0%, 100% { opacity: 0.65; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.08); }
 }
 
 @keyframes node-key-breathe {
   0%, 100% {
-    transform: scale(0.96);
-    box-shadow: 0 0 10px rgb(0 81 255 / 38%), inset 0 1px 0 rgb(255 255 255 / 26%);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   }
   50% {
-    transform: scale(1.03);
-    box-shadow: 0 0 18px rgb(0 81 255 / 68%), inset 0 1px 0 rgb(255 255 255 / 42%);
+    border-color: rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 }
 
 @keyframes node-progress-sweep {
-  from { transform: translateX(-130%); }
-  to { transform: translateX(340%); }
+  from { transform: translateX(-140%); }
+  to { transform: translateX(360%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
