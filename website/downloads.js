@@ -2,6 +2,7 @@ const owner = 'david-8837';
 const repository = 'NODE';
 const releasesUrl = `https://github.com/${owner}/${repository}/releases`;
 const latestReleaseApi = `https://api.github.com/repos/${owner}/${repository}/releases/latest`;
+const allReleasesApi = `https://api.github.com/repos/${owner}/${repository}/releases`;
 
 const installerLink = document.querySelector('#download-installer');
 const zipLink = document.querySelector('#download-zip');
@@ -38,20 +39,39 @@ function setDownload(link, asset, detail, label) {
 async function loadLatestRelease() {
   setFallbackLinks();
   try {
-    const response = await fetch(latestReleaseApi, {
-      headers: { Accept: 'application/vnd.github+json' },
-    });
+    let release = null;
+    try {
+      const allResponse = await fetch(allReleasesApi, {
+        headers: { Accept: 'application/vnd.github+json' },
+      });
+      if (allResponse.ok) {
+        const releasesList = await allResponse.json();
+        if (Array.isArray(releasesList) && releasesList.length > 0) {
+          release = releasesList.find(
+            (r) =>
+              Array.isArray(r.assets) &&
+              r.assets.some((a) => a.name.toLowerCase().endsWith('.exe'))
+          );
+        }
+      }
+    } catch {}
 
-    if (response.status === 404) {
-      releaseVersion.textContent = 'FIRST RELEASE SOON';
-      installerDetail.textContent = 'NSIS setup · not published yet';
-      zipDetail.textContent = 'Portable package · not published yet';
-      setStatus('The first public Windows release is not available yet.', 'pending');
-      return;
+    if (!release) {
+      const response = await fetch(latestReleaseApi, {
+        headers: { Accept: 'application/vnd.github+json' },
+      });
+
+      if (response.status === 404) {
+        releaseVersion.textContent = 'FIRST RELEASE SOON';
+        installerDetail.textContent = 'NSIS setup · not published yet';
+        zipDetail.textContent = 'Portable package · not published yet';
+        setStatus('The first public Windows release is not available yet.', 'pending');
+        return;
+      }
+      if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+
+      release = await response.json();
     }
-    if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
-
-    const release = await response.json();
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const installer = assets.find((asset) => asset.name.toLowerCase().includes('x64') && asset.name.toLowerCase().endsWith('.exe'))
       || assets.find((asset) => asset.name.toLowerCase().endsWith('.exe'));

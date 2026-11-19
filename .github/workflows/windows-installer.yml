@@ -268,16 +268,14 @@ jobs:
           if ($releaseExists) {
             gh release upload $tag @assets
           } else {
-            gh release create $tag @assets --verify-tag --prerelease --title "NODE studio $tag" --generate-notes
+            gh release create $tag @assets --verify-tag --latest --title "NODE studio $tag" --generate-notes
             if ($LASTEXITCODE -ne 0) {
               gh release upload $tag @assets
             }
           }
           if ($LASTEXITCODE -ne 0) { throw "Could not publish Windows release $tag" }
-          # Physical hardware verification is still pending, so tagged builds must
-          # never become the repository's full "Latest" release.
-          gh release edit $tag --prerelease
-          if ($LASTEXITCODE -ne 0) { throw "Could not mark Windows release $tag as a pre-release" }
+          gh release edit $tag --latest
+          if ($LASTEXITCODE -ne 0) { throw "Could not mark Windows release $tag as latest" }
 
       - name: Upload Windows packages and visual check
         uses: actions/upload-artifact@v4
