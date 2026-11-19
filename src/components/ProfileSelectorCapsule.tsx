@@ -191,7 +191,7 @@ export function ProfileSelectorCapsule({
                               damping: 28,
                             }}
                             onClick={() => setDeletingProfileId(null)}
-                            className="h-[28px] px-[12px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] text-[11px] font-medium text-[#444444] shrink-0 shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-colors cursor-pointer"
+                            className="h-[28px] px-[12px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-black/30 text-[11px] font-medium text-[#444444] shrink-0 shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-colors cursor-pointer"
                           >
                             Cancel
                           </motion.button>
@@ -255,7 +255,7 @@ export function ProfileSelectorCapsule({
                           <button
                             type="button"
                             title="Reorder profile"
-                            className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-grab active:cursor-grabbing"
+                            className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-grab active:cursor-grabbing"
                           >
                             <svg
                               width="10"
@@ -324,7 +324,7 @@ export function ProfileSelectorCapsule({
                             whileTap={{ scale: 0.92 }}
                             onClick={() => handleDuplicateProfile(idx)}
                             title="Duplicate profile"
-                            className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
+                            className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
                           >
                             <svg
                               width="12"
@@ -353,7 +353,7 @@ export function ProfileSelectorCapsule({
                             whileTap={{ scale: 0.92 }}
                             onClick={() => handleExportProfile(idx)}
                             title="Export profile"
-                            className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
+                            className="w-[27px] h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center text-[#444444] shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
                           >
                             <svg
                               width="12"
@@ -397,7 +397,7 @@ export function ProfileSelectorCapsule({
               <div className="flex items-center gap-[6px]">
                 <button
                   onClick={handleAddProfile}
-                  className="flex-1 h-[28px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center gap-[5px] text-[11px] font-medium text-[#444444] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
+                  className="flex-1 h-[28px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center gap-[5px] text-[11px] font-medium text-[#444444] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
                 >
                   <Plus className="w-[11px] h-[11px] stroke-[2]" />
                   <span>Add Profile</span>
@@ -405,7 +405,7 @@ export function ProfileSelectorCapsule({
 
                 <button
                   onClick={handleImportProfile}
-                  className="h-[28px] px-[10px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center gap-[5px] text-[11px] font-medium text-[#444444] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
+                  className="h-[28px] px-[12px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center gap-[5px] text-[11px] font-medium text-[#444444] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
                 >
                   <svg
                     width="10"
@@ -422,33 +422,6 @@ export function ProfileSelectorCapsule({
                   </svg>
                   <span>Import</span>
                 </button>
-
-                {onOpenCommunityHub && (
-                  <button
-                    onClick={() => {
-                      setProfileMenuOpen(false);
-                      onOpenCommunityHub();
-                    }}
-                    title="Browse & install community-shared profiles"
-                    className="h-[28px] px-[9px] rounded-full bg-white hover:bg-black hover:text-white border-[1.5px] border-transparent hover:border-black/30 flex items-center justify-center gap-[4px] text-[10.5px] font-medium text-[#444444] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
-                  >
-                    <svg
-                      width="11"
-                      height="11"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="2" y1="12" x2="22" y2="12" />
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                    </svg>
-                    <span>Hub</span>
-                  </button>
-                )}
               </div>
             </motion.div>
           )}

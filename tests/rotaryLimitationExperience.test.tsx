@@ -3,6 +3,8 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActionLibrarySidebar } from '../src/components/ActionLibrarySidebar';
+import { ProfileSelectorCapsule } from '../src/components/ProfileSelectorCapsule';
+import { GRID_MACRO_ENCODER_SLOT } from '../src/deviceLayout';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -49,7 +51,7 @@ describe('Rotary limitation experience and clean drawer UI', () => {
           customItemsByTab: { Action: [], 'Multi-A': [], 'Smart-A': [] },
           renderAppIcon: () => null,
           showToast: vi.fn(),
-          selectedKey: 'slot-encoder',
+          selectedKey: GRID_MACRO_ENCODER_SLOT,
           selectedEncoderSub: 'ccw',
           selectedKeyAssignment: null,
         })
@@ -91,5 +93,50 @@ describe('Rotary limitation experience and clean drawer UI', () => {
     // Toggle back off
     localStorage.setItem('node-studio.suppress-rotary-limitation-modal', 'false');
     expect(localStorage.getItem('node-studio.suppress-rotary-limitation-modal')).toBe('false');
+  });
+
+  it('does not render the Hub button in the profile dropdown bottom bar', async () => {
+    const dummyProfile = {
+      id: 'default',
+      name: 'Default Profile',
+      color: '#0051ff',
+      layers: [{} as any],
+    };
+
+    await act(async () => {
+      root.render(
+        createElement(ProfileSelectorCapsule, {
+          entrancePhase: 'complete',
+          containerRef: { current: null },
+          activeTooltip: null,
+          setActiveTooltip: vi.fn(),
+          currentProfile: dummyProfile,
+          profiles: [dummyProfile],
+          activeProfileIndex: 0,
+          profileMenuOpen: true, // open dropdown to inspect bottom action buttons
+          setProfileMenuOpen: vi.fn(),
+          deletingProfileId: null,
+          setDeletingProfileId: vi.fn(),
+          selectProfileInApp: vi.fn(),
+          handleUpdateProfileName: vi.fn(),
+          handleDuplicateProfile: vi.fn(),
+          handleExportProfile: vi.fn(),
+          handleConfirmDeleteProfile: vi.fn(),
+          handleAddProfile: vi.fn(),
+          handleImportProfile: vi.fn(),
+          onOpenCommunityHub: vi.fn(),
+        })
+      );
+    });
+
+    // Check that Add Profile and Import are present
+    expect(container.textContent).toContain('Add Profile');
+    expect(container.textContent).toContain('Import');
+
+    // Confirm that the "Hub" button is completely removed
+    const buttons = Array.from(container.querySelectorAll('button'));
+    const hubButton = buttons.find((b) => b.textContent?.trim() === 'Hub');
+    expect(hubButton).toBeUndefined();
+    expect(container.textContent).not.toContain('Hub');
   });
 });
