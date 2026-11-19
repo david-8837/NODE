@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { actionToViaKeycode } from '../src/qmkViaBridge';
-import { buildViaConfiguration } from '../src/qmkProfileSync';
+import {
+  buildViaConfiguration,
+  decodeViaKeycode,
+  decodeViaSnapshotToProfile,
+  isProfileKeymapBlank,
+} from '../src/qmkProfileSync';
 
 const blankKey = { label: '', binding: 'blank', actionType: 'Basic input' };
 
@@ -199,5 +204,78 @@ describe('QMK profile-to-VIA configuration', () => {
     expect(actionToViaKeycode(config.layers[0]?.keys?.r1c2)).toBe(0x4129);
     expect(config.layers[0]?.keys?.r1c3).toEqual({ t: 'profile', n: 2 });
     expect(actionToViaKeycode(config.layers[0]?.keys?.r1c3)).toBe(0x7e42);
+  });
+
+  describe('Hardware Keymap Decoding & Round-tripping', () => {
+    it('decodes blank keys', () => {
+      expect(decodeViaKeycode(0)).toEqual({ label: '', binding: 'blank', actionType: 'Basic input' });
+    });
+
+    it('decodes layer switches including TO(1) for Key 3', () => {
+      // TO(1) = 0x5201 (Layer 2)
+      expect(decodeViaKeycode(0x5201)).toEqual({ label: 'L2', binding: 'Layer 2', actionType: 'Basic input' });
+      // MO(1) = 0x5221 (Temp Layer 2)
+      expect(decodeViaKeycode(0x5221)).toEqual({ label: 'TL2', binding: 'Temp Layer 2', actionType: 'Basic input' });
+      // Layer Cycle = 0x7e44
+      expect(decodeViaKeycode(0x7e44)).toEqual({ label: 'Cycle', binding: 'Layer Cycle', actionType: 'Layer Cycle' });
+    });
+
+    it('decodes media keys', () => {
+      expect(decodeViaKeycode(0x00a9)).toEqual({ label: 'vol+', binding: 'volume +', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00aa)).toEqual({ label: 'vol-', binding: 'volume -', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00a8)).toEqual({ label: 'mute', binding: 'mute', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x00ae)).toEqual({ label: 'play', binding: 'play', actionType: 'Basic input' });
+    });
+
+    it('decodes alphanumeric keys and chords', () => {
+      expect(decodeViaKeycode(0x04)).toEqual({ label: 'A', binding: 'a', actionType: 'Basic input' });
+      expect(decodeViaKeycode(0x1e)).toEqual({ label: '1', binding: '1', actionType: 'Basic input' });
+      // Ctrl + C = (0x01 << 8) | 0x06
+      expect(decodeViaKeycode(0x0106)).toEqual({ label: 'Ctrl+C', binding: 'ctrl+c', actionType: 'Basic input' });
+    });
+
+    it('identifies blank profile correctly', () => {
+      expect(isProfileKeymapBlank({ id: 'def', name: 'Def', color: '#0051ff', layers: [{ r1c1: blankKey, r1c2: blankKey } as any] })).toBe(true);
+      expect(isProfileKeymapBlank({ id: 'def', name: 'Def', color: '#0051ff', layers: [{ r1c1: { label: 'A', binding: 'a', actionType: 'Basic input' } } as any] })).toBe(false);
+    });
+
+    it('decodes a full multi-layer hardware snapshot into ProfileData', () => {
+      const snapshot = {
+        protocolVersion: 0x000d,
+        layerCount: 2,
+        capturedLayerCount: 2,
+        layers: [
+          {
+            keys: {
+              r1c1: 0x04,   // 'A'
+              r1c2: 0x05,   // 'B'
+              r1c3: 0x5201, // 'TO(1)' -> Layer 2
+              r2c1: 0, r2c2: 0, r2c3: 0,
+              r3c1: 0, r3c2: 0, r3c3: 0,
+            },
+            enc: { cw: 0x00a9, ccw: 0x00aa, press: 0x00a8 },
+          },
+          {
+            keys: {
+              r1c1: 0x5200, // 'TO(0)' -> Layer 1
+              r1c2: 0, r1c3: 0,
+              r2c1: 0, r2c2: 0, r2c3: 0,
+              r3c1: 0, r3c2: 0, r3c3: 0,
+            },
+            enc: { cw: 0, ccw: 0, press: 0 },
+          },
+        ],
+      };
+
+      const profile = decodeViaSnapshotToProfile(snapshot);
+      expect(profile.layers.length).toBe(2);
+      expect(profile.layers[0].r1c1.binding).toBe('a');
+      expect(profile.layers[0].r1c2.binding).toBe('b');
+      expect(profile.layers[0].r1c3.binding).toBe('Layer 2');
+      expect(profile.layers[0].r1c3.label).toBe('L2');
+      expect(profile.layers[0]['dial-tl'].encoderActions?.cw?.binding).toBe('volume +');
+      expect(profile.layers[1].r1c1.binding).toBe('Layer 1');
+      expect(profile.layers[1].r1c1.label).toBe('L1');
+    });
   });
 });

@@ -1,6 +1,12 @@
 import { referencesAtOrAfter } from './referenceSafety';
 import { cheatSheetCommand } from './cheatSheet';
-import type { ViaAction, ViaConfiguration } from './qmkViaBridge';
+import type { ViaAction, ViaConfiguration, ViaKeymapSnapshot } from './qmkViaBridge';
+import {
+  INITIAL_LAYER_1,
+  type LayerKeymap,
+  type ProfileData,
+  type KeyAssignment,
+} from './presetLibrary';
 
 export type PresetOperatingSystem = 'mac' | 'win';
 
@@ -513,4 +519,296 @@ export function buildViaConfiguration(
   });
 
   return { config: { version: 1, layers }, warnings };
+}
+
+const REVERSE_MEDIA_KEYCODES: Record<number, { label: string; binding: string }> = {
+  0x00a8: { label: 'mute', binding: 'mute' },
+  0x007f: { label: 'mute', binding: 'mute' },
+  0x00a9: { label: 'vol+', binding: 'volume +' },
+  0x0080: { label: 'vol+', binding: 'volume +' },
+  0x00aa: { label: 'vol-', binding: 'volume -' },
+  0x0081: { label: 'vol-', binding: 'volume -' },
+  0x00ab: { label: 'next', binding: 'next track' },
+  0x00ac: { label: 'prev', binding: 'previous track' },
+  0x00ad: { label: 'stop', binding: 'media stop' },
+  0x00ae: { label: 'play', binding: 'play' },
+  0x00a5: { label: 'pwr', binding: 'power down' },
+  0x00a6: { label: 'slp', binding: 'sleep' },
+  0x00bb: { label: 'ffwd', binding: 'fast forward' },
+  0x00bc: { label: 'rwnd', binding: 'rewind' },
+  0x00bd: { label: 'brt+', binding: 'bright up' },
+  0x00be: { label: 'brt-', binding: 'bright down' },
+};
+
+const REVERSE_SPECIAL_KEYCODES: Record<number, { label: string; binding: string }> = {
+  0x28: { label: 'ent', binding: 'enter' },
+  0x29: { label: 'esc', binding: 'esc' },
+  0x2a: { label: 'bksp', binding: 'back' },
+  0x2b: { label: 'tab', binding: 'tab' },
+  0x2c: { label: 'spc', binding: 'space' },
+  0x2d: { label: '-', binding: '-' },
+  0x2e: { label: '=', binding: '=' },
+  0x2f: { label: '[', binding: '[' },
+  0x30: { label: ']', binding: ']' },
+  0x31: { label: '\\', binding: '\\' },
+  0x33: { label: ';', binding: ';' },
+  0x34: { label: "'", binding: "'" },
+  0x35: { label: '`', binding: '`' },
+  0x36: { label: ',', binding: ',' },
+  0x37: { label: '.', binding: '.' },
+  0x38: { label: '/', binding: '/' },
+  0x39: { label: 'lock', binding: 'caps lock' },
+  0x46: { label: 'prts', binding: 'print screen' },
+  0x47: { label: 'scrl', binding: 'scroll lock' },
+  0x48: { label: 'paus', binding: 'pause' },
+  0x49: { label: 'ins', binding: 'insert' },
+  0x4a: { label: 'home', binding: 'home' },
+  0x4b: { label: 'pgup', binding: 'page up' },
+  0x4c: { label: 'del', binding: 'delete' },
+  0x4d: { label: 'end', binding: 'end' },
+  0x4e: { label: 'pgdn', binding: 'page down' },
+  0x4f: { label: '→', binding: 'right arrow' },
+  0x50: { label: '←', binding: 'left arrow' },
+  0x51: { label: '↓', binding: 'down arrow' },
+  0x52: { label: '↑', binding: 'up arrow' },
+  0x53: { label: 'num', binding: 'num lock' },
+  0x54: { label: 'num /', binding: 'num /' },
+  0x55: { label: 'num *', binding: 'num *' },
+  0x56: { label: 'num -', binding: 'num -' },
+  0x57: { label: 'num +', binding: 'num +' },
+  0x58: { label: 'nent', binding: 'num enter' },
+  0x67: { label: 'num =', binding: 'num =' },
+  0x85: { label: 'num ,', binding: 'num ,' },
+};
+
+const REVERSE_MODIFIERS: Record<number, { label: string; binding: string }> = {
+  0xe0: { label: 'ctrl', binding: 'ctrl' },
+  0xe1: { label: 'shft', binding: 'shift' },
+  0xe2: { label: 'alt', binding: 'alt' },
+  0xe3: { label: 'win', binding: 'win' },
+  0xe4: { label: 'rctl', binding: 'right ctrl' },
+  0xe5: { label: 'rshf', binding: 'right shift' },
+  0xe6: { label: 'ralt', binding: 'right alt' },
+  0xe7: { label: 'rwin', binding: 'right win' },
+};
+
+function decodeSingleKeycode(kc: number): { label: string; binding: string } | null {
+  if (REVERSE_SPECIAL_KEYCODES[kc]) return REVERSE_SPECIAL_KEYCODES[kc];
+  if (REVERSE_MEDIA_KEYCODES[kc]) return REVERSE_MEDIA_KEYCODES[kc];
+  if (REVERSE_MODIFIERS[kc]) return REVERSE_MODIFIERS[kc];
+
+  if (kc >= 0x04 && kc <= 0x1d) {
+    const char = String.fromCharCode(65 + (kc - 0x04));
+    return { label: char, binding: char.toLowerCase() };
+  }
+  if (kc >= 0x1e && kc <= 0x26) {
+    const digit = String(kc - 0x1e + 1);
+    return { label: digit, binding: digit };
+  }
+  if (kc === 0x27) return { label: '0', binding: '0' };
+
+  if (kc >= 0x3a && kc <= 0x45) {
+    const fn = `F${kc - 0x3a + 1}`;
+    return { label: fn, binding: fn };
+  }
+  if (kc >= 0x68 && kc <= 0x73) {
+    const fn = `F${kc - 0x68 + 13}`;
+    return { label: fn, binding: fn };
+  }
+  if (kc >= 0x59 && kc <= 0x61) {
+    const num = String(kc - 0x59 + 1);
+    return { label: num, binding: `num ${num}` };
+  }
+  if (kc === 0x62) return { label: '0', binding: 'num 0' };
+  if (kc === 0x63) return { label: '.', binding: 'num .' };
+
+  return null;
+}
+
+export function decodeViaKeycode(keycode: number): { label: string; binding: string; actionType: KeyAssignment['actionType'] } {
+  if (!keycode || keycode === 0) {
+    return { label: '', binding: 'blank', actionType: 'Basic input' };
+  }
+
+  // Host trigger: 0x7e00 - 0x7e3f
+  if (keycode >= 0x7e00 && keycode <= 0x7e3f) {
+    return { label: 'Host', binding: 'host_trigger', actionType: 'Basic input' };
+  }
+
+  // Profile switch: 0x7e40 - 0x7e43
+  if (keycode >= 0x7e40 && keycode <= 0x7e43) {
+    const pNum = (keycode & 0x03) + 1;
+    return { label: `P${pNum}`, binding: `Profile ${pNum}`, actionType: 'Basic input' };
+  }
+
+  // Layer cycle: 0x7e44
+  if (keycode === 0x7e44) {
+    return { label: 'Cycle', binding: 'Layer Cycle', actionType: 'Layer Cycle' };
+  }
+
+  // Layer switches: TO(0x5200..0x521f), MO(0x5220..0x523f), TG(0x5240..0x525f), TT(0x5260..0x527f)
+  if ((keycode & 0xffe0) === 0x5200) {
+    const lNum = (keycode & 0x1f) + 1;
+    return { label: `L${lNum}`, binding: `Layer ${lNum}`, actionType: 'Basic input' };
+  }
+  if ((keycode & 0xffe0) === 0x5220) {
+    const lNum = (keycode & 0x1f) + 1;
+    return { label: `TL${lNum}`, binding: `Temp Layer ${lNum}`, actionType: 'Basic input' };
+  }
+  if ((keycode & 0xffe0) === 0x5240) {
+    const lNum = (keycode & 0x1f) + 1;
+    return { label: `TG${lNum}`, binding: `Toggle Layer ${lNum}`, actionType: 'Basic input' };
+  }
+  if ((keycode & 0xffe0) === 0x5260) {
+    const lNum = (keycode & 0x1f) + 1;
+    return { label: `TT${lNum}`, binding: `TT Layer ${lNum}`, actionType: 'Basic input' };
+  }
+
+  // Mod-tap: 0x2000 | (mod << 8) | kc
+  if ((keycode & 0xe000) === 0x2000) {
+    const baseKc = keycode & 0xff;
+    const base = decodeSingleKeycode(baseKc);
+    if (base) return { label: base.label, binding: base.binding, actionType: 'Basic input' };
+  }
+
+  // Layer-tap: 0x4000 | (layer << 8) | kc
+  if ((keycode & 0xf000) === 0x4000) {
+    const baseKc = keycode & 0xff;
+    const base = decodeSingleKeycode(baseKc);
+    if (base) return { label: base.label, binding: base.binding, actionType: 'Basic input' };
+  }
+
+  // Chords with modifiers: (qmkModifierBits << 8) | baseKeycode
+  if (keycode > 0x0100 && (keycode & 0xe000) === 0) {
+    const modBits = (keycode >> 8) & 0x1f;
+    const baseKc = keycode & 0xff;
+    const base = decodeSingleKeycode(baseKc);
+    if (base) {
+      const isRight = (modBits & 0x10) !== 0;
+      const mods: string[] = [];
+      if (modBits & 0x01) mods.push(isRight ? 'right ctrl' : 'ctrl');
+      if (modBits & 0x02) mods.push(isRight ? 'right shift' : 'shift');
+      if (modBits & 0x04) mods.push(isRight ? 'right alt' : 'alt');
+      if (modBits & 0x08) mods.push(isRight ? 'right win' : 'win');
+      if (mods.length > 0) {
+        const binding = [...mods, base.binding].join('+');
+        const shortMods = mods.map((m) =>
+          m === 'ctrl' || m === 'right ctrl' ? 'Ctrl' :
+          m === 'shift' || m === 'right shift' ? 'Shift' :
+          m === 'alt' || m === 'right alt' ? 'Alt' : 'Win'
+        );
+        const label = [...shortMods, base.label].join('+');
+        return { label, binding, actionType: 'Basic input' };
+      }
+    }
+  }
+
+  // Single standard key
+  const single = decodeSingleKeycode(keycode);
+  if (single) {
+    return { label: single.label, binding: single.binding, actionType: 'Basic input' };
+  }
+
+  return { label: '', binding: 'blank', actionType: 'Basic input' };
+}
+
+export function isProfileKeymapBlank(profile?: ProfileData | null): boolean {
+  if (!profile || !Array.isArray(profile.layers) || profile.layers.length === 0) return true;
+  for (const layer of profile.layers) {
+    for (const slot of KEY_SLOTS) {
+      const entry = layer[slot];
+      if (entry && entry.binding && entry.binding !== 'blank') return false;
+      if (entry && entry.label && entry.label.trim()) return false;
+    }
+    const enc = layer['dial-tl'];
+    if (enc?.encoderActions) {
+      for (const dir of ['cw', 'press', 'ccw'] as const) {
+        const sub = enc.encoderActions[dir];
+        if (sub && sub.binding && sub.binding !== 'blank') return false;
+        if (sub && sub.label && sub.label.trim() && sub.label !== '—') return false;
+      }
+    }
+  }
+  return true;
+}
+
+export function decodeViaSnapshotToProfile(
+  snapshot: ViaKeymapSnapshot,
+  baseProfile?: ProfileData
+): ProfileData {
+  const capturedLayers = Array.isArray(snapshot?.layers) ? snapshot.layers : [];
+  if (capturedLayers.length === 0) {
+    return baseProfile ?? {
+      id: 'default',
+      name: 'Grid Macro 1',
+      color: '#0051ff',
+      layers: [JSON.parse(JSON.stringify(INITIAL_LAYER_1))],
+    };
+  }
+
+  let maxNonEmptyLayerIdx = 0;
+  capturedLayers.forEach((layer, idx) => {
+    const hasKeys = Object.values(layer.keys ?? {}).some((kc) => kc !== 0);
+    const hasEnc =
+      (layer.enc?.cw ?? 0) !== 0 ||
+      (layer.enc?.ccw ?? 0) !== 0 ||
+      (layer.enc?.press ?? 0) !== 0;
+    if (hasKeys || hasEnc) {
+      maxNonEmptyLayerIdx = Math.max(maxNonEmptyLayerIdx, idx);
+    }
+  });
+
+  const activeLayersCount = Math.min(4, Math.max(1, maxNonEmptyLayerIdx + 1));
+  const decodedLayers: LayerKeymap[] = [];
+
+  for (let i = 0; i < activeLayersCount; i++) {
+    const srcLayer = capturedLayers[i];
+    const newLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
+    if (srcLayer) {
+      for (const slot of KEY_SLOTS) {
+        const kc = srcLayer.keys?.[slot] ?? 0;
+        if (kc !== 0) {
+          const decoded = decodeViaKeycode(kc);
+          newLayer[slot] = {
+            label: decoded.label,
+            binding: decoded.binding,
+            actionType: decoded.actionType,
+          };
+        }
+      }
+      const cwKc = srcLayer.enc?.cw ?? 0;
+      const ccwKc = srcLayer.enc?.ccw ?? 0;
+      const pressKc = srcLayer.enc?.press ?? 0;
+      const decodedCw = decodeViaKeycode(cwKc);
+      const decodedCcw = decodeViaKeycode(ccwKc);
+      const decodedPress = decodeViaKeycode(pressKc);
+
+      newLayer['dial-tl'] = {
+        label: decodedPress.label || decodedCw.label || decodedCcw.label || '',
+        binding:
+          decodedPress.binding !== 'blank'
+            ? decodedPress.binding
+            : decodedCw.binding !== 'blank'
+            ? decodedCw.binding
+            : 'blank',
+        actionType: 'Basic input',
+        encoderActions: {
+          cw: { label: decodedCw.label || '—', binding: decodedCw.binding },
+          ccw: { label: decodedCcw.label || '—', binding: decodedCcw.binding },
+          press: { label: decodedPress.label || '—', binding: decodedPress.binding },
+        },
+      };
+    }
+    decodedLayers.push(newLayer);
+  }
+
+  return {
+    id: baseProfile?.id || `profile-${Date.now()}`,
+    name:
+      baseProfile?.name && baseProfile.name !== 'Default Profile'
+        ? baseProfile.name
+        : 'Grid Macro 1',
+    color: baseProfile?.color || '#0051ff',
+    layers: decodedLayers,
+  };
 }

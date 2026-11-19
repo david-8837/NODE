@@ -145,6 +145,7 @@ export interface ElectronApi {
     profiles: unknown[],
     customRules?: import('./activeWindow').AppProfileMappingRule[]
   ) => Promise<import('./activeWindow').MatchedProfileResult | null>;
+  getLegacyProfiles?: () => Promise<any>;
 }
 
 export interface AppSettingsTools {

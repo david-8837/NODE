@@ -8,6 +8,8 @@ const LEGACY_USER_DATA_DIR_NAMES = Object.freeze([
   'NØDE Studio',
   'NØDE studio',
   'NODE Studio',
+  'NODE',
+  'node-grid-macro-1',
 ]);
 
 const MIGRATION_MARKER_FILE = '.legacy-userdata-migrated.v1.json';
@@ -49,6 +51,14 @@ function hasPopulatedLocalStorage(dirPath, fsImpl = fs) {
     const localStorageDir = path.join(dirPath, 'Local Storage');
     if (!fsImpl.statSync(localStorageDir).isDirectory()) return false;
     return fsImpl.readdirSync(localStorageDir).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function hasProfilesFile(dirPath, fsImpl = fs) {
+  try {
+    return fsImpl.statSync(path.join(dirPath, 'profiles.json')).isFile();
   } catch {
     return false;
   }
@@ -123,7 +133,8 @@ function migrateLegacyUserData({
 
       const copySettings = hasSettingsFile(candidateDir, fsImpl);
       const copyLocalStorage = hasPopulatedLocalStorage(candidateDir, fsImpl);
-      if (!copySettings && !copyLocalStorage) {
+      const copyProfiles = hasProfilesFile(candidateDir, fsImpl);
+      if (!copySettings && !copyLocalStorage && !copyProfiles) {
         continue;
       }
 
@@ -145,6 +156,16 @@ function migrateLegacyUserData({
           fsImpl
         );
         copied.push('Local Storage');
+      }
+
+      if (copyProfiles) {
+        try {
+          fsImpl.copyFileSync(
+            path.join(candidateDir, 'profiles.json'),
+            path.join(currentUserDataDir, 'profiles.json')
+          );
+          copied.push('profiles.json');
+        } catch {}
       }
 
       fsImpl.writeFileSync(

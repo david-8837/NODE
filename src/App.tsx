@@ -58,7 +58,12 @@ import type {
   HardwareTriggerEvent,
   QmkViaStatus,
 } from './qmkViaBridge';
-import { buildViaConfiguration } from './qmkProfileSync';
+import {
+  buildViaConfiguration,
+  decodeViaSnapshotToProfile,
+  isProfileKeymapBlank,
+} from './qmkProfileSync';
+import type { ViaKeymapSnapshot } from './qmkViaBridge';
 import type { EmojiCatalogEntry } from './emojiCatalog';
 import { PRESET_CATALOG } from './presetCatalog';
 import {
@@ -74,6 +79,9 @@ import {
   Plus,
   X,
   Search,
+  Loader2,
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 import {
   IsometricKeyIcon,
@@ -369,17 +377,19 @@ function normalizeProfileForEditor(profile: ProfileData): ProfileData {
     : [INITIAL_LAYER_1];
   const layers = rawLayers.map((layer) => {
     const normalized = { ...INITIAL_LAYER_1, ...layer } as LayerKeymap;
+    const rawSlots = (layer as Record<string, unknown>).slots as Record<string, unknown> | undefined;
     for (const slot of GRID_MACRO_KEY_SLOTS) {
-      const incoming = layer[slot] as unknown;
+      const incoming = (layer[slot] as unknown) ?? (rawSlots?.[slot] as unknown);
       normalized[slot] = {
         ...INITIAL_LAYER_1[slot],
         ...(isRecordValue(incoming) ? incoming : {}),
       } as KeyAssignment;
     }
 
-    const incomingEncoder = layer[GRID_MACRO_ENCODER_SLOT] as unknown;
+    const incomingEncoder = (layer[GRID_MACRO_ENCODER_SLOT] as unknown) ?? (rawSlots?.[GRID_MACRO_ENCODER_SLOT] as unknown);
     const encoder = isRecordValue(incomingEncoder) ? incomingEncoder : {};
-    const incomingActions = encoder.encoderActions;
+    const incomingDial = (layer as Record<string, unknown>).dial;
+    const incomingActions = encoder.encoderActions || (isRecordValue(incomingDial) ? incomingDial : {});
     const encoderActions = isRecordValue(incomingActions) ? incomingActions : {};
     const mergeEncoderAction = (direction: EncoderSubActionId): EncoderSubBinding => {
       const fallback = defaultEncoder.encoderActions![direction];
@@ -818,6 +828,23 @@ export default function App() {
   const [deviceActiveLayer, setDeviceActiveLayer] = useState<number>(0);
   const [deviceActiveProfileSlot, setDeviceActiveProfileSlot] = useState<number>(0);
   const [deviceSyncReady, setDeviceSyncReady] = useState(false);
+  const [deviceSyncStatus, setDeviceSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const syncStatusTimerRef = useRef<number | null>(null);
+
+  const triggerSyncFeedback = useCallback((status: 'syncing' | 'synced' | 'error') => {
+    if (syncStatusTimerRef.current) window.clearTimeout(syncStatusTimerRef.current);
+    setDeviceSyncStatus(status);
+    if (status === 'synced') {
+      syncStatusTimerRef.current = window.setTimeout(() => {
+        setDeviceSyncStatus('idle');
+      }, 1800);
+    } else if (status === 'error') {
+      syncStatusTimerRef.current = window.setTimeout(() => {
+        setDeviceSyncStatus('idle');
+      }, 3000);
+    }
+  }, []);
+
   const lastSyncedConfigKeyRef = useRef('');
   // Physical HUD labels and trigger lookup must describe the last successfully
   // synced keymap, not unsaved edits currently in the editor.
@@ -1294,6 +1321,37 @@ export default function App() {
     }, 2200);
   };
 
+  useEffect(() => {
+    if (savedProfileState) return;
+    void (async () => {
+      try {
+        const legacy = await window.electronAPI?.getLegacyProfiles?.();
+        if (legacy && Array.isArray(legacy.profiles) && legacy.profiles.length > 0) {
+          const loadedProfiles = legacy.profiles.map((p: unknown) =>
+            normalizeProfileForEditor(p as ProfileData)
+          );
+          if (loadedProfiles.some((p: ProfileData) => !isProfileKeymapBlank(p))) {
+            setProfiles(loadedProfiles);
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem(
+                PROFILE_FILE_STORAGE_KEY,
+                JSON.stringify({
+                  v: 1,
+                  profiles: loadedProfiles,
+                  activeProfileIndex: 0,
+                  customItems: customItemsByTab,
+                })
+              );
+            }
+            showToast('Loaded previously saved profiles');
+          }
+        }
+      } catch {
+        // Ignore legacy reading errors
+      }
+    })();
+  }, [savedProfileState, customItemsByTab]);
+
   const toggleSimulationMode = async () => {
     if (simulationTransition) return;
     const enabled = !simulationMode;
@@ -1605,6 +1663,7 @@ export default function App() {
           // During a multi-key write, neither the old nor new image is guaranteed.
           delete syncedCheatProfilesRef.current[activeProfileIndex];
           setCheatSyncRevision((revision) => revision + 1);
+          triggerSyncFeedback('syncing');
           const synced = await bridge.request({
             cmd: 'set_config',
             config,
@@ -1612,6 +1671,7 @@ export default function App() {
           });
           if (cancelled) return;
           if (!synced.ok) {
+            triggerSyncFeedback('error');
             showToast(
               `Profile saved locally; device sync failed: ${synced.error || 'unknown error'}. A pre-sync backup was saved locally.`
             );
@@ -1621,6 +1681,7 @@ export default function App() {
           lastSyncedConfigKeyRef.current = configKey;
           syncedCheatProfilesRef.current[activeProfileIndex] = currentProfile;
           setCheatSyncRevision((revision) => revision + 1);
+          triggerSyncFeedback('synced');
           const state = JSON.stringify({
             v: 1,
             profiles,
@@ -1861,6 +1922,9 @@ export default function App() {
         : p
     );
     pushState(nextProfiles);
+    if (deviceStatus.state === 'connected') {
+      triggerSyncFeedback('syncing');
+    }
     // Editing the new layer selects it on the device as well.
     void requestHardwareLayer(currentProfile.layers.length);
     setLayerToolbarOpen(true);
@@ -1874,6 +1938,9 @@ export default function App() {
         idx === activeProfileIndex ? { ...p, layers: [resetLayer] } : p
       );
       pushState(nextProfiles);
+      if (deviceStatus.state === 'connected') {
+        triggerSyncFeedback('syncing');
+      }
       setLayerDeleteConfirm(false);
       setLayerToolbarOpen(false);
       return;
@@ -1890,6 +1957,9 @@ export default function App() {
         : p
     );
     pushState(nextProfiles);
+    if (deviceStatus.state === 'connected') {
+      triggerSyncFeedback('syncing');
+    }
     void requestHardwareLayer(Math.max(0, activeLayerIndex - 1));
     setLayerDeleteConfirm(false);
   };
@@ -1913,6 +1983,9 @@ export default function App() {
       return { ...p, layers: nextLayers };
     });
     pushState(nextProfiles);
+    if (deviceStatus.state === 'connected') {
+      triggerSyncFeedback('syncing');
+    }
   };
 
   const assignItemToSlot = (
@@ -3802,6 +3875,41 @@ export default function App() {
               </div>
             </div>
           </motion.div>
+
+          {/* HARDWARE SYNC STATUS INDICATOR AT BOTTOM */}
+          <AnimatePresence>
+            {deviceSyncStatus !== 'idle' && (
+              <motion.div
+                key="device-sync-indicator"
+                initial={{ opacity: 0, y: 14, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.96 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                className="fixed bottom-[22px] left-1/2 -translate-x-1/2 z-40 pointer-events-none select-none"
+              >
+                <div className="bg-[#18181b]/95 backdrop-blur-md text-white text-[11.5px] font-medium tracking-tight px-3.5 py-1.5 rounded-full border border-white/15 shadow-[0_6px_20px_rgba(0,0,0,0.35)] flex items-center gap-2">
+                  {deviceSyncStatus === 'syncing' && (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-400" />
+                      <span>Syncing to Grid Macro 1...</span>
+                    </>
+                  )}
+                  {deviceSyncStatus === 'synced' && (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                      <span>Saved to Grid Macro 1</span>
+                    </>
+                  )}
+                  {deviceSyncStatus === 'error' && (
+                    <>
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Device sync failed</span>
+                    </>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* =============================================================== */}
           {/* FULL-HEIGHT RIGHT KEY MAPPING DRAWER (FLUSH TO NAVBAR)          */}

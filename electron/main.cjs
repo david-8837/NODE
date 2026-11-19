@@ -817,6 +817,30 @@ ipcMain.handle('match-profile-for-app', (event, windowInfo, profiles, customRule
   return matchProfileForApplication(windowInfo, profiles, customRules);
 });
 
+ipcMain.handle('get-legacy-profiles', (event) => {
+  if (!isTrustedRenderer(event)) return null;
+  try {
+    const userData = app.getPath('userData');
+    const appData = app.getPath('appData');
+    const candidates = [
+      path.join(userData, 'profiles.json'),
+      path.join(appData, 'NODE', 'profiles.json'),
+      path.join(appData, 'node-grid-macro-1', 'profiles.json'),
+      path.join(appData, 'NØDE Grid Macro 1 Studio', 'profiles.json'),
+    ];
+    for (const file of candidates) {
+      if (fs.existsSync(file)) {
+        const text = fs.readFileSync(file, 'utf8');
+        const parsed = JSON.parse(text);
+        if (parsed && Array.isArray(parsed.profiles)) {
+          return parsed;
+        }
+      }
+    }
+  } catch {}
+  return null;
+});
+
 // IPC Handlers for Native Windows Control
 ipcMain.handle('window-minimize', (event) => {
   if (isTrustedRenderer(event) && mainWindow) mainWindow.minimize();
