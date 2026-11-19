@@ -124,6 +124,8 @@ import {
   PRESET_MACROPAD_LABELS,
   PRESET_DIAL_LABELS,
   PRESET_SINGLE_MODIFIERS,
+  ROTARY_PAIRS,
+  isActionAllowedOnEncoderRotation,
   type KeySlotId,
   type MappingTabId,
   type EncoderSubActionId,
@@ -1965,7 +1967,49 @@ export default function App() {
     if (targetSlot === GRID_MACRO_ENCODER_SLOT) {
       const subTarget = subOverride || selectedEncoderSub;
       if (!subTarget) return;
+
+      // Validate rotation limitations for CW / CCW
+      if ((subTarget === 'cw' || subTarget === 'ccw') && !item.isClearIcon) {
+        const check = isActionAllowedOnEncoderRotation({
+          actionType: actionTypeMap[effectiveTab],
+          execution: item.execution,
+          binding: displayBinding,
+        });
+        if (!check.allowed) {
+          showToast(
+            check.reason ||
+              `Action cannot be assigned to rotary rotation (${subTarget.toUpperCase()})`
+          );
+          return;
+        }
+      }
+
       const existingActions = getEncoderActions(currentLayer[targetSlot]);
+
+      // Smart inverse pairing for rotary rotation
+      let pairedOpposite: { sub: EncoderSubActionId; binding: string; label: string } | null = null;
+      if ((subTarget === 'cw' || subTarget === 'ccw') && !item.isClearIcon) {
+        const oppositeSub: EncoderSubActionId = subTarget === 'cw' ? 'ccw' : 'cw';
+        const oppositeCurrent = existingActions[oppositeSub];
+        const isOppositeEmpty =
+          !oppositeCurrent ||
+          oppositeCurrent.binding === 'blank' ||
+          oppositeCurrent.label === '—' ||
+          !oppositeCurrent.label;
+
+        if (isOppositeEmpty) {
+          const lower = displayBinding.toLowerCase().trim();
+          const counterpart = ROTARY_PAIRS[lower];
+          if (counterpart) {
+            pairedOpposite = {
+              sub: oppositeSub,
+              binding: counterpart,
+              label: formatEncoderShortLabel(counterpart),
+            };
+          }
+        }
+      }
+
       const updatedActions: Record<EncoderSubActionId, EncoderSubBinding> = {
         ...existingActions,
         [subTarget]: {
@@ -1973,12 +2017,26 @@ export default function App() {
           binding: item.isClearIcon ? 'blank' : displayBinding,
           execution: item.isClearIcon ? undefined : item.execution,
         },
+        ...(pairedOpposite
+          ? {
+              [pairedOpposite.sub]: {
+                label: pairedOpposite.label,
+                binding: pairedOpposite.binding,
+              },
+            }
+          : {}),
       };
       handleUpdateKeyAssignment(targetSlot, {
         actionType: actionTypeMap[effectiveTab],
         encoderActions: updatedActions,
       });
-      showToast(`Assigned "${displayBinding}" to Encoder (${subTarget.toUpperCase()})`);
+      if (pairedOpposite) {
+        showToast(
+          `Assigned "${displayBinding}" to ${subTarget.toUpperCase()} and auto-paired "${pairedOpposite.binding}" to ${pairedOpposite.sub.toUpperCase()}`
+        );
+      } else {
+        showToast(`Assigned "${displayBinding}" to Encoder (${subTarget.toUpperCase()})`);
+      }
       return;
     }
 
@@ -2055,6 +2113,20 @@ export default function App() {
 
         if (!subA && subB) {
           const itemA = { ...copy[slotA] };
+          if (slotB === GRID_MACRO_ENCODER_SLOT && (subB === 'cw' || subB === 'ccw')) {
+            const check = isActionAllowedOnEncoderRotation({
+              actionType: itemA.actionType,
+              execution: itemA.execution,
+              binding: itemA.binding || itemA.label,
+            });
+            if (!check.allowed) {
+              showToast(
+                check.reason ||
+                  `Cannot assign this action to rotary rotation (${subB.toUpperCase()})`
+              );
+              return copy;
+            }
+          }
           const actionsB = getEncoderActions(copy[slotB]);
           // Moving rectangular key onto encoder popup sub-button sets the encoder sub-button and leaves the source rectangular key empty
           copy[slotA] = {
@@ -2883,12 +2955,29 @@ export default function App() {
     }
     setSelectedKey(slotId);
     setSelectedEncoderSub(subAction);
+    if (
+      (subAction === 'cw' || subAction === 'ccw') &&
+      (mappingTab === 'Multi-A' || mappingTab === 'Smart-A')
+    ) {
+      setMappingTab('Basic');
+    }
     setMappingDrawerOpen(true);
     setMappingStackExpanded(false);
     setHoveredMappingType(null);
   };
 
   const handleOpenDrawerWithTab = (tab: MappingTabId) => {
+    if (
+      selectedKey === GRID_MACRO_ENCODER_SLOT &&
+      (selectedEncoderSub === 'cw' || selectedEncoderSub === 'ccw')
+    ) {
+      if (tab === 'Multi-A' || tab === 'Smart-A') {
+        showToast(
+          `Multi-Actions and Smart Actions cannot be assigned to rotary rotation (${selectedEncoderSub.toUpperCase()}).`
+        );
+        return;
+      }
+    }
     setMappingTab(tab);
     setMappingDrawerOpen(true);
     setMappingStackExpanded(false);
@@ -2935,6 +3024,17 @@ export default function App() {
     tab: Exclude<MappingTabId, 'Basic'>,
     existingItem?: BasicTileItem
   ) => {
+    if (
+      selectedKey === GRID_MACRO_ENCODER_SLOT &&
+      (selectedEncoderSub === 'cw' || selectedEncoderSub === 'ccw')
+    ) {
+      if (tab === 'Multi-A' || tab === 'Smart-A') {
+        showToast(
+          `Multi-Actions and Smart Actions cannot be created for rotary rotation (${selectedEncoderSub.toUpperCase()}). Select a key or Dial Press first.`
+        );
+        return;
+      }
+    }
     setCreatorModalTab(tab);
     setIconPickerOpen(false);
     setIconPickerSearch('');
@@ -3841,6 +3941,8 @@ export default function App() {
                   ),
                   showToast,
                   selectedKey,
+                  selectedEncoderSub:
+                    selectedKey === GRID_MACRO_ENCODER_SLOT ? selectedEncoderSub : null,
                   selectedKeyAssignment: selectedKey ? currentLayer[selectedKey] : null,
                   onUpdateKeycapPersonalization: handleUpdateKeycapPersonalization,
                 }}

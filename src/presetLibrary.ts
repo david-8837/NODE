@@ -161,6 +161,63 @@ export const PRESET_DIAL_LABELS: Record<string, string> = {
   'View Selected': 'sel',
 };
 
+export const ROTARY_PAIRS: Record<string, string> = {
+  'volume up': 'Volume Down',
+  'volume down': 'Volume Up',
+  'volume +': 'volume -',
+  'volume -': 'volume +',
+  'zoom in': 'Zoom Out',
+  'zoom out': 'Zoom In',
+  'redo': 'Undo',
+  'undo': 'Redo',
+  'scroll up': 'Scroll Down',
+  'scroll down': 'Scroll Up',
+  'wheel up': 'Wheel Down',
+  'wheel down': 'Wheel Up',
+  'next tab': 'Prev Tab',
+  'prev tab': 'Next Tab',
+  'previous tab': 'Next Tab',
+  'brush +': 'Brush -',
+  'brush -': 'Brush +',
+  'next frame': 'Prev Frame',
+  'prev frame': 'Next Frame',
+  'arrow up': 'Arrow Down',
+  'arrow down': 'Arrow Up',
+  'arrow right': 'Arrow Left',
+  'arrow left': 'Arrow Right',
+  'page up': 'Page Down',
+  'page down': 'Page Up',
+  'right': 'Left',
+  'left': 'Right',
+  'up': 'Down',
+  'down': 'Up',
+};
+
+export function isActionAllowedOnEncoderRotation(item: {
+  actionType?: string;
+  execution?: { kind?: string; actionType?: string } | null;
+  binding?: string;
+}): { allowed: boolean; reason?: string } {
+  if (item.execution) {
+    if (item.execution.kind === 'multi') {
+      return { allowed: false, reason: 'Multi-actions cannot be assigned to rotary rotation (CW/CCW)' };
+    }
+    if (item.execution.kind === 'smart') {
+      return { allowed: false, reason: 'Smart actions (Apps, text blocks, commands) cannot be assigned to rotary rotation (CW/CCW)' };
+    }
+  }
+  if (item.actionType === 'Multi-step action') {
+    return { allowed: false, reason: 'Multi-actions cannot be assigned to rotary rotation (CW/CCW)' };
+  }
+  if (item.actionType === 'Smart Action') {
+    return { allowed: false, reason: 'Smart actions cannot be assigned to rotary rotation (CW/CCW)' };
+  }
+  if (item.binding && /^MO\(\d+\)$/i.test(item.binding)) {
+    return { allowed: false, reason: 'Momentary layer switch (MO) requires holding a key down and cannot be used on rotation' };
+  }
+  return { allowed: true };
+}
+
 export const PRESET_SINGLE_MODIFIERS = new Set([
   'win', 'ctrl', 'alt', 'shift', 'cmd', 'option', 'command', 'control', 'super',
 ]);

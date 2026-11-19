@@ -15,7 +15,9 @@ import {
   type MappingTabId,
   type KeySlotId,
   type KeyAssignment,
+  type EncoderSubActionId,
 } from '../presetLibrary';
+import { GRID_MACRO_ENCODER_SLOT } from '../deviceLayout';
 
 export interface BasicSection {
   title: string;
@@ -49,6 +51,7 @@ export interface ActionLibrarySidebarProps {
   renderAppIcon: (id: string, size?: number) => React.ReactNode;
   showToast: (msg: string) => void;
   selectedKey?: KeySlotId | null;
+  selectedEncoderSub?: EncoderSubActionId | null;
   selectedKeyAssignment?: KeyAssignment | null;
   onUpdateKeycapPersonalization?: (
     slotId: KeySlotId,
@@ -80,6 +83,7 @@ export function ActionLibrarySidebar({
   renderAppIcon,
   showToast,
   selectedKey,
+  selectedEncoderSub,
   selectedKeyAssignment,
   onUpdateKeycapPersonalization,
 }: ActionLibrarySidebarProps) {
@@ -478,18 +482,63 @@ export function ActionLibrarySidebar({
         </div>
       </div>
 
+      {/* Rotary Rotation Limitation Banner */}
+      {selectedKey === GRID_MACRO_ENCODER_SLOT && (selectedEncoderSub === 'cw' || selectedEncoderSub === 'ccw') && (
+        <div className="mx-[15px] mt-[4px] px-3 py-2 rounded-xl bg-blue-50/90 border border-blue-200/80 flex items-start gap-2 text-[11px] text-blue-900 leading-tight">
+          <InfoCircleIcon />
+          <div>
+            <span className="font-semibold uppercase tracking-wider text-[10px] text-blue-700 block mb-0.5">
+              Rotary {selectedEncoderSub.toUpperCase()} Limitation
+            </span>
+            <span>
+              Supports single instantaneous actions (Volume, Scroll, Zoom, Navigation). Multi-actions and App Launchers are reserved for Keys and Dial Press.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {selectedKey === GRID_MACRO_ENCODER_SLOT && selectedEncoderSub === 'press' && (
+        <div className="mx-[15px] mt-[4px] px-3 py-1.5 rounded-xl bg-neutral-100/90 border border-neutral-200/80 flex items-center gap-2 text-[11px] text-neutral-600">
+          <span className="font-semibold uppercase text-[10px] text-neutral-800">
+            Dial Press
+          </span>
+          <span className="text-neutral-500">Center push switch (supports all action types)</span>
+        </div>
+      )}
+
       {/* 4 Category Pill Tabs: Basic | Action | Multi-A | Smart-A */}
       <div className="px-[15px] pt-[10px] pb-[10px] grid grid-cols-4 gap-[6px] shrink-0">
         {(['Basic', 'Action', 'Multi-A', 'Smart-A'] as const).map((tab) => {
           const isActive = mappingTab === tab;
+          const isRotation =
+            selectedKey === GRID_MACRO_ENCODER_SLOT &&
+            (selectedEncoderSub === 'cw' || selectedEncoderSub === 'ccw');
+          const isRestrictedForRotation = isRotation && (tab === 'Multi-A' || tab === 'Smart-A');
+
           return (
             <button
               key={tab}
-              onClick={() => setMappingTab(tab)}
-              className={`h-[31px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] text-[11px] font-medium transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-[#000000] text-white'
-                  : 'bg-white text-[#444444] hover:bg-neutral-50'
+              disabled={isRestrictedForRotation}
+              title={
+                isRestrictedForRotation
+                  ? `Rotary ${selectedEncoderSub?.toUpperCase()} only supports single actions. Multi-actions and Smart actions are reserved for Keys and Dial Press.`
+                  : undefined
+              }
+              onClick={() => {
+                if (isRestrictedForRotation) {
+                  showToast(
+                    `Multi-Actions and Smart Actions cannot be assigned to rotary rotation (${selectedEncoderSub?.toUpperCase()}). Assign to Press or a key instead.`
+                  );
+                  return;
+                }
+                setMappingTab(tab);
+              }}
+              className={`h-[31px] rounded-full border-[1.5px] border-transparent text-[11px] font-medium transition-all ${
+                isRestrictedForRotation
+                  ? 'opacity-40 cursor-not-allowed bg-neutral-200/70 text-[#888888] line-through decoration-black/25'
+                  : isActive
+                  ? 'bg-[#000000] text-white hover:border-[#0051ff] cursor-pointer'
+                  : 'bg-white text-[#444444] hover:bg-neutral-50 hover:border-[#0051ff] cursor-pointer'
               }`}
             >
               {tab}
