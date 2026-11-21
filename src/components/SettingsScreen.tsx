@@ -15,6 +15,7 @@ export interface SettingsScreenProps {
   deviceStatus: QmkViaStatus;
   appVersion: string;
   launchAtStartup: boolean;
+  startHiddenInTray?: boolean;
   settingsCapabilities: SettingsCapabilities;
   allowTerminalSmartActions: boolean;
   allowDeviceNotifications: boolean;
@@ -41,6 +42,7 @@ export function SettingsScreen({
   deviceStatus,
   appVersion,
   launchAtStartup,
+  startHiddenInTray = false,
   settingsCapabilities,
   allowTerminalSmartActions,
   allowDeviceNotifications,
@@ -123,22 +125,50 @@ export function SettingsScreen({
               </div>
             </div>
 
+            {/* Startup & Tray */}
+            <div className="bg-[#e3e3e3] rounded-[16px] px-[16px] py-[14px]">
+              <h2 className="text-[13.5px] font-medium text-[#4a4a4a] mb-[8px]">
+                Startup &amp; Tray
+              </h2>
+              <div className="divide-y divide-[#dadada] text-[10.5px]">
+                <div className="py-[9px] flex items-center justify-between gap-4">
+                  <div className="flex flex-col gap-[1px]">
+                    <span className="text-[#333333] font-medium text-[11px]">Start at login</span>
+                    <span className="text-[#666666] text-[10px] leading-tight">
+                      Automatically start NØDE Studio when you log in
+                    </span>
+                  </div>
+                  <SettingsSwitch
+                    checked={launchAtStartup}
+                    disabled={!settingsCapabilities.launchAtStartup}
+                    title={settingsCapabilities.launchAtStartup
+                      ? 'Automatically start NØDE Studio when you log in'
+                      : 'Available only in the installed desktop app'}
+                    onChange={() => void handleAppSettingChange('launchAtStartup', !launchAtStartup)}
+                  />
+                </div>
+
+                <div className="py-[9px] flex items-center justify-between gap-4">
+                  <div className="flex flex-col gap-[1px]">
+                    <span className="text-[#333333] font-medium text-[11px]">Start hidden in the tray</span>
+                    <span className="text-[#666666] text-[10px] leading-tight">
+                      Every time NØDE Studio starts, it runs in the background with its window hidden. Click the tray icon or open NØDE Studio again to show it.
+                    </span>
+                  </div>
+                  <SettingsSwitch
+                    checked={Boolean(startHiddenInTray)}
+                    title="Launch with main window hidden in the background system tray"
+                    onChange={() => void handleAppSettingChange('startHiddenInTray', !startHiddenInTray)}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="bg-[#e3e3e3] rounded-[16px] px-[16px] py-[14px]">
               <h2 className="text-[13.5px] font-medium text-[#4a4a4a] mb-[8px]">
                 App settings
               </h2>
               <div className="divide-y divide-[#dadada] text-[10.5px]">
-                <div className="py-[8px] flex items-center justify-between">
-                  <span className="text-[#585858]">Launch app at startup</span>
-                  <SettingsSwitch
-                    checked={launchAtStartup}
-                    disabled={!settingsCapabilities.launchAtStartup}
-                    title={settingsCapabilities.launchAtStartup
-                      ? 'Start the installed app when you sign in'
-                      : 'Available only in the installed desktop app'}
-                    onChange={() => void handleAppSettingChange('launchAtStartup', !launchAtStartup)}
-                  />
-                </div>
                 <div className="py-[8px] flex items-center justify-between">
                   <span className="text-[#585858] flex items-center gap-[5px]">
                     <span>Allow terminal commands via Smart Actions</span>

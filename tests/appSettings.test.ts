@@ -37,20 +37,29 @@ describe('Settings persistence and native capabilities', () => {
     const tools = createAppSettingsTools(host);
     expect(tools.read()).toEqual(DEFAULT_APP_SETTINGS);
 
+    const trayResult = await tools.set('startHiddenInTray', true);
+    expect(trayResult).toMatchObject({
+      ok: true,
+      settings: { startHiddenInTray: true },
+    });
+    expect(JSON.parse(host.localStorage.getItem(APP_SETTINGS_STORAGE_KEY) || 'null'))
+      .toMatchObject({ startHiddenInTray: true });
+
     const result = await tools.set('allowTerminalSmartActions', true);
     expect(result).toMatchObject({
       ok: true,
       settings: { allowTerminalSmartActions: true },
     });
     expect(JSON.parse(host.localStorage.getItem(APP_SETTINGS_STORAGE_KEY) || 'null'))
-      .toMatchObject({ allowTerminalSmartActions: true });
+      .toMatchObject({ allowTerminalSmartActions: true, startHiddenInTray: true });
 
     host.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
       allowAnalytics: 'yes',
       allowTerminalSmartActions: true,
+      startHiddenInTray: true,
       launchAtStartup: 1,
     }));
-    expect(tools.read()).toEqual({ ...DEFAULT_APP_SETTINGS, allowTerminalSmartActions: true });
+    expect(tools.read()).toEqual({ ...DEFAULT_APP_SETTINGS, allowTerminalSmartActions: true, startHiddenInTray: true });
   });
 
   it('requires the native startup capability and delegates desktop settings to the trusted bridge', async () => {

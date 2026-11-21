@@ -880,6 +880,7 @@ export default function App() {
   } = useAppSettings();
   const {
     launchAtStartup,
+    startHiddenInTray,
     allowTerminalSmartActions,
     allowDeviceNotifications,
     autoSwitchProfile,
@@ -1853,6 +1854,14 @@ export default function App() {
       showToast('Toggled Acrylic Cheat Sheet HUD');
     } else {
       showToast('Acrylic Cheat Sheet HUD is available in the desktop app');
+    }
+  };
+
+  const handleHideToTray = () => {
+    if (window.electronAPI?.hide) {
+      void window.electronAPI.hide();
+    } else {
+      showToast('Hide to tray is available in the desktop app');
     }
   };
 
@@ -3778,6 +3787,7 @@ export default function App() {
         onRedo={handleRedo}
         deviceStatus={deviceStatus}
         onToggleDeviceConnection={handleToggleDeviceConnection}
+        onHideToTray={handleHideToTray}
         onLogoClick={() => {
           setPreviewPreset(null);
           setActiveNav('Keymap');
@@ -4188,6 +4198,7 @@ export default function App() {
           deviceStatus={deviceStatus}
           appVersion={appVersion}
           launchAtStartup={launchAtStartup}
+          startHiddenInTray={startHiddenInTray}
           settingsCapabilities={settingsCapabilities}
           allowTerminalSmartActions={allowTerminalSmartActions}
           allowDeviceNotifications={allowDeviceNotifications}

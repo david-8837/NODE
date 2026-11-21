@@ -153,14 +153,15 @@ describe('React source app file operations', () => {
     await renderApp();
     await openSettings();
     let switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    expect(switches).toHaveLength(4);
+    expect(switches).toHaveLength(5);
     expect(switches[0].disabled).toBe(true);
 
-    await clickButton(switches[1]);
+    await clickButton(switches[2]);
     const saved = JSON.parse(window.localStorage.getItem('node-studio.settings.v1') || 'null');
     expect(saved).toMatchObject({
       allowTerminalSmartActions: true,
       launchAtStartup: false,
+      startHiddenInTray: false,
       allowDeviceNotifications: false,
     });
 
@@ -169,13 +170,14 @@ describe('React source app file operations', () => {
     await renderApp();
     await openSettings();
     switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    expect(switches[1].getAttribute('aria-checked')).toBe('true');
+    expect(switches[2].getAttribute('aria-checked')).toBe('true');
     expect(switches[0].disabled).toBe(true);
   });
 
   it('uses desktop preferences for startup, reads the packaged version, and routes support and firmware actions', async () => {
     let nativeSettings = {
       launchAtStartup: true,
+      startHiddenInTray: false,
       allowTerminalSmartActions: false,
       allowDeviceNotifications: false,
     };
@@ -206,11 +208,15 @@ describe('React source app file operations', () => {
     let switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
     expect(switches[0].disabled).toBe(false);
     expect(switches[0].getAttribute('aria-checked')).toBe('true');
+    expect(switches[1].getAttribute('aria-checked')).toBe('false');
     expect(container.textContent).toContain('4.5.6');
 
     await clickButton(switches[0]);
     expect(setAppSetting).toHaveBeenCalledWith('launchAtStartup', false);
     expect(switches[0].getAttribute('aria-checked')).toBe('false');
+
+    await clickButton(switches[1]);
+    expect(setAppSetting).toHaveBeenCalledWith('startHiddenInTray', true);
 
     await clickButton([...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.trim() === 'Help & Documentation')!);
@@ -270,7 +276,7 @@ describe('React source app file operations', () => {
 
     await renderApp({ awaitsDeviceSync: false });
     await openSettings();
-    const notificationsSwitch = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')][2];
+    const notificationsSwitch = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')][3];
     await clickButton(notificationsSwitch);
     await act(async () => new Promise((resolve) => window.setTimeout(resolve, 20)));
     expect(MockNotification.requestPermission).toHaveBeenCalledOnce();

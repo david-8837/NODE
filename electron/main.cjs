@@ -30,6 +30,7 @@ let activeWindowTracker = null;
 let appTray = null;
 let visualSmokeCaptureStarted = false;
 let completingQuit = false;
+let isQuitting = false;
 
 // Unpackaged Electron is development. Never let a user-level NODE_ENV value make
 // an installed app load a local development server instead of its bundled UI.
@@ -47,13 +48,19 @@ function isVisualSmokeTest() {
 }
 
 function isAutoStartHidden() {
+  if (isPersistenceSmokeTest()) return true;
+  if (isVisualSmokeTest()) return false;
   if (process.argv.includes('--hidden') || app.commandLine.hasSwitch('hidden')) {
+    return true;
+  }
+  const stored = readStoredAppSettings();
+  if (stored.startHiddenInTray) {
     return true;
   }
   try {
     const loginItemSettings = app.getLoginItemSettings?.();
     if (loginItemSettings?.wasOpenedAtLogin || loginItemSettings?.wasOpenedAsHidden) {
-      return true;
+      return Boolean(stored.startHiddenInTray);
     }
   } catch {}
   return false;
@@ -189,6 +196,7 @@ function updateCheatSheetGlobalHotkey(settings) {
 
 const DEFAULT_APP_SETTINGS = Object.freeze({
   launchAtStartup: false,
+  startHiddenInTray: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
   autoSwitchProfile: false,
@@ -210,6 +218,7 @@ function readStoredAppSettings() {
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
       for (const key of [
         'launchAtStartup',
+        'startHiddenInTray',
         'allowTerminalSmartActions',
         'allowDeviceNotifications',
         'autoSwitchProfile',
@@ -266,7 +275,7 @@ function writeStoredAppSettings(settings) {
   fs.writeFileSync(pathToSettings, JSON.stringify(settings, null, 2), { mode: 0o600 });
 }
 
-function setWindowsStartupShortcut(enabled) {
+function setWindowsStartupShortcut(enabled, startHidden = true) {
   if (process.platform !== 'win32' || !app.isPackaged) return;
   try {
     const startupFolder = path.join(
@@ -284,7 +293,8 @@ function setWindowsStartupShortcut(enabled) {
         const escapedShortcut = shortcutPath.replace(/'/g, "''");
         const escapedTarget = process.execPath.replace(/'/g, "''");
         const escapedDir = path.dirname(process.execPath).replace(/'/g, "''");
-        const psScript = `$w = New-Object -ComObject WScript.Shell; $s = $w.CreateShortcut('${escapedShortcut}'); $s.TargetPath = '${escapedTarget}'; $s.Arguments = '--hidden'; $s.WorkingDirectory = '${escapedDir}'; $s.Description = 'NODE studio'; $s.Save();`;
+        const argsScript = startHidden ? "$s.Arguments = '--hidden';" : "$s.Arguments = '';";
+        const psScript = `$w = New-Object -ComObject WScript.Shell; $s = $w.CreateShortcut('${escapedShortcut}'); $s.TargetPath = '${escapedTarget}'; ${argsScript} $s.WorkingDirectory = '${escapedDir}'; $s.Description = 'NODE studio'; $s.Save();`;
         exec(`powershell -NoProfile -NonInteractive -Command "${psScript}"`, () => {});
       }
     } else {
@@ -837,6 +847,13 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  mainWindow.on('close', (event) => {
+    if (!isQuitting && !isVisualSmokeTest() && !isPersistenceSmokeTest()) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     if (activeWindowTracker) {
       activeWindowTracker.stop();
@@ -915,6 +932,10 @@ ipcMain.handle('window-close', (event) => {
   if (isTrustedRenderer(event) && mainWindow) mainWindow.close();
 });
 
+ipcMain.handle('window-hide', (event) => {
+  if (isTrustedRenderer(event) && mainWindow) mainWindow.hide();
+});
+
 ipcMain.handle('window-is-maximized', (event) => {
   return isTrustedRenderer(event) && mainWindow ? mainWindow.isMaximized() : false;
 });
@@ -987,12 +1008,28 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
       if (!getSettingsCapabilities().launchAtStartup) {
         return { ok: false, error: 'Launch at startup is only supported by an installed Windows or macOS app' };
       }
+      const stored = readStoredAppSettings();
+      const startupArgs = stored.startHiddenInTray ? ['--hidden'] : [];
       try {
-        app.setLoginItemSettings({ openAtLogin: value, path: process.execPath, args: ['--hidden'] });
+        app.setLoginItemSettings({ openAtLogin: value, path: process.execPath, args: startupArgs }); // args: ['--hidden']
       } catch {}
-      setWindowsStartupShortcut(value);
-      const settings = { ...readStoredAppSettings(), [key]: value };
+      setWindowsStartupShortcut(value, stored.startHiddenInTray);
+      const settings = { ...stored, [key]: value };
       writeStoredAppSettings(settings);
+      return getNativeAppSettings();
+    }
+
+    if (key === 'startHiddenInTray') {
+      const stored = readStoredAppSettings();
+      const settings = { ...stored, [key]: value };
+      writeStoredAppSettings(settings);
+      if (stored.launchAtStartup && getSettingsCapabilities().launchAtStartup) {
+        const startupArgs = value ? ['--hidden'] : [];
+        try {
+          app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: startupArgs });
+        } catch {}
+        setWindowsStartupShortcut(true, value);
+      }
       return getNativeAppSettings();
     }
 
@@ -1126,17 +1163,29 @@ ipcMain.handle('execute-smart-action', async (event, payload) => {
 function createSystemTray() {
   if (appTray || isVisualSmokeTest() || isPersistenceSmokeTest()) return;
   try {
-    const iconPath = path.join(__dirname, '../public/favicon.ico');
+    const candidates = [
+      path.join(__dirname, '../public/favicon.ico'),
+      path.join(process.resourcesPath || '', 'app.asar/public/favicon.ico'),
+      path.join(__dirname, 'public/favicon.ico'),
+    ];
+    let iconPath = candidates[0];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        iconPath = c;
+        break;
+      }
+    }
     const trayIcon = nativeImage.createFromPath(iconPath);
     if (trayIcon.isEmpty()) return;
     appTray = new Tray(trayIcon);
-    appTray.setToolTip('NODE studio (Background Agent Active)');
+    appTray.setToolTip('NØDE Studio');
     const trayMenu = Menu.buildFromTemplate([
       {
-        label: 'Open NODE studio',
+        label: 'Open NØDE Studio',
         click: () => {
           if (mainWindow) {
-            mainWindow.show();
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            if (!mainWindow.isVisible()) mainWindow.show();
             mainWindow.focus();
           } else {
             createWindow();
@@ -1157,23 +1206,25 @@ function createSystemTray() {
       },
       { type: 'separator' },
       {
-        label: 'Quit NODE studio',
+        label: 'Quit NØDE Studio',
         click: () => {
+          isQuitting = true;
           app.quit();
         },
       },
     ]);
     appTray.setContextMenu(trayMenu);
-    appTray.on('click', () => {
+    const restoreAndFocus = () => {
       if (!mainWindow) {
         createWindow();
-      } else if (mainWindow.isVisible()) {
-        mainWindow.focus();
       } else {
-        mainWindow.show();
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        if (!mainWindow.isVisible()) mainWindow.show();
         mainWindow.focus();
       }
-    });
+    };
+    appTray.on('click', restoreAndFocus);
+    appTray.on('double-click', restoreAndFocus);
   } catch {}
 }
 
@@ -1188,10 +1239,11 @@ app.whenReady().then(() => {
   const currentSettings = readStoredAppSettings();
   updateCheatSheetGlobalHotkey(currentSettings);
   if (currentSettings.launchAtStartup && getSettingsCapabilities().launchAtStartup) {
+    const startupArgs = currentSettings.startHiddenInTray ? ['--hidden'] : [];
     try {
-      app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: ['--hidden'] });
+      app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: startupArgs });
     } catch {}
-    setWindowsStartupShortcut(true);
+    setWindowsStartupShortcut(true, currentSettings.startHiddenInTray);
   }
 
   const template = [
@@ -1218,7 +1270,10 @@ app.whenReady().then(() => {
         {
           label: 'Quit NODE studio',
           accelerator: 'CmdOrCtrl+Q',
-          click: () => app.quit(),
+          click: () => {
+            isQuitting = true;
+            app.quit();
+          },
         },
       ],
     },
@@ -1266,6 +1321,7 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', (event) => {
+  isQuitting = true;
   try {
     globalShortcut.unregisterAll();
   } catch {}

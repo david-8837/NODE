@@ -170,116 +170,218 @@
             ]
           },
           {
-            "tag": "button",
+            "tag": "div",
             "attributes": {
-              "aria-label": "Disconnect Grid Macro 1",
-              "class": "h-[28px] my-auto px-[12px] rounded-full flex items-center gap-[10px] text-white shrink-0 justify-self-end transition-all cursor-pointer disabled:cursor-wait border bg-[#18181b] hover:bg-[#242427] border-white/20 text-white shadow-[0_1px_4px_rgba(0,0,0,0.4)]",
-              "title": "Firmware VIA 01020304 on VIA 4 layers",
-              "type": "button"
+              "class": "flex items-center gap-[8px] justify-self-end"
             },
             "text": "",
             "children": [
               {
-                "tag": "svg",
+                "tag": "button",
                 "attributes": {
-                  "aria-hidden": "true",
-                  "class": "lucide lucide-chevron-down w-[12px] h-[12px] stroke-[2] text-white/80 shrink-0",
-                  "fill": "none",
-                  "height": "24",
-                  "stroke": "currentColor",
-                  "stroke-linecap": "round",
-                  "stroke-linejoin": "round",
-                  "stroke-width": "2",
-                  "viewBox": "0 0 24 24",
-                  "width": "24",
-                  "xmlns": "http://www.w3.org/2000/svg"
+                  "aria-label": "Disconnect Grid Macro 1",
+                  "class": "h-[28px] my-auto px-[12px] rounded-full flex items-center gap-[10px] text-white shrink-0 transition-all cursor-pointer disabled:cursor-wait border bg-[#18181b] hover:bg-[#242427] border-white/20 text-white shadow-[0_1px_4px_rgba(0,0,0,0.4)]",
+                  "title": "Firmware VIA 01020304 on VIA 4 layers",
+                  "type": "button"
                 },
                 "text": "",
                 "children": [
                   {
-                    "tag": "path",
+                    "tag": "svg",
                     "attributes": {
-                      "d": "m6 9 6 6 6-6"
+                      "aria-hidden": "true",
+                      "class": "lucide lucide-chevron-down w-[12px] h-[12px] stroke-[2] text-white/80 shrink-0",
+                      "fill": "none",
+                      "height": "24",
+                      "stroke": "currentColor",
+                      "stroke-linecap": "round",
+                      "stroke-linejoin": "round",
+                      "stroke-width": "2",
+                      "viewBox": "0 0 24 24",
+                      "width": "24",
+                      "xmlns": "http://www.w3.org/2000/svg"
+                    },
+                    "text": "",
+                    "children": [
+                      {
+                        "tag": "path",
+                        "attributes": {
+                          "d": "m6 9 6 6 6-6"
+                        },
+                        "text": "",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "tag": "span",
+                    "attributes": {
+                      "class": "text-[11.5px] font-medium tracking-[0.01em] whitespace-nowrap"
+                    },
+                    "text": "Grid Macro 1 (test)",
+                    "children": []
+                  },
+                  {
+                    "tag": "div",
+                    "attributes": {
+                      "class": "h-[12px] w-[1px] bg-white/20"
                     },
                     "text": "",
                     "children": []
+                  },
+                  {
+                    "tag": "svg",
+                    "attributes": {
+                      "aria-label": "USB Connected",
+                      "class": "opacity-100 text-white",
+                      "fill": "none",
+                      "height": "14",
+                      "viewBox": "0 0 12 15",
+                      "width": "11",
+                      "xmlns": "http://www.w3.org/2000/svg"
+                    },
+                    "text": "",
+                    "children": [
+                      {
+                        "tag": "path",
+                        "attributes": {
+                          "d": "M6 1.5V12M6 1.5L4.3 3.5H7.7L6 1.5ZM6 9.5L2.8 7.3V4.8M6 8.2L9.2 6V4.2",
+                          "stroke": "currentColor",
+                          "stroke-linecap": "round",
+                          "stroke-linejoin": "round",
+                          "stroke-width": "1.25"
+                        },
+                        "text": "",
+                        "children": []
+                      },
+                      {
+                        "tag": "circle",
+                        "attributes": {
+                          "cx": "2.8",
+                          "cy": "4.4",
+                          "fill": "currentColor",
+                          "r": "1.1"
+                        },
+                        "text": "",
+                        "children": []
+                      },
+                      {
+                        "tag": "rect",
+                        "attributes": {
+                          "fill": "currentColor",
+                          "height": "2.1",
+                          "width": "2.1",
+                          "x": "8.1",
+                          "y": "2.8"
+                        },
+                        "text": "",
+                        "children": []
+                      },
+                      {
+                        "tag": "circle",
+                        "attributes": {
+                          "cx": "6",
+                          "cy": "12.5",
+                          "fill": "currentColor",
+                          "r": "1.5"
+                        },
+                        "text": "",
+                        "children": []
+                      }
+                    ]
                   }
                 ]
               },
               {
-                "tag": "span",
-                "attributes": {
-                  "class": "text-[11.5px] font-medium tracking-[0.01em] whitespace-nowrap"
-                },
-                "text": "Grid Macro 1 (test)",
-                "children": []
-              },
-              {
                 "tag": "div",
                 "attributes": {
-                  "class": "h-[12px] w-[1px] bg-white/20"
-                },
-                "text": "",
-                "children": []
-              },
-              {
-                "tag": "svg",
-                "attributes": {
-                  "aria-label": "USB Connected",
-                  "class": "opacity-100 text-white",
-                  "fill": "none",
-                  "height": "14",
-                  "viewBox": "0 0 12 15",
-                  "width": "11",
-                  "xmlns": "http://www.w3.org/2000/svg"
+                  "class": "relative group flex items-center"
                 },
                 "text": "",
                 "children": [
                   {
-                    "tag": "path",
+                    "tag": "button",
                     "attributes": {
-                      "d": "M6 1.5V12M6 1.5L4.3 3.5H7.7L6 1.5ZM6 9.5L2.8 7.3V4.8M6 8.2L9.2 6V4.2",
-                      "stroke": "currentColor",
-                      "stroke-linecap": "round",
-                      "stroke-linejoin": "round",
-                      "stroke-width": "1.25"
+                      "aria-label": "Hide to tray",
+                      "class": "w-[28px] h-[28px] rounded-full flex items-center justify-center bg-[#18181b] hover:bg-[#28282c] text-white/70 hover:text-white border border-white/20 transition-all cursor-pointer shadow-[0_1px_4px_rgba(0,0,0,0.3)]",
+                      "title": "Hide to tray",
+                      "type": "button"
                     },
                     "text": "",
-                    "children": []
+                    "children": [
+                      {
+                        "tag": "svg",
+                        "attributes": {
+                          "class": "translate-y-[1px]",
+                          "fill": "none",
+                          "height": "14",
+                          "stroke": "currentColor",
+                          "stroke-linecap": "round",
+                          "stroke-linejoin": "round",
+                          "stroke-width": "1.6",
+                          "viewBox": "0 0 16 16",
+                          "width": "14"
+                        },
+                        "text": "",
+                        "children": [
+                          {
+                            "tag": "path",
+                            "attributes": {
+                              "d": "M2.5 6.5C4 9.5 12 9.5 13.5 6.5"
+                            },
+                            "text": "",
+                            "children": []
+                          },
+                          {
+                            "tag": "path",
+                            "attributes": {
+                              "d": "M4 8.5L3 11"
+                            },
+                            "text": "",
+                            "children": []
+                          },
+                          {
+                            "tag": "path",
+                            "attributes": {
+                              "d": "M6.5 9.5L6 12"
+                            },
+                            "text": "",
+                            "children": []
+                          },
+                          {
+                            "tag": "path",
+                            "attributes": {
+                              "d": "M9.5 9.5L10 12"
+                            },
+                            "text": "",
+                            "children": []
+                          },
+                          {
+                            "tag": "path",
+                            "attributes": {
+                              "d": "M12 8.5L13 11"
+                            },
+                            "text": "",
+                            "children": []
+                          }
+                        ]
+                      }
+                    ]
                   },
                   {
-                    "tag": "circle",
+                    "tag": "div",
                     "attributes": {
-                      "cx": "2.8",
-                      "cy": "4.4",
-                      "fill": "currentColor",
-                      "r": "1.1"
+                      "class": "absolute top-[34px] right-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 whitespace-nowrap bg-[#1e1e21] text-white text-[11px] font-medium px-[8px] py-[3px] rounded-[6px] shadow-[0_4px_12px_rgba(0,0,0,0.4)] border border-white/15 flex items-center gap-1"
                     },
                     "text": "",
-                    "children": []
-                  },
-                  {
-                    "tag": "rect",
-                    "attributes": {
-                      "fill": "currentColor",
-                      "height": "2.1",
-                      "width": "2.1",
-                      "x": "8.1",
-                      "y": "2.8"
-                    },
-                    "text": "",
-                    "children": []
-                  },
-                  {
-                    "tag": "circle",
-                    "attributes": {
-                      "cx": "6",
-                      "cy": "12.5",
-                      "fill": "currentColor",
-                      "r": "1.5"
-                    },
-                    "text": "",
-                    "children": []
+                    "children": [
+                      {
+                        "tag": "span",
+                        "attributes": {},
+                        "text": "Hide to tray",
+                        "children": []
+                      }
+                    ]
                   }
                 ]
               }
