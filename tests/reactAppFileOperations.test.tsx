@@ -153,13 +153,10 @@ describe('React source app file operations', () => {
     await renderApp();
     await openSettings();
     let switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    expect(switches).toHaveLength(6);
+    expect(switches).toHaveLength(4);
     expect(switches[0].disabled).toBe(true);
 
-    const terminalSwitch = switches.find((s) =>
-      s.closest('div')?.textContent?.includes('Allow terminal commands')
-    ) || switches[3];
-    await clickButton(terminalSwitch);
+    await clickButton(switches[1]);
     const saved = JSON.parse(window.localStorage.getItem('node-studio.settings.v1') || 'null');
     expect(saved).toMatchObject({
       allowTerminalSmartActions: true,
@@ -172,10 +169,7 @@ describe('React source app file operations', () => {
     await renderApp();
     await openSettings();
     switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    const remountedTerminal = switches.find((s) =>
-      s.closest('div')?.textContent?.includes('Allow terminal commands')
-    ) || switches[3];
-    expect(remountedTerminal.getAttribute('aria-checked')).toBe('true');
+    expect(switches[1].getAttribute('aria-checked')).toBe('true');
     expect(switches[0].disabled).toBe(true);
   });
 
@@ -276,10 +270,7 @@ describe('React source app file operations', () => {
 
     await renderApp({ awaitsDeviceSync: false });
     await openSettings();
-    const switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    const notificationsSwitch = switches.find((s) =>
-      s.closest('div')?.textContent?.includes('Notify on device connect')
-    ) || switches[4];
+    const notificationsSwitch = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')][2];
     await clickButton(notificationsSwitch);
     await act(async () => new Promise((resolve) => window.setTimeout(resolve, 20)));
     expect(MockNotification.requestPermission).toHaveBeenCalledOnce();

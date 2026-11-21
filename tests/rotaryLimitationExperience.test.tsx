@@ -98,14 +98,13 @@ describe('Rotary limitation experience and clean drawer UI', () => {
     expect(localStorage.getItem('node-studio.suppress-rotary-limitation-modal')).toBe('false');
   });
 
-  it('renders the Hub button next to the profile menu and invokes onOpenCommunityHub', async () => {
+  it('does not render the Hub button in the profile dropdown bottom bar', async () => {
     const dummyProfile = {
       id: 'default',
       name: 'Default Profile',
       color: '#0051ff',
       layers: [{} as any],
     };
-    const onOpenCommunityHubSpy = vi.fn();
 
     await act(async () => {
       root.render(
@@ -128,24 +127,20 @@ describe('Rotary limitation experience and clean drawer UI', () => {
           handleConfirmDeleteProfile: vi.fn(),
           handleAddProfile: vi.fn(),
           handleImportProfile: vi.fn(),
-          onOpenCommunityHub: onOpenCommunityHubSpy,
+          onOpenCommunityHub: vi.fn(),
         })
       );
     });
 
-    // Check that Add Profile and Import are present in the dropdown
+    // Check that Add Profile and Import are present
     expect(container.textContent).toContain('Add Profile');
     expect(container.textContent).toContain('Import');
 
-    // Confirm that the "Hub" button is rendered next to the profiles chevron
+    // Confirm that the "Hub" button is completely removed
     const buttons = Array.from(container.querySelectorAll('button'));
     const hubButton = buttons.find((b) => b.textContent?.trim() === 'Hub');
-    expect(hubButton).toBeDefined();
-    expect(hubButton?.getAttribute('aria-label')).toBe('Community Hub');
-    act(() => {
-      hubButton?.click();
-    });
-    expect(onOpenCommunityHubSpy).toHaveBeenCalledTimes(1);
+    expect(hubButton).toBeUndefined();
+    expect(container.textContent).not.toContain('Hub');
   });
 
   it('glows RED when dragging a disallowed item over rotary sub-buttons, and BLUE for valid targets', async () => {

@@ -159,8 +159,6 @@ function updateCheatSheetGlobalHotkey(settings) {
 
 const DEFAULT_APP_SETTINGS = Object.freeze({
   launchAtStartup: false,
-  startHiddenInTray: false,
-  floatingDock: false,
   allowTerminalSmartActions: false,
   allowDeviceNotifications: false,
   autoSwitchProfile: false,
@@ -181,8 +179,7 @@ function readStoredAppSettings() {
     const stored = JSON.parse(fs.readFileSync(getAppSettingsPath(), 'utf8'));
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
       for (const key of [
-        'startHiddenInTray',
-        'floatingDock',
+        'launchAtStartup',
         'allowTerminalSmartActions',
         'allowDeviceNotifications',
         'autoSwitchProfile',
@@ -237,6 +234,35 @@ function writeStoredAppSettings(settings) {
   const pathToSettings = getAppSettingsPath();
   fs.mkdirSync(path.dirname(pathToSettings), { recursive: true });
   fs.writeFileSync(pathToSettings, JSON.stringify(settings, null, 2), { mode: 0o600 });
+}
+
+function setWindowsStartupShortcut(enabled) {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  try {
+    const startupFolder = path.join(
+      process.env.APPDATA || '',
+      'Microsoft',
+      'Windows',
+      'Start Menu',
+      'Programs',
+      'Startup'
+    );
+    const shortcutPath = path.join(startupFolder, 'NODE studio.lnk');
+    if (enabled) {
+      if (fs.existsSync(process.execPath)) {
+        const { exec } = require('child_process');
+        const escapedShortcut = shortcutPath.replace(/'/g, "''");
+        const escapedTarget = process.execPath.replace(/'/g, "''");
+        const escapedDir = path.dirname(process.execPath).replace(/'/g, "''");
+        const psScript = `$w = New-Object -ComObject WScript.Shell; $s = $w.CreateShortcut('${escapedShortcut}'); $s.TargetPath = '${escapedTarget}'; $s.WorkingDirectory = '${escapedDir}'; $s.Description = 'NODE studio'; $s.Save();`;
+        exec(`powershell -NoProfile -NonInteractive -Command "${psScript}"`, () => {});
+      }
+    } else {
+      if (fs.existsSync(shortcutPath)) {
+        try { fs.unlinkSync(shortcutPath); } catch {}
+      }
+    }
+  } catch {}
 }
 
 function isAllowedExternalUrl(rawUrl) {
@@ -750,11 +776,7 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    const isAutoStartHidden = process.argv.includes('--hidden') || (
-      readStoredAppSettings().startHiddenInTray === true &&
-      (Boolean(app.getLoginItemSettings?.().wasOpenedAtLogin) || process.argv.includes('--hidden'))
-    );
-    if (!isPersistenceSmokeTest() && !isAutoStartHidden) mainWindow.show();
+    if (!isPersistenceSmokeTest()) mainWindow.show();
     if (isDev) {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
@@ -867,10 +889,6 @@ ipcMain.handle('window-close', (event) => {
   if (isTrustedRenderer(event) && mainWindow) mainWindow.close();
 });
 
-ipcMain.handle('window-hide-to-tray', (event) => {
-  if (isTrustedRenderer(event) && mainWindow) mainWindow.hide();
-});
-
 ipcMain.handle('window-is-maximized', (event) => {
   return isTrustedRenderer(event) && mainWindow ? mainWindow.isMaximized() : false;
 });
@@ -943,24 +961,12 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
       if (!getSettingsCapabilities().launchAtStartup) {
         return { ok: false, error: 'Launch at startup is only supported by an installed Windows or macOS app' };
       }
-      const stored = readStoredAppSettings();
-      const args = stored.startHiddenInTray ? ['--hidden'] : [];
-      app.setLoginItemSettings({ openAtLogin: Boolean(value), path: process.execPath, args });
-      return getNativeAppSettings();
-    }
-
-    if (key === 'startHiddenInTray') {
-      const settings = { ...readStoredAppSettings(), startHiddenInTray: Boolean(value) };
+      try {
+        app.setLoginItemSettings({ openAtLogin: value, path: process.execPath });
+      } catch {}
+      setWindowsStartupShortcut(value);
+      const settings = { ...readStoredAppSettings(), [key]: value };
       writeStoredAppSettings(settings);
-      if (getSettingsCapabilities().launchAtStartup) {
-        try {
-          const login = app.getLoginItemSettings();
-          if (login.openAtLogin) {
-            const args = value ? ['--hidden'] : [];
-            app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args });
-          }
-        } catch {}
-      }
       return getNativeAppSettings();
     }
 
@@ -1153,7 +1159,14 @@ app.whenReady().then(() => {
   writeVisualSmokeDiagnostics({ stage: 'app-ready', packaged: app.isPackaged });
   createWindow();
   createSystemTray();
-  updateCheatSheetGlobalHotkey(readStoredAppSettings());
+  const currentSettings = readStoredAppSettings();
+  updateCheatSheetGlobalHotkey(currentSettings);
+  if (currentSettings.launchAtStartup && getSettingsCapabilities().launchAtStartup) {
+    try {
+      app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
+    } catch {}
+    setWindowsStartupShortcut(true);
+  }
 
   const template = [
     {

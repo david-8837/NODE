@@ -77,14 +77,6 @@ describe('Settings persistence and native capabilities', () => {
     const enabled = await browserTools.set('launchAtStartup', true);
     expect(enabled).toMatchObject({ ok: true, settings: { launchAtStartup: true } });
     expect(host.electronAPI.setAppSetting).toHaveBeenCalledWith('launchAtStartup', true);
-
-    const hiddenInTray = await browserTools.set('startHiddenInTray', true);
-    expect(hiddenInTray).toMatchObject({ ok: true, settings: { startHiddenInTray: true } });
-    expect(host.electronAPI.setAppSetting).toHaveBeenCalledWith('startHiddenInTray', true);
-
-    const floatDock = await browserTools.set('floatingDock', true);
-    expect(floatDock).toMatchObject({ ok: true, settings: { floatingDock: true } });
-    expect(host.electronAPI.setAppSetting).toHaveBeenCalledWith('floatingDock', true);
   });
 
   it('requires notification permission before recording notification consent', async () => {
