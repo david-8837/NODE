@@ -28,6 +28,7 @@ import {
   type SmartActionSubTab,
 } from './actionExecution';
 import {
+  getNextProfileDefaultName,
   MAX_LAYER_COUNT,
   MAX_PROFILE_COUNT,
   PROFILE_FILE_STORAGE_KEY,
@@ -3581,7 +3582,7 @@ export default function App() {
     }
     const nextProf: ProfileData = {
       id: `prof-${Date.now()}`,
-      name: '',
+      name: getNextProfileDefaultName(profiles),
       color: '#0051ff',
       layers: [JSON.parse(JSON.stringify(INITIAL_LAYER_1))],
     };

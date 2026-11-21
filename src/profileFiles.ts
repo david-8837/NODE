@@ -413,6 +413,43 @@ function byteLength(text: string): number {
   return new TextEncoder().encode(text).byteLength;
 }
 
+/**
+ * Computes the default name for a newly created profile in sequence (1, 2, 3, 4...).
+ * If no profiles exist, the first profile defaults to "1".
+ * If the default profile is present (e.g. "Default Profile" or "1"), the next new profile defaults to "2",
+ * then "3", "4", etc. Users can later rename any profile to whatever they want.
+ */
+export function getNextProfileDefaultName(profiles?: Array<{ name?: string }>): string {
+  if (!profiles || profiles.length === 0) {
+    return '1';
+  }
+
+  const usedNumbers = new Set<number>();
+  for (const p of profiles) {
+    const raw = (p.name || '').trim();
+    if (!raw || raw.toLowerCase() === 'default profile' || raw === '1' || /^profile\s+1$/i.test(raw)) {
+      usedNumbers.add(1);
+      continue;
+    }
+    const numMatch = raw.match(/^(\d+)$/) || raw.match(/^profile\s+(\d+)$/i);
+    if (numMatch) {
+      const val = parseInt(numMatch[1], 10);
+      if (!Number.isNaN(val) && val > 0) {
+        usedNumbers.add(val);
+      }
+    }
+  }
+
+  // At least one profile exists, so slot 1 is considered occupied
+  usedNumbers.add(1);
+
+  let candidate = 2;
+  while (usedNumbers.has(candidate)) {
+    candidate++;
+  }
+  return String(candidate);
+}
+
 export function parseProfileFile(text: string): ParsedProfileFile {
   if (typeof text !== 'string' || byteLength(text) > MAX_PROFILE_FILE_BYTES) {
     throw makeError(`Profile files must be no larger than ${MAX_PROFILE_FILE_BYTES / 1024 / 1024} MB`);

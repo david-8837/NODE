@@ -3,6 +3,7 @@ import { JSDOM } from 'jsdom';
 import {
   createProfileExport,
   createProfileFileTools,
+  getNextProfileDefaultName,
   MAX_PROFILE_FILE_BYTES,
   mergeImportedProfiles,
   parseProfileFile,
@@ -374,5 +375,37 @@ describe('profile file import and export', () => {
     expect(importedLayers[0].r1c1.label).toBe('<img src=x onerror=alert(1)>');
     expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
     expect(Object.hasOwn(importedLayers[0], '__proto__')).toBe(false);
+  });
+
+  describe('getNextProfileDefaultName', () => {
+    it('returns "1" when no profiles exist', () => {
+      expect(getNextProfileDefaultName([])).toBe('1');
+      expect(getNextProfileDefaultName(undefined)).toBe('1');
+    });
+
+    it('returns "2" when default initial profile exists ("Default Profile" or "1")', () => {
+      expect(getNextProfileDefaultName([{ name: 'Default Profile' }])).toBe('2');
+      expect(getNextProfileDefaultName([{ name: '1' }])).toBe('2');
+      expect(getNextProfileDefaultName([{ name: 'Profile 1' }])).toBe('2');
+      expect(getNextProfileDefaultName([{ name: '' }])).toBe('2');
+    });
+
+    it('increments sequentially to "3", "4", "5" when adding new profiles', () => {
+      expect(getNextProfileDefaultName([{ name: '1' }, { name: '2' }])).toBe('3');
+      expect(getNextProfileDefaultName([{ name: 'Default Profile' }, { name: '2' }])).toBe('3');
+      expect(getNextProfileDefaultName([{ name: '1' }, { name: '2' }, { name: '3' }])).toBe('4');
+      expect(getNextProfileDefaultName([{ name: '1' }, { name: '2' }, { name: '3' }, { name: '4' }])).toBe('5');
+    });
+
+    it('reuses available numeric gaps if an intermediate profile was removed', () => {
+      expect(getNextProfileDefaultName([{ name: '1' }, { name: '3' }])).toBe('2');
+      expect(getNextProfileDefaultName([{ name: '1' }, { name: '2' }, { name: '4' }])).toBe('3');
+    });
+
+    it('handles custom renamed profiles seamlessly', () => {
+      expect(getNextProfileDefaultName([{ name: 'Gaming' }])).toBe('2');
+      expect(getNextProfileDefaultName([{ name: '1' }, { name: 'Work' }])).toBe('2');
+      expect(getNextProfileDefaultName([{ name: '1' }, { name: 'Work' }, { name: '2' }])).toBe('3');
+    });
   });
 });
