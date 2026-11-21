@@ -23,14 +23,14 @@ export function SettingsSwitch({
       disabled={disabled}
       title={title}
       onClick={onChange}
-      className={`w-[29px] h-[16px] rounded-full p-[2px] flex items-center transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+      className={`w-[29px] h-[16px] shrink-0 rounded-full p-[2px] flex items-center transition-colors duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
         checked ? 'bg-[#000000] justify-end' : 'bg-[#b3b3b3] justify-start'
       }`}
     >
       <motion.span
         layout
         transition={{ type: 'spring', stiffness: 520, damping: 32 }}
-        className="w-[12px] h-[12px] rounded-full bg-white shadow-xs"
+        className="w-[12px] h-[12px] shrink-0 rounded-full bg-white shadow-xs"
       />
     </button>
   );

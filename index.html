@@ -34,7 +34,8 @@
 
     /* The header keeps an 18px gutter, so this preserves the existing 146px
        caption-button clearance without shifting the centered navigation. */
-    html.electron-windows-shell #root > div > header > button {
+    html.electron-windows-shell #root > div > header > button,
+    html.electron-windows-shell #root > div > header > div:last-child {
       margin-right: 128px;
     }
 

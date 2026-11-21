@@ -132,7 +132,7 @@ export function SettingsScreen({
               </h2>
               <div className="divide-y divide-[#dadada] text-[10.5px]">
                 <div className="py-[9px] flex items-center justify-between gap-4">
-                  <div className="flex flex-col gap-[1px]">
+                  <div className="flex flex-col gap-[1px] flex-1 min-w-0 pr-2">
                     <span className="text-[#333333] font-medium text-[11px]">Start at login</span>
                     <span className="text-[#666666] text-[10px] leading-tight">
                       Automatically start NØDE Studio when you log in
@@ -149,7 +149,7 @@ export function SettingsScreen({
                 </div>
 
                 <div className="py-[9px] flex items-center justify-between gap-4">
-                  <div className="flex flex-col gap-[1px]">
+                  <div className="flex flex-col gap-[1px] flex-1 min-w-0 pr-2">
                     <span className="text-[#333333] font-medium text-[11px]">Start hidden in the tray</span>
                     <span className="text-[#666666] text-[10px] leading-tight">
                       Every time NØDE Studio starts, it runs in the background with its window hidden. Click the tray icon or open NØDE Studio again to show it.
