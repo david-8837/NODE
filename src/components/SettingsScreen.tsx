@@ -144,21 +144,45 @@ export function SettingsScreen({
                     title={settingsCapabilities.launchAtStartup
                       ? 'Automatically start NØDE Studio when you log in'
                       : 'Available only in the installed desktop app'}
-                    onChange={() => void handleAppSettingChange('launchAtStartup', !launchAtStartup)}
+                    onChange={() => {
+                      const nextLaunch = !launchAtStartup;
+                      void handleAppSettingChange('launchAtStartup', nextLaunch);
+                      if (!nextLaunch && startHiddenInTray) {
+                        void handleAppSettingChange('startHiddenInTray', false);
+                      }
+                    }}
                   />
                 </div>
 
-                <div className="py-[9px] flex items-center justify-between gap-4">
+                <div
+                  className={`py-[9px] flex items-center justify-between gap-4 transition-opacity duration-200 ${
+                    !launchAtStartup ? 'opacity-40' : 'opacity-100'
+                  }`}
+                >
                   <div className="flex flex-col gap-[1px] flex-1 min-w-0 pr-2">
-                    <span className="text-[#333333] font-medium text-[11px]">Start hidden in the tray</span>
+                    <span
+                      className={`font-medium text-[11px] ${
+                        !launchAtStartup ? 'text-[#888888]' : 'text-[#333333]'
+                      }`}
+                    >
+                      Start hidden in the tray
+                    </span>
                     <span className="text-[#666666] text-[10px] leading-tight">
                       Every time NØDE Studio starts, it runs in the background with its window hidden. Click the tray icon or open NØDE Studio again to show it.
                     </span>
                   </div>
                   <SettingsSwitch
-                    checked={Boolean(startHiddenInTray)}
-                    title="Launch with main window hidden in the background system tray"
-                    onChange={() => void handleAppSettingChange('startHiddenInTray', !startHiddenInTray)}
+                    checked={Boolean(launchAtStartup && startHiddenInTray)}
+                    disabled={!launchAtStartup || !settingsCapabilities.launchAtStartup}
+                    title={
+                      !launchAtStartup
+                        ? 'Enable "Start at login" first to configure hidden startup'
+                        : 'Launch with main window hidden in the background system tray'
+                    }
+                    onChange={() => {
+                      if (!launchAtStartup) return;
+                      void handleAppSettingChange('startHiddenInTray', !startHiddenInTray);
+                    }}
                   />
                 </div>
               </div>

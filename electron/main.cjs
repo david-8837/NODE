@@ -256,15 +256,27 @@ function getSettingsCapabilities() {
 
 function getNativeAppSettings() {
   const capabilities = getSettingsCapabilities();
-  let launchAtStartup = false;
+  const stored = readStoredAppSettings();
+  let launchAtStartup = Boolean(stored.launchAtStartup);
   if (capabilities.launchAtStartup) {
     try {
-      launchAtStartup = Boolean(app.getLoginItemSettings().openAtLogin);
+      const loginSettings = app.getLoginItemSettings({
+        path: process.execPath,
+        args: stored.startHiddenInTray ? ['--hidden'] : [],
+      });
+      if (typeof loginSettings?.openAtLogin === 'boolean' && loginSettings.openAtLogin) {
+        launchAtStartup = true;
+      }
     } catch {}
   }
+  const effectiveStartHidden = launchAtStartup && Boolean(stored.startHiddenInTray);
   return {
     ok: true,
-    settings: { ...readStoredAppSettings(), launchAtStartup },
+    settings: {
+      ...stored,
+      launchAtStartup,
+      startHiddenInTray: effectiveStartHidden,
+    },
     capabilities,
   };
 }
@@ -1009,18 +1021,22 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
         return { ok: false, error: 'Launch at startup is only supported by an installed Windows or macOS app' };
       }
       const stored = readStoredAppSettings();
-      const startupArgs = stored.startHiddenInTray ? ['--hidden'] : [];
+      const nextStartHidden = value ? Boolean(stored.startHiddenInTray) : false;
+      const startupArgs = nextStartHidden ? ['--hidden'] : [];
       try {
         app.setLoginItemSettings({ openAtLogin: value, path: process.execPath, args: startupArgs }); // args: ['--hidden']
       } catch {}
-      setWindowsStartupShortcut(value, stored.startHiddenInTray);
-      const settings = { ...stored, [key]: value };
+      setWindowsStartupShortcut(value, nextStartHidden);
+      const settings = { ...stored, launchAtStartup: value, startHiddenInTray: nextStartHidden };
       writeStoredAppSettings(settings);
       return getNativeAppSettings();
     }
 
     if (key === 'startHiddenInTray') {
       const stored = readStoredAppSettings();
+      if (value && !stored.launchAtStartup) {
+        return { ok: false, error: 'Start at login must be enabled first to configure hidden startup' };
+      }
       const settings = { ...stored, [key]: value };
       writeStoredAppSettings(settings);
       if (stored.launchAtStartup && getSettingsCapabilities().launchAtStartup) {

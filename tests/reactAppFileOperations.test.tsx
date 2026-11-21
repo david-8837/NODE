@@ -209,14 +209,16 @@ describe('React source app file operations', () => {
     expect(switches[0].disabled).toBe(false);
     expect(switches[0].getAttribute('aria-checked')).toBe('true');
     expect(switches[1].getAttribute('aria-checked')).toBe('false');
+    expect(switches[1].disabled).toBe(false);
     expect(container.textContent).toContain('4.5.6');
+
+    await clickButton(switches[1]);
+    expect(setAppSetting).toHaveBeenCalledWith('startHiddenInTray', true);
 
     await clickButton(switches[0]);
     expect(setAppSetting).toHaveBeenCalledWith('launchAtStartup', false);
     expect(switches[0].getAttribute('aria-checked')).toBe('false');
-
-    await clickButton(switches[1]);
-    expect(setAppSetting).toHaveBeenCalledWith('startHiddenInTray', true);
+    expect(switches[1].disabled).toBe(true);
 
     await clickButton([...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.trim() === 'Help & Documentation')!);
