@@ -199,7 +199,7 @@ describe('Settings persistence and native capabilities', () => {
 
     const mockCheck = vi.fn().mockResolvedValue({
       ok: true,
-      currentVersion: '1.1.12',
+      currentVersion: '1.1.13',
       latestVersion: '1.2.0',
       hasUpdate: true,
     });
