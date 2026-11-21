@@ -42,6 +42,36 @@ function isPersistenceSmokeTest() {
     process.env.NODE_GRID_PERSISTENCE_SMOKE === '1';
 }
 
+function isVisualSmokeTest() {
+  return app.isPackaged && app.commandLine.hasSwitch('visual-smoke-test');
+}
+
+function isAutoStartHidden() {
+  if (process.argv.includes('--hidden') || app.commandLine.hasSwitch('hidden')) {
+    return true;
+  }
+  try {
+    const loginItemSettings = app.getLoginItemSettings?.();
+    if (loginItemSettings?.wasOpenedAtLogin || loginItemSettings?.wasOpenedAsHidden) {
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock && !isPersistenceSmokeTest() && !isVisualSmokeTest()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 // Electron resolves Windows userData through the OS Known Folder API rather
 // than APPDATA alone. Point only the packaged persistence smoke test at its
 // isolated runner directories before Chromium initializes its profile.
@@ -254,7 +284,7 @@ function setWindowsStartupShortcut(enabled) {
         const escapedShortcut = shortcutPath.replace(/'/g, "''");
         const escapedTarget = process.execPath.replace(/'/g, "''");
         const escapedDir = path.dirname(process.execPath).replace(/'/g, "''");
-        const psScript = `$w = New-Object -ComObject WScript.Shell; $s = $w.CreateShortcut('${escapedShortcut}'); $s.TargetPath = '${escapedTarget}'; $s.WorkingDirectory = '${escapedDir}'; $s.Description = 'NODE studio'; $s.Save();`;
+        const psScript = `$w = New-Object -ComObject WScript.Shell; $s = $w.CreateShortcut('${escapedShortcut}'); $s.TargetPath = '${escapedTarget}'; $s.Arguments = '--hidden'; $s.WorkingDirectory = '${escapedDir}'; $s.Description = 'NODE studio'; $s.Save();`;
         exec(`powershell -NoProfile -NonInteractive -Command "${psScript}"`, () => {});
       }
     } else {
@@ -298,10 +328,6 @@ function getInitialWindowBounds() {
     minWidth: Math.min(900, width),
     minHeight: Math.min(600, height),
   };
-}
-
-function isVisualSmokeTest() {
-  return app.isPackaged && app.commandLine.hasSwitch('visual-smoke-test');
 }
 
 function writeVisualSmokeDiagnostics(details) {
@@ -776,7 +802,7 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    if (!isPersistenceSmokeTest()) mainWindow.show();
+    if (!isPersistenceSmokeTest() && !isAutoStartHidden()) mainWindow.show();
     if (isDev) {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
@@ -962,7 +988,7 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
         return { ok: false, error: 'Launch at startup is only supported by an installed Windows or macOS app' };
       }
       try {
-        app.setLoginItemSettings({ openAtLogin: value, path: process.execPath });
+        app.setLoginItemSettings({ openAtLogin: value, path: process.execPath, args: ['--hidden'] });
       } catch {}
       setWindowsStartupShortcut(value);
       const settings = { ...readStoredAppSettings(), [key]: value };
@@ -1163,7 +1189,7 @@ app.whenReady().then(() => {
   updateCheatSheetGlobalHotkey(currentSettings);
   if (currentSettings.launchAtStartup && getSettingsCapabilities().launchAtStartup) {
     try {
-      app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
+      app.setLoginItemSettings({ openAtLogin: true, path: process.execPath, args: ['--hidden'] });
     } catch {}
     setWindowsStartupShortcut(true);
   }

@@ -36,4 +36,16 @@ describe('Electron background execution of hardware-triggered gestures', () => {
     expect(engine).toContain('setTimeout');
     expect(engine).toContain('clearTimeout');
   });
+
+  it('configures auto-start to launch hidden in the system tray', () => {
+    // Verifies the auto-start hidden contract in main.cjs
+    expect(mainSource).toContain('function isAutoStartHidden()');
+    expect(mainSource).toContain("process.argv.includes('--hidden')");
+    expect(mainSource).toContain("loginItemSettings?.wasOpenedAtLogin");
+    expect(mainSource).toContain("!isAutoStartHidden()");
+    expect(mainSource).toContain("args: ['--hidden']");
+    expect(mainSource).toContain("$s.Arguments = '--hidden'");
+    expect(mainSource).toContain('app.requestSingleInstanceLock()');
+    expect(mainSource).toContain("app.on('second-instance'");
+  });
 });
