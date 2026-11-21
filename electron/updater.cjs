@@ -26,7 +26,7 @@ function fetchLatestRelease(customFetch) {
   if (customFetch) return customFetch(GITHUB_API_URL);
 
   return new Promise((resolve) => {
-    const version = typeof app?.getVersion === 'function' ? app.getVersion() : '1.1.13';
+    const version = typeof app?.getVersion === 'function' ? app.getVersion() : '1.1.14';
     const options = {
       headers: {
         'User-Agent': `NODE-studio/${version}`,
@@ -84,7 +84,7 @@ function fetchLatestRelease(customFetch) {
 
 async function checkForAppUpdates({ currentVersion, fetchFn } = {}) {
   const version =
-    currentVersion || (typeof app?.getVersion === 'function' ? app.getVersion() : '1.1.13');
+    currentVersion || (typeof app?.getVersion === 'function' ? app.getVersion() : '1.1.14');
 
   try {
     const result = await fetchLatestRelease(fetchFn);
