@@ -476,7 +476,7 @@ export function createAppSettingsTools(host?: SettingsHost): AppSettingsTools {
       }
       return {
         ok: false,
-        currentVersion: '1.1.14',
+        currentVersion: '1.1.15',
         error: 'Update checking is only available in the desktop application',
       };
     },

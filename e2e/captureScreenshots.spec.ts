@@ -72,7 +72,7 @@ test.describe('Tutorial Screenshots Capture', () => {
       (window as unknown as { electronAPI: unknown }).electronAPI = {
         isElectron: true,
         platform: 'win32',
-        getVersion: async () => '1.1.14',
+        getVersion: async () => '1.1.15',
         getAppSettings: async () => ({
           ok: true,
           settings: {
