@@ -118,19 +118,18 @@ describe('Public download website', () => {
     expect(tutorialHtml).toContain('tutorial-keycap-personalization.png');
     expect(tutorialHtml).toContain('tutorial-preset-library.png');
     expect(tutorialHtml).toContain('tutorial-settings-rules.png');
-    expect(tutorialHtml).toContain('tutorial-community-hub.png');
+    expect(tutorialHtml).not.toContain('tutorial-community-hub.png');
 
-    // All 10 features thoroughly documented
+    // All core studio features thoroughly documented
     expect(tutorialHtml).toContain('1. Live Key Visualizer');
     expect(tutorialHtml).toContain('2. Keycap Legend Personalization');
     expect(tutorialHtml).toContain('3. Presets Library with Dynamic OS Switcher');
     expect(tutorialHtml).toContain('4. Auto Active Window Profile Switching');
-    expect(tutorialHtml).toContain('5. Community Profile Sharing Hub');
-    expect(tutorialHtml).toContain('6. Action Creator Drawer');
-    expect(tutorialHtml).toContain('7. Acrylic Cheat Sheet HUD Overlay');
-    expect(tutorialHtml).toContain('8. Hardware RGB Matrix Lighting Sync');
-    expect(tutorialHtml).toContain('9. Desktop Auto-Updater');
-    expect(tutorialHtml).toContain('10. Pre-Write EEPROM Backups &amp; Hardware Simulation');
+    expect(tutorialHtml).toContain('5. Action Creator Drawer');
+    expect(tutorialHtml).toContain('6. Acrylic Cheat Sheet HUD Overlay');
+    expect(tutorialHtml).toContain('7. Hardware RGB Matrix Lighting Sync');
+    expect(tutorialHtml).toContain('8. Desktop Auto-Updater');
+    expect(tutorialHtml).toContain('9. Pre-Write EEPROM Backups &amp; Hardware Simulation');
 
     // Baseline vs Modern comparison table
     expect(tutorialHtml).toContain('Original Baseline');

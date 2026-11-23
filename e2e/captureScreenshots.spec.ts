@@ -150,22 +150,5 @@ test.describe('Tutorial Screenshots Capture', () => {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.waitForTimeout(500);
     await page.screenshot({ path: path.join(assetsDir, 'tutorial-settings-rules.png') });
-
-    // 5. Navigate back to Keymap and open Community Profile Sharing Hub
-    await page.getByRole('button', { name: 'Keymap', exact: true }).click();
-    await page.waitForTimeout(400);
-
-    const toggleProfileMenu = page.locator('button[aria-label="Toggle profile list"]');
-    if (await toggleProfileMenu.isVisible()) {
-      await toggleProfileMenu.click();
-      await page.waitForTimeout(300);
-
-      const hubBtn = page.locator('button[title*="community-shared profiles"]');
-      if (await hubBtn.isVisible()) {
-        await hubBtn.click();
-        await page.waitForTimeout(600);
-        await page.screenshot({ path: path.join(assetsDir, 'tutorial-community-hub.png') });
-      }
-    }
   });
 });

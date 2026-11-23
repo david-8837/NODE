@@ -127,7 +127,6 @@ describe('Rotary limitation experience and clean drawer UI', () => {
           handleConfirmDeleteProfile: vi.fn(),
           handleAddProfile: vi.fn(),
           handleImportProfile: vi.fn(),
-          onOpenCommunityHub: vi.fn(),
         })
       );
     });

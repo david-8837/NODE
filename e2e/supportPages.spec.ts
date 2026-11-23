@@ -53,8 +53,8 @@ test.describe('Support & Documentation Subpages E2E', () => {
 
     // Verify embedded screenshots
     const figures = page.locator('figure.tutorial-figure img');
-    await expect(figures).toHaveCount(5);
-    for (let i = 0; i < 5; i++) {
+    await expect(figures).toHaveCount(4);
+    for (let i = 0; i < 4; i++) {
       await expect(figures.nth(i)).toBeVisible();
     }
 

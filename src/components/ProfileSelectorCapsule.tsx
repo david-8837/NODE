@@ -24,7 +24,6 @@ export interface ProfileSelectorCapsuleProps {
   handleConfirmDeleteProfile: (idx: number) => void;
   handleAddProfile: () => void;
   handleImportProfile: () => void;
-  onOpenCommunityHub?: () => void;
 }
 
 export function ProfileSelectorCapsule({
@@ -46,7 +45,6 @@ export function ProfileSelectorCapsule({
   handleConfirmDeleteProfile,
   handleAddProfile,
   handleImportProfile,
-  onOpenCommunityHub,
 }: ProfileSelectorCapsuleProps) {
   return (
     <motion.div
@@ -422,33 +420,6 @@ export function ProfileSelectorCapsule({
                   </svg>
                   <span>Import</span>
                 </button>
-
-                {onOpenCommunityHub && (
-                  <button
-                    onClick={() => {
-                      setProfileMenuOpen(false);
-                      onOpenCommunityHub();
-                    }}
-                    title="Browse & install community-shared profiles"
-                    className="h-[28px] px-[9px] rounded-full bg-white hover:bg-[#0051ff] hover:text-white border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center gap-[4px] text-[10.5px] font-medium text-[#444444] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-all cursor-pointer"
-                  >
-                    <svg
-                      width="11"
-                      height="11"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="2" y1="12" x2="22" y2="12" />
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                    </svg>
-                    <span>Hub</span>
-                  </button>
-                )}
               </div>
             </motion.div>
           )}
