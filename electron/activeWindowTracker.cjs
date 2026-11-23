@@ -69,7 +69,7 @@ function getActiveWindowDetails(apis = initWin32Apis()) {
       const sizeBuf = [512];
       const success = apis.QueryFullProcessImageNameW(hProcess, 0, pathBuf, sizeBuf);
       const fullPath = success > 0 ? pathBuf.toString('utf16le', 0, sizeBuf[0] * 2) : '';
-      const processName = fullPath ? path.basename(fullPath) : '';
+      const processName = fullPath ? (path.win32 ? path.win32.basename(fullPath) : path.basename(fullPath)) : '';
 
       return {
         hwnd: String(hwnd),
