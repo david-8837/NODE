@@ -124,7 +124,7 @@ describe('Public download website', () => {
     expect(tutorialHtml).toContain('1. Live Key Visualizer');
     expect(tutorialHtml).toContain('2. Keycap Legend Personalization');
     expect(tutorialHtml).toContain('3. Presets Library with Dynamic OS Switcher');
-    expect(tutorialHtml).toContain('4. Auto Active Window Profile Switching');
+    expect(tutorialHtml).toContain('4. Settings, Startup &amp; Background System Tray');
     expect(tutorialHtml).toContain('5. Action Creator Drawer');
     expect(tutorialHtml).toContain('6. Acrylic Cheat Sheet HUD Overlay');
     expect(tutorialHtml).toContain('7. Hardware RGB Matrix Lighting Sync');

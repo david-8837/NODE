@@ -95,7 +95,6 @@ import { SettingsSwitch } from './components/SettingsSwitch';
 import { CustomPickerIcon } from './components/CustomPickerIcon';
 import { SettingsScreen } from './components/SettingsScreen';
 import { EditLayoutModal } from './components/EditLayoutModal';
-import { matchProfileForApplication, type AppProfileMappingRule } from './activeWindow';
 import { IconPickerPopover } from './components/IconPickerPopover';
 import { PresetGrid } from './components/PresetGrid';
 import { PresetDetailPreview } from './components/PresetDetailPreview';
@@ -880,7 +879,6 @@ export default function App() {
     startHiddenInTray,
     allowTerminalSmartActions,
     allowDeviceNotifications,
-    autoSwitchProfile,
   } = appSettings;
   const [appVersion, setAppVersion] = useState(
     typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : APP_VERSION_FALLBACK
@@ -1646,26 +1644,6 @@ export default function App() {
     };
   }, [deviceStatus.state]);
 
-  // Auto-switch profile when the user switches to a different application (Windows only)
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api?.onActiveWindowChanged) return;
-
-    const offActiveWindow = api.onActiveWindowChanged((windowInfo) => {
-      if (!appSettings.autoSwitchProfile) return;
-      const currentProfiles = profilesRef.current;
-      const match = matchProfileForApplication(windowInfo, currentProfiles, appSettings.appProfileRules);
-      if (!match || match.profileIndex === activeProfileIndexRef.current) return;
-      const layerCount = currentProfiles[match.profileIndex]?.layers?.length ?? 1;
-      selectProfileInApp(match.profileIndex, layerCount);
-      showToast(`Auto-switched to "${match.profile.name}" for ${windowInfo.processName}`);
-    });
-
-    return () => {
-      if (typeof offActiveWindow === 'function') offActiveWindow();
-    };
-  }, [appSettings.autoSwitchProfile, selectProfileInApp]);
-
   useEffect(() => {
     const bridge = window.macropad;
     if (!bridge || deviceStatus.state !== 'connected' || !deviceSyncReady) return;
@@ -1860,14 +1838,6 @@ export default function App() {
     } else {
       showToast('Hide to tray is available in the desktop app');
     }
-  };
-
-  const handleUpdateProfileRules = (rules: AppProfileMappingRule[]) => {
-    const nextSettings = { ...appSettings, appProfileRules: rules };
-    setAppSettings(nextSettings);
-    const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
-    void tools.set('appProfileRules', rules);
-    showToast(`Updated app-to-profile rules (${rules.length})`);
   };
 
   const handleOpenSupportLink = async (key: SupportLinkKey, label: string) => {
@@ -4180,17 +4150,12 @@ export default function App() {
           settingsCapabilities={settingsCapabilities}
           allowTerminalSmartActions={allowTerminalSmartActions}
           allowDeviceNotifications={allowDeviceNotifications}
-          autoSwitchProfile={autoSwitchProfile}
-          appProfileRules={appSettings.appProfileRules}
-          availableProfiles={profiles}
-          installedApps={installedApplications}
           firmwareCheckPending={firmwareCheckPending}
           appUpdateCheckPending={appUpdateCheckPending}
           cheatSheetGlobalHotkeyEnabled={appSettings.cheatSheetGlobalHotkeyEnabled}
           cheatSheetGlobalHotkey={appSettings.cheatSheetGlobalHotkey}
           rotaryStepMultiplier={appSettings.rotaryStepMultiplier}
           handleAppSettingChange={handleAppSettingChange}
-          handleUpdateProfileRules={handleUpdateProfileRules}
           handleToggleCheatSheet={handleToggleCheatSheet}
           handleOpenSupportLink={handleOpenSupportLink}
           handleCheckFirmwareUpdate={handleCheckFirmwareUpdate}

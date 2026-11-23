@@ -74,7 +74,7 @@
               <a href="#visualizer">1. Live Key Visualizer</a>
               <a href="#legend-styling">2. Keycap Legend Personalization</a>
               <a href="#presets-library">3. Presets Library &amp; OS Switcher</a>
-              <a href="#active-window">4. Auto Window &amp; Rules Editor</a>
+              <a href="#settings-tray">4. Settings &amp; Background Tray</a>
               <a href="#action-drawer">5. Action Creator Drawer</a>
               <a href="#cheat-sheet">6. Cheat Sheet HUD Overlay</a>
               <a href="#rgb-sync">7. RGB Matrix Lighting Sync</a>
@@ -158,12 +158,12 @@
                     <tr>
                       <td><strong>Profile Management</strong></td>
                       <td><span class="tag-baseline">Single default profile only</span></td>
-                      <td><span class="tag-modern">Unlimited custom profiles with tag metadata, clone, export/import JSON, and active window synchronization</span></td>
+                      <td><span class="tag-modern">Unlimited custom profiles with tag metadata, clone, export/import JSON, and instant profile switching</span></td>
                     </tr>
                     <tr>
-                      <td><strong>App Switching Automation</strong></td>
-                      <td><span class="tag-baseline">None; manual profile switching only</span></td>
-                      <td><span class="tag-modern">Background Win32 tracker with Custom App-to-Profile Rules Editor (process name + window title matching)</span></td>
+                      <td><strong>Background Execution &amp; Tray</strong></td>
+                      <td><span class="tag-baseline">Window close quits app; manual relaunch</span></td>
+                      <td><span class="tag-modern">Persistent System Tray with background auto-connect, Windows startup launch, and quick menu actions</span></td>
                     </tr>
                     <tr>
                       <td><strong>Action Engine &amp; Gestures</strong></td>
@@ -256,28 +256,28 @@
               </ul>
             </article>
 
-            <!-- SECTION 7: AUTO ACTIVE WINDOW SWITCHING -->
-            <article class="doc-article" id="active-window">
+            <!-- SECTION 7: SETTINGS & SYSTEM TRAY -->
+            <article class="doc-article" id="settings-tray">
               <span class="tutorial-badge">Feature 4</span>
-              <h2>4. Auto Active Window Profile Switching &amp; Rules Editor</h2>
-              <p>Forget manually changing profiles when you multitask. The desktop tracker detects which application currently owns the operating system foreground focus and switches macropad layers automatically.</p>
+              <h2>4. Settings, Startup &amp; Background System Tray</h2>
+              <p>Keep your macropad ready 24/7 without cluttering your desktop taskbar. Configure automatic startup with Windows and background execution in the system tray.</p>
 
               <figure class="tutorial-figure">
-                <img src="./assets/tutorial-settings-rules.png" alt="Settings screen showing Auto Profile Switching toggle and custom App-to-Profile Mapping Rules Editor" width="1280" height="820" />
+                <img src="./assets/tutorial-settings-rules.png" alt="Settings screen showing Windows startup preferences, system tray configuration, and device settings" width="1280" height="820" />
                 <figcaption>
                   <span class="caption-label">
                     <span class="status-dot"></span>
-                    Figure 4: Settings &amp; Rules Editor — Active window background tracking with custom process and window title priority rules.
+                    Figure 4: Settings &amp; System Tray — Configure Windows login startup, background execution in the tray, and app preferences.
                   </span>
                   <span>Settings Manager</span>
                 </figcaption>
               </figure>
 
               <ul>
-                <li><strong>Native Foreground Polling:</strong> Electron's Win32 helper monitors window activation events using low-overhead native system calls.</li>
-                <li><strong>App-to-Profile Rules Manager:</strong> Define custom rules specifying exact process executable names (e.g. <code>photoshop.exe</code>, <code>Code.exe</code>, <code>obs64.exe</code>) or window title patterns.</li>
-                <li><strong>Priority Matching:</strong> Rules evaluate in strict user-configured priority order. If you switch from Chrome to VS Code, your coding layer activates instantly without a single manual click.</li>
-                <li><strong>Safe Fallback:</strong> If no custom rule matches the current foreground window, the pad smoothly reverts to your designated default profile.</li>
+                <li><strong>Start at Login:</strong> Launch NODE studio automatically when you sign in to Windows so your macropad is instantly active.</li>
+                <li><strong>Start Hidden in Tray:</strong> Minimize clutter by booting directly to the notification area tray without popping up a main window.</li>
+                <li><strong>System Tray Controls:</strong> Right-click the NODE tray icon anytime to restore the studio, check device connection status, or safely exit.</li>
+                <li><strong>Security &amp; Notifications:</strong> Granular permissions to enable or disable terminal command execution for Smart Actions and toggle device connection popups.</li>
               </ul>
             </article>
 
@@ -381,8 +381,8 @@
                   In the right drawer, enter a custom legend (e.g. <code>BUILD</code>), add a subscript sub-legend (e.g. <code>F5</code>), and choose an accent color swatch to match your aesthetic.
                 </li>
                 <li>
-                  <strong>Step 6: Configure App-to-Profile Auto-Switching</strong><br />
-                  Open Settings, toggle <strong>Auto Profile Switching</strong>, and add a rule matching your primary applications (e.g., assign your "Code" profile to <code>Code.exe</code>).
+                  <strong>Step 6: Configure Startup &amp; System Tray Preferences</strong><br />
+                  Open Settings to enable <strong>Start at login</strong> and <strong>Start hidden in the tray</strong> so your macropad automations are always standing by in the background.
                 </li>
                 <li>
                   <strong>Step 7: Commit to Flash &amp; Enjoy the HUD</strong><br />
