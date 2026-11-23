@@ -77,7 +77,8 @@ test.describe('Tutorial Screenshots Capture', () => {
           ok: true,
           settings: {
             launchAtStartup: true,
-            allowTerminalSmartActions: false,
+            startHiddenInTray: true,
+            allowTerminalSmartActions: true,
             allowDeviceNotifications: true,
             autoSwitchProfile: true,
             appProfileRules: [
