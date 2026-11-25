@@ -204,6 +204,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   cheatSheetGlobalHotkeyEnabled: true,
   cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
   rotaryStepMultiplier: 1,
+  rotaryAcceleration: true,
 });
 const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
 
@@ -223,6 +224,7 @@ function readStoredAppSettings() {
         'allowDeviceNotifications',
         'autoSwitchProfile',
         'cheatSheetGlobalHotkeyEnabled',
+        'rotaryAcceleration',
       ]) {
         if (typeof stored[key] === 'boolean') settings[key] = stored[key];
       }
@@ -757,6 +759,21 @@ function createWindow() {
       (device) => device.vendorId === 0xfeed && device.productId === 0x6001
     );
     callback(viaDevice?.deviceId || '');
+  });
+
+  ses.on('hid-device-added', (event, device) => {
+    if (device.vendorId === 0xfeed && device.productId === 0x6001) {
+      mainWindow?.webContents.send('hid-device-hotplug', {
+        action: 'connect',
+        deviceName: device.productName || 'Grid Macro 1',
+      });
+    }
+  });
+
+  ses.on('hid-device-removed', (event, device) => {
+    if (device.vendorId === 0xfeed && device.productId === 0x6001) {
+      mainWindow?.webContents.send('hid-device-hotplug', { action: 'disconnect' });
+    }
   });
 
   const handleUntrustedNavigation = (event, targetUrl) => {

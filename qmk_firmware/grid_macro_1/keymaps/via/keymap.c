@@ -427,6 +427,62 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     return true;
 }
 
+/* Dynamic rotary encoder acceleration:
+ * Slow rotation (>140ms per detent): single step (precision 1% volume / single frame)
+ * Moderate rotation (70-140ms): 2 steps
+ * Fast rotation (35-70ms): 4 steps
+ * Rapid flick (<=35ms): 6 steps
+ */
+static uint32_t mp_last_encoder_time = 0;
+static bool mp_last_encoder_cw = false;
+
+bool encoder_update_user(uint8_t index, bool clockwise) {
+    if (index != 0) return true;
+    uint32_t now = timer_read32();
+    uint32_t delta = timer_elapsed32(mp_last_encoder_time);
+    bool same_dir = (mp_last_encoder_cw == clockwise);
+    mp_last_encoder_time = now;
+    mp_last_encoder_cw = clockwise;
+
+    uint8_t steps = 1;
+    if (same_dir && delta <= 250) {
+        if (delta <= 35) {
+            steps = 6;
+        } else if (delta <= 70) {
+            steps = 4;
+        } else if (delta <= 140) {
+            steps = 2;
+        }
+    }
+
+    uint8_t current_layer = get_highest_layer(layer_state);
+    uint16_t keycode = dynamic_keymap_get_encoder(current_layer, index, clockwise);
+    if (keycode != KC_NO) {
+        if (keycode >= MP_TRIG_BASE && keycode <= MP_TRIG_MAX) {
+            uint8_t offset = (uint8_t)(keycode - MP_TRIG_BASE);
+            uint8_t trig_layer = (offset >> 4) & 0x03;
+            uint8_t slot_index = offset & 0x0F;
+            for (uint8_t i = 0; i < steps; i++) {
+                uint8_t report[32] = {0};
+                report[0] = MP_HID_PREFIX;
+                report[1] = MP_EVT_HOST_TRIGGER;
+                report[2] = ++mp_trigger_seq;
+                report[3] = mp_active_profile;
+                report[4] = trig_layer;
+                report[5] = slot_index;
+                report[6] = 1; /* press */
+                report[7] = (uint8_t)(report[0] ^ report[1] ^ report[2] ^ report[3] ^ report[4] ^ report[5] ^ report[6]);
+                raw_hid_send(report, sizeof(report));
+            }
+        } else {
+            for (uint8_t i = 0; i < steps; i++) {
+                tap_code16(keycode);
+            }
+        }
+    }
+    return false;
+}
+
 #if defined(VIA_ENABLE)
 bool via_command_kb(uint8_t *data, uint8_t length) {
     if (length < 2 || data[0] != MP_HID_PREFIX) {

@@ -1507,6 +1507,60 @@ export default function App() {
     }
   }, [deviceStatus.state]);
 
+  // Listen for native Electron session USB/HID device hotplug events (silent auto-reconnect)
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onDeviceHotplug) return;
+
+    return api.onDeviceHotplug((info: { action: string; deviceName?: string }) => {
+      const bridge = window.macropad;
+      if (!bridge) return;
+      if (info.action === 'connect') {
+        const state = deviceStatusRef.current.state;
+        if (state !== 'connected' && state !== 'connecting') {
+          void bridge.getStatus().then((status) => {
+            applyConnectedStatus(status);
+          });
+        }
+      } else if (info.action === 'disconnect') {
+        if (deviceStatusRef.current.state === 'connected') {
+          applyConnectedStatus({ state: 'disconnected', error: 'The device was disconnected' });
+        }
+      }
+    });
+  }, [applyConnectedStatus]);
+
+  const lastRotaryTickRef = useRef<{ time: number; dir: string }>({ time: 0, dir: '' });
+
+  const getRotaryStepCount = useCallback((subAction: 'cw' | 'ccw') => {
+    const baseMult = appSettings.rotaryStepMultiplier || 1;
+    if (!appSettings.rotaryAcceleration) return baseMult;
+
+    const now = Date.now();
+    const delta = now - lastRotaryTickRef.current.time;
+    const sameDir = lastRotaryTickRef.current.dir === subAction;
+    lastRotaryTickRef.current = { time: now, dir: subAction };
+
+    if (!sameDir || delta > 250) {
+      return baseMult;
+    }
+    // Exponential dynamic acceleration based on interval between detents:
+    // slow turns (>140ms): 1x (single step / 1% precision)
+    // moderate turns (70-140ms): 2x
+    // fast turns (35-70ms): 4x
+    // rapid flick (<=35ms): 6x (accelerated jump)
+    if (delta <= 35) {
+      return Math.max(baseMult, 6);
+    }
+    if (delta <= 70) {
+      return Math.max(baseMult, 4);
+    }
+    if (delta <= 140) {
+      return Math.max(baseMult, 2);
+    }
+    return baseMult;
+  }, [appSettings.rotaryAcceleration, appSettings.rotaryStepMultiplier]);
+
   // Listen for physical device layer changes and hardware host-action triggers
   useEffect(() => {
     const bridge = window.macropad;
@@ -1587,6 +1641,14 @@ export default function App() {
         if (trig.slotId === 'cw' || trig.slotId === 'press' || trig.slotId === 'ccw') {
           const dial = targetLayer[GRID_MACRO_ENCODER_SLOT];
           assignment = dial?.encoderActions?.[trig.slotId];
+          if ((trig.slotId === 'cw' || trig.slotId === 'ccw') && trig.pressed && assignment) {
+            const steps = getRotaryStepCount(trig.slotId);
+            for (let i = 0; i < steps; i++) {
+              triggerController.handleSlotEvent(trig.slotId, true, assignment);
+              triggerController.handleSlotEvent(trig.slotId, false, assignment);
+            }
+            return;
+          }
         } else {
           const keyEntry = targetLayer[trig.slotId as KeySlotId];
           if (keyEntry) {
@@ -3052,7 +3114,7 @@ export default function App() {
       flashSimulatedPress(slotId);
       if (slotId === GRID_MACRO_ENCODER_SLOT) {
         setEncoderAngle((angle) => (angle + 30) % 360);
-        const mult = appSettings.rotaryStepMultiplier || 1;
+        const mult = getRotaryStepCount('cw');
         for (let i = 0; i < mult; i++) {
           runSimulationAction(getEncoderActions(currentLayer[slotId]).cw);
         }
@@ -3099,7 +3161,7 @@ export default function App() {
       if (subAction === 'ccw') setEncoderAngle((angle) => (angle - 30 + 360) % 360);
       const mult =
         subAction === 'cw' || subAction === 'ccw'
-          ? appSettings.rotaryStepMultiplier || 1
+          ? getRotaryStepCount(subAction)
           : 1;
       for (let i = 0; i < mult; i++) {
         runSimulationAction(getEncoderActions(currentLayer[slotId])[subAction]);
@@ -4155,6 +4217,7 @@ export default function App() {
           cheatSheetGlobalHotkeyEnabled={appSettings.cheatSheetGlobalHotkeyEnabled}
           cheatSheetGlobalHotkey={appSettings.cheatSheetGlobalHotkey}
           rotaryStepMultiplier={appSettings.rotaryStepMultiplier}
+          rotaryAcceleration={appSettings.rotaryAcceleration}
           handleAppSettingChange={handleAppSettingChange}
           handleToggleCheatSheet={handleToggleCheatSheet}
           handleOpenSupportLink={handleOpenSupportLink}

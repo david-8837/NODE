@@ -17,6 +17,7 @@ export interface AppSettings {
   cheatSheetGlobalHotkeyEnabled: boolean;
   cheatSheetGlobalHotkey: string;
   rotaryStepMultiplier: number;
+  rotaryAcceleration: boolean;
 }
 
 export type AppSettingKey = keyof AppSettings;
@@ -37,6 +38,7 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   cheatSheetGlobalHotkeyEnabled: true,
   cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
   rotaryStepMultiplier: 1,
+  rotaryAcceleration: true,
 });
 
 export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
@@ -143,6 +145,7 @@ export interface ElectronApi {
   onHardwareSync?: (callback: () => void) => (() => void) | void;
   onOpenHardwareModal?: (callback: () => void) => (() => void) | void;
   onActiveWindowChanged?: (callback: (info: import('./activeWindow').ActiveWindowInfo) => void) => (() => void) | void;
+  onDeviceHotplug?: (callback: (info: { action: string; deviceName?: string }) => void) => (() => void) | void;
   matchProfileForApp?: (
     windowInfo: import('./activeWindow').ActiveWindowInfo,
     profiles: unknown[],
@@ -207,6 +210,10 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       raw.rotaryStepMultiplier <= 5
         ? Math.round(raw.rotaryStepMultiplier)
         : DEFAULT_APP_SETTINGS.rotaryStepMultiplier,
+    rotaryAcceleration:
+      typeof raw.rotaryAcceleration === 'boolean'
+        ? raw.rotaryAcceleration
+        : DEFAULT_APP_SETTINGS.rotaryAcceleration,
   };
 }
 

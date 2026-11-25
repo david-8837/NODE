@@ -22,6 +22,7 @@ export interface SettingsScreenProps {
   cheatSheetGlobalHotkeyEnabled?: boolean;
   cheatSheetGlobalHotkey?: string;
   rotaryStepMultiplier?: number;
+  rotaryAcceleration?: boolean;
   handleAppSettingChange: (key: AppSettingKey, value: boolean | string | number) => Promise<void> | void;
   handleToggleCheatSheet?: () => void;
   handleOpenSupportLink: (key: SupportLinkKey, label: string) => Promise<void> | void;
@@ -44,6 +45,7 @@ export function SettingsScreen({
   cheatSheetGlobalHotkeyEnabled = true,
   cheatSheetGlobalHotkey = 'Ctrl+Alt+M',
   rotaryStepMultiplier = 1,
+  rotaryAcceleration = true,
   handleAppSettingChange,
   handleToggleCheatSheet,
   handleOpenSupportLink,
@@ -198,6 +200,19 @@ export function SettingsScreen({
                     checked={allowDeviceNotifications}
                     title="Shows a system notification when the device connects or disconnects."
                     onChange={() => void handleAppSettingChange('allowDeviceNotifications', !allowDeviceNotifications)}
+                  />
+                </div>
+                <div className="pt-[8px] pb-[2px] flex items-center justify-between">
+                  <span className="text-[#585858] flex items-center gap-[5px]">
+                    <span>Dynamic rotary acceleration</span>
+                    <span className="text-[#666666]">
+                      <InfoCircleIcon size={11} />
+                    </span>
+                  </span>
+                  <SettingsSwitch
+                    checked={rotaryAcceleration}
+                    title="Rotate slowly for single-step precision (1% volume / single frame); spin rapidly for dynamic accelerated jumps (5–10%)."
+                    onChange={() => void handleAppSettingChange('rotaryAcceleration', !rotaryAcceleration)}
                   />
                 </div>
               </div>

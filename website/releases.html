@@ -74,6 +74,15 @@
               <span class="release-date">November 2026</span>
             </div>
             <div class="release-body">
+              <h4>Dynamic Rotary Encoder Acceleration</h4>
+              <ul>
+                <li>Implemented dynamic rotary acceleration in both QMK firmware and desktop studio: slow rotation produces single-step precision (1% volume, 1 timeline frame), while rapid spins accelerate up to 6x for fast scrubbing and zoom.</li>
+                <li>Added a toggle in Settings &gt; App Settings to easily enable or disable dynamic dial acceleration.</li>
+              </ul>
+              <h4>Silent Auto-Reconnect on USB Hotplug</h4>
+              <ul>
+                <li>Implemented silent background auto-reconnect via native Electron session HID events. When the USB cable is unplugged and plugged back in while minimized in the tray, NODE studio seamlessly handshakes and resumes without requiring user intervention.</li>
+              </ul>
               <h4>Removed Community Profile Sharing Hub</h4>
               <ul>
                 <li>Removed the cloud Community Profile Sharing Hub modal and UI buttons to preserve complete local privacy and ensure all profile management remains offline.</li>

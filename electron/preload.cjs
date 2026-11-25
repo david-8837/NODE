@@ -36,6 +36,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('active-window-changed', listener);
     return () => ipcRenderer.removeListener('active-window-changed', listener);
   },
+  onDeviceHotplug: (callback) => {
+    const listener = (_event, info) => callback(info);
+    ipcRenderer.on('hid-device-hotplug', listener);
+    return () => ipcRenderer.removeListener('hid-device-hotplug', listener);
+  },
   matchProfileForApp: (windowInfo, profiles, customRules) =>
     ipcRenderer.invoke('match-profile-for-app', windowInfo, profiles, customRules),
   getLegacyProfiles: () => ipcRenderer.invoke('get-legacy-profiles'),

@@ -80,6 +80,7 @@ test.describe('Tutorial Screenshots Capture', () => {
             startHiddenInTray: true,
             allowTerminalSmartActions: true,
             allowDeviceNotifications: true,
+            rotaryAcceleration: true,
           },
           capabilities: { launchAtStartup: true, firmwareFlash: true, externalLinks: true },
         }),

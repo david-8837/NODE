@@ -553,7 +553,12 @@ export class QmkViaBridge {
       await this.openDevice(device);
     } catch (error) {
       if (this.isStatusState('connecting')) {
-        this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        try {
+          if (this.isTarget(device)) await this.openDevice(device);
+        } catch {
+          this.setStatus({ state: 'disconnected', error: this.errorMessage(error) });
+        }
       }
     }
     return this.status;
