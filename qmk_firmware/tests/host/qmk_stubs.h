@@ -78,4 +78,5 @@ uint16_t eeprom_read_word(const uint16_t *a);
 void eeprom_update_byte(uint8_t *a, uint8_t v);
 void eeprom_update_word(uint16_t *a, uint16_t v);
 static inline void reset_keyboard(void) {}
+static inline void tap_code16(uint16_t kc) { (void)kc; }
 #endif
