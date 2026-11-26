@@ -44,4 +44,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   matchProfileForApp: (windowInfo, profiles, customRules) =>
     ipcRenderer.invoke('match-profile-for-app', windowInfo, profiles, customRules),
   getLegacyProfiles: () => ipcRenderer.invoke('get-legacy-profiles'),
+  showNotification: (payload) => ipcRenderer.invoke('show-notification', payload),
 });

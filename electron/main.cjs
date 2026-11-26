@@ -1,5 +1,5 @@
 // electron/main.cjs - NODE studio Desktop Application Entry Point for Windows
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath, pathToFileURL } = require('url');
@@ -745,12 +745,34 @@ function createWindow() {
   ses.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
     if (
       webContents !== mainWindow?.webContents ||
-      !isTrustedAppUrl(webContents.getURL()) ||
-      !isAllowedHardwareOrigin(requestingOrigin)
+      !isTrustedAppUrl(webContents.getURL())
     ) {
       return false;
     }
-    return permission === 'hid';
+    if (permission === 'notifications') return true;
+    if (permission === 'hid') {
+      return isAllowedHardwareOrigin(requestingOrigin);
+    }
+    return false;
+  });
+
+  ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (
+      webContents !== mainWindow?.webContents ||
+      !isTrustedAppUrl(webContents.getURL())
+    ) {
+      callback(false);
+      return;
+    }
+    if (permission === 'notifications') {
+      callback(true);
+      return;
+    }
+    if (permission === 'hid') {
+      callback(isAllowedHardwareOrigin(details?.requestingUrl || webContents.getURL()));
+      return;
+    }
+    callback(false);
   });
 
   ses.on('select-hid-device', (event, details, callback) => {
@@ -1151,6 +1173,43 @@ ipcMain.handle('flash-uf2', async (event) => {
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('show-notification', async (event, payload) => {
+  if (!isTrustedRenderer(event)) {
+    return { ok: false, error: 'Untrusted renderer' };
+  }
+  if (!Notification.isSupported()) {
+    return { ok: false, error: 'Desktop notifications are not supported on this system' };
+  }
+  try {
+    const title = typeof payload?.title === 'string' ? payload.title : 'NODE Studio';
+    const body = typeof payload?.body === 'string' ? payload.body : '';
+    const candidates = [
+      path.join(__dirname, '../public/favicon.ico'),
+      path.join(process.resourcesPath || '', 'app.asar/public/favicon.ico'),
+      path.join(__dirname, 'public/favicon.ico'),
+    ];
+    let iconPath = candidates[0];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        iconPath = c;
+        break;
+      }
+    }
+    const notif = new Notification({
+      title,
+      body,
+      icon: iconPath,
+    });
+    notif.show();
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 });
 

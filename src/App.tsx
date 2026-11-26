@@ -1,4 +1,10 @@
-import { referencesAtOrAfter } from './referenceSafety';
+import {
+  referencesAtOrAfter,
+  findReferenceConflicts,
+  cleanReferenceConflicts,
+  type ReferenceConflict,
+} from './referenceSafety';
+import { ReferenceConflictModal } from './components/ReferenceConflictModal';
 import { cheatSheetCommand, cheatSheetSnapshot, createCheatSheetTriggerHandler } from './cheatSheet';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
@@ -642,6 +648,15 @@ export default function App() {
     direction: 'cw' | 'ccw';
     reason?: string;
     actionTitle?: string;
+  } | null>(null);
+
+  // Warning modal with Clean option when deleting a profile or layer that has key references
+  const [referenceConflictModal, setReferenceConflictModal] = useState<{
+    open: boolean;
+    kind: 'profile' | 'layer';
+    targetIndex: number;
+    targetName: string;
+    conflicts: ReferenceConflict[];
   } | null>(null);
 
   const [suppressRotaryModal, setSuppressRotaryModal] = useState<boolean>(() => {
@@ -2051,7 +2066,14 @@ export default function App() {
     }
     const retainedLayers = currentProfile.layers.filter((_, i) => i !== layerIdx);
     if (referencesAtOrAfter(retainedLayers, 'layer', layerIdx) || referencesAtOrAfter(customItemsByTab, 'layer', layerIdx)) {
-      showToast('Clear layer references to this and later layers before deleting, to avoid retargeting assignments');
+      const conflicts = findReferenceConflicts([currentProfile], customItemsByTab, 'layer', layerIdx);
+      setReferenceConflictModal({
+        open: true,
+        kind: 'layer',
+        targetIndex: layerIdx,
+        targetName: `Layer ${layerIdx + 1}`,
+        conflicts,
+      });
       setLayerDeleteConfirm(false);
       return;
     }
@@ -2066,6 +2088,30 @@ export default function App() {
     }
     void requestHardwareLayer(Math.max(0, activeLayerIndex - 1));
     setLayerDeleteConfirm(false);
+  };
+
+  const handleCleanAndDeleteLayer = (layerIdx: number) => {
+    const { profiles: cleanedProfiles, customItemsByTab: cleanedCustom } = cleanReferenceConflicts(
+      profiles,
+      customItemsByTab,
+      'layer',
+      layerIdx
+    );
+    if (cleanedCustom) {
+      setCustomItemsByTab(cleanedCustom);
+    }
+    const nextProfiles = (cleanedProfiles as ProfileData[]).map((p, idx) =>
+      idx === activeProfileIndex
+        ? { ...p, layers: p.layers.filter((_: unknown, i: number) => i !== layerIdx) }
+        : p
+    );
+    pushState(nextProfiles);
+    if (deviceStatus.state === 'connected') {
+      triggerSyncFeedback('syncing');
+    }
+    void requestHardwareLayer(Math.max(0, activeLayerIndex - 1));
+    setReferenceConflictModal(null);
+    showToast(`Cleaned references and deleted Layer ${layerIdx + 1}`);
   };
 
   const handleUpdateKeyAssignment = (
@@ -3652,7 +3698,14 @@ export default function App() {
     }
     const next = profiles.filter((_, i) => i !== idx);
     if (referencesAtOrAfter(next, 'profile', idx) || referencesAtOrAfter(customItemsByTab, 'profile', idx)) {
-      showToast('Clear references to this and later profiles before deleting, to avoid retargeting assignments');
+      const conflicts = findReferenceConflicts(profiles, customItemsByTab, 'profile', idx);
+      setReferenceConflictModal({
+        open: true,
+        kind: 'profile',
+        targetIndex: idx,
+        targetName: profiles[idx]?.name || `Profile ${idx + 1}`,
+        conflicts,
+      });
       setDeletingProfileId(null);
       return;
     }
@@ -3661,6 +3714,26 @@ export default function App() {
     const nextIdx = activeProfileIndex > idx ? activeProfileIndex - 1 : Math.min(activeProfileIndex, next.length - 1);
     selectProfileInApp(nextIdx, (next[nextIdx] ?? next[0])?.layers.length ?? 1);
     setDeletingProfileId(null);
+  };
+
+  const handleCleanAndDeleteProfile = (idx: number) => {
+    const targetName = profiles[idx]?.name || `Profile ${idx + 1}`;
+    const { profiles: cleanedProfiles, customItemsByTab: cleanedCustom } = cleanReferenceConflicts(
+      profiles,
+      customItemsByTab,
+      'profile',
+      idx
+    );
+    if (cleanedCustom) {
+      setCustomItemsByTab(cleanedCustom);
+    }
+    const next = (cleanedProfiles as ProfileData[]).filter((_, i) => i !== idx);
+    pushState(next);
+    lastSyncedConfigKeyRef.current = '';
+    const nextIdx = activeProfileIndex > idx ? activeProfileIndex - 1 : Math.min(activeProfileIndex, next.length - 1);
+    selectProfileInApp(nextIdx, (next[nextIdx] ?? next[0])?.layers.length ?? 1);
+    setReferenceConflictModal(null);
+    showToast(`Cleaned references and deleted ${targetName}`);
   };
 
   const handleImportProfile = async () => {
@@ -4390,6 +4463,27 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* REFERENCE CONFLICT WARNING MODAL WITH CLEAN OPTION */}
+      <AnimatePresence>
+        {referenceConflictModal?.open && (
+          <ReferenceConflictModal
+            open={referenceConflictModal.open}
+            kind={referenceConflictModal.kind}
+            targetIndex={referenceConflictModal.targetIndex}
+            targetName={referenceConflictModal.targetName}
+            conflicts={referenceConflictModal.conflicts}
+            onCancel={() => setReferenceConflictModal(null)}
+            onCleanAndDelete={() => {
+              if (referenceConflictModal.kind === 'profile') {
+                handleCleanAndDeleteProfile(referenceConflictModal.targetIndex);
+              } else {
+                handleCleanAndDeleteLayer(referenceConflictModal.targetIndex);
+              }
+            }}
+          />
         )}
       </AnimatePresence>
 

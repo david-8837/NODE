@@ -152,6 +152,7 @@ export interface ElectronApi {
     customRules?: import('./activeWindow').AppProfileMappingRule[]
   ) => Promise<import('./activeWindow').MatchedProfileResult | null>;
   getLegacyProfiles?: () => Promise<any>;
+  showNotification?: (payload: { title: string; body?: string }) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export interface AppSettingsTools {
@@ -400,25 +401,27 @@ export function createAppSettingsTools(host?: SettingsHost): AppSettingsTools {
     set: async (key, value) => {
       const browser = requireHost();
       if (key === 'allowDeviceNotifications' && value) {
+        const isDesktop = Boolean(browser.electronAPI?.isElectron);
         const notifications = browser.Notification;
-        if (!notifications) {
-          return { ok: false, error: 'This browser does not support device notifications' };
-        }
-        let permission = notifications.permission;
-        if (permission === 'default') {
-          try {
-            permission = await notifications.requestPermission();
-          } catch {
-            permission = 'denied';
+        if (notifications) {
+          let permission = notifications.permission;
+          if (permission === 'default' || (isDesktop && permission !== 'granted')) {
+            try {
+              permission = await notifications.requestPermission();
+            } catch {
+              permission = 'denied';
+            }
           }
-        }
-        if (permission !== 'granted') {
-          return {
-            ok: false,
-            error: permission === 'denied'
-              ? 'Notifications are blocked by the browser or operating system'
-              : 'Notification permission was not granted',
-          };
+          if (permission !== 'granted' && !isDesktop) {
+            return {
+              ok: false,
+              error: permission === 'denied'
+                ? 'Notifications are blocked by the browser or operating system'
+                : 'Notification permission was not granted',
+            };
+          }
+        } else if (!isDesktop) {
+          return { ok: false, error: 'This browser does not support device notifications' };
         }
       }
 

@@ -7,11 +7,14 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 export function useDeviceNotifications(allowDeviceNotifications: boolean) {
   useEffect(() => {
     const bridge = window.macropad;
+    const isDesktop = Boolean(window.electronAPI?.isElectron);
+    const hasWebNotifications =
+      typeof window.Notification !== 'undefined' && window.Notification.permission === 'granted';
+
     if (
       !bridge ||
       !allowDeviceNotifications ||
-      typeof window.Notification === 'undefined' ||
-      window.Notification.permission !== 'granted'
+      (!isDesktop && !hasWebNotifications)
     ) return;
 
     return bridge.onEvent((event) => {
@@ -22,10 +25,15 @@ export function useDeviceNotifications(allowDeviceNotifications: boolean) {
       const body = type === 'connect'
         ? `${typeof event.device === 'string' ? event.device : 'Grid Macro 1'} is ready`
         : 'The Grid Macro 1 was disconnected';
-      try {
-        new window.Notification(title, { body });
-      } catch {
-        // Notification permission may be revoked by the OS after the setting is enabled.
+
+      if (window.electronAPI?.showNotification) {
+        void window.electronAPI.showNotification({ title, body });
+      } else if (typeof window.Notification !== 'undefined') {
+        try {
+          new window.Notification(title, { body });
+        } catch {
+          // Notification permission may be revoked by the OS after the setting is enabled.
+        }
       }
     });
   }, [allowDeviceNotifications]);
