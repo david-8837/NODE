@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
   getVersion: () => ipcRenderer.invoke('get-app-version'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadAndInstallUpdate: (payload) => ipcRenderer.invoke('download-and-install-update', payload),
+  onUpdateDownloadProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on('app-update-progress', listener);
+    return () => ipcRenderer.removeListener('app-update-progress', listener);
+  },
   getInstalledApplications: () => ipcRenderer.invoke('list-installed-applications'),
   getAppSettings: () => ipcRenderer.invoke('get-app-settings'),
   setAppSetting: (key, value) => ipcRenderer.invoke('set-app-setting', key, value),

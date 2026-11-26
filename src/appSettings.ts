@@ -118,11 +118,30 @@ export interface UpdateCheckResult {
   error?: string;
 }
 
+export interface UpdateDownloadProgress {
+  percent: number;
+  receivedBytes: number;
+  totalBytes: number;
+}
+
+export interface UpdateInstallResult {
+  ok: boolean;
+  filePath?: string;
+  error?: string;
+}
+
 export interface ElectronApi {
   isElectron?: boolean;
   platform?: string;
   getVersion?: () => Promise<string | null>;
   checkForUpdates?: () => Promise<UpdateCheckResult>;
+  downloadAndInstallUpdate?: (payload: {
+    downloadUrl: string;
+    assetName?: string | null;
+  }) => Promise<UpdateInstallResult>;
+  onUpdateDownloadProgress?: (
+    callback: (progress: UpdateDownloadProgress) => void
+  ) => (() => void) | void;
   getInstalledApplications?: () => Promise<InstalledApplicationsResult>;
   getAppSettings?: () => Promise<NativeSettingsResult>;
   setAppSetting?: (
@@ -169,6 +188,10 @@ export interface AppSettingsTools {
   checkFirmware: () => Promise<FirmwareCheckResult>;
   flashFirmware: () => Promise<AppOperationResult>;
   checkForUpdates?: () => Promise<UpdateCheckResult>;
+  downloadAndInstallUpdate?: (payload: {
+    downloadUrl: string;
+    assetName?: string | null;
+  }) => Promise<UpdateInstallResult>;
 }
 
 type StorageHost = Pick<Window, 'localStorage'>;
@@ -494,6 +517,17 @@ export function createAppSettingsTools(host?: SettingsHost): AppSettingsTools {
         ok: false,
         currentVersion: '1.1.15',
         error: 'Update checking is only available in the desktop application',
+      };
+    },
+    downloadAndInstallUpdate: async (payload) => {
+      const browser = requireHost();
+      const installFn = browser.electronAPI?.downloadAndInstallUpdate;
+      if (installFn) {
+        return await installFn(payload);
+      }
+      return {
+        ok: false,
+        error: 'In-app update installation is only available in the desktop application',
       };
     },
   };

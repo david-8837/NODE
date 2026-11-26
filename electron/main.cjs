@@ -8,7 +8,7 @@ const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 const { listInstalledApplications } = require('./installedApplications.cjs');
 const { migrateLegacyUserData } = require('./userDataMigration.cjs');
 const { createCheatSheetController } = require('./cheatSheet.cjs');
-const { checkForAppUpdates } = require('./updater.cjs');
+const { checkForAppUpdates, downloadUpdateInstaller } = require('./updater.cjs');
 const { createActiveWindowTracker, matchProfileForApplication } = require('./activeWindowTracker.cjs');
 const cheatSheet = createCheatSheetController({ BrowserWindow, screen });
 
@@ -1002,6 +1002,63 @@ ipcMain.handle('check-for-updates', async (event) => {
     return { ok: false, error: 'Untrusted renderer' };
   }
   return checkForAppUpdates();
+});
+
+let activeUpdateDownload = false;
+
+ipcMain.handle('download-and-install-update', async (event, payload) => {
+  if (!isTrustedRenderer(event)) {
+    return { ok: false, error: 'Untrusted renderer' };
+  }
+  if (activeUpdateDownload) {
+    return { ok: false, error: 'An update download is already in progress' };
+  }
+  const downloadUrl = typeof payload?.downloadUrl === 'string' ? payload.downloadUrl : '';
+  const assetName = typeof payload?.assetName === 'string' ? payload.assetName : undefined;
+  if (!downloadUrl) {
+    return { ok: false, error: 'Missing installer download URL' };
+  }
+  if (process.platform !== 'win32') {
+    return { ok: false, error: 'In-app installer launch is only supported on Windows' };
+  }
+
+  activeUpdateDownload = true;
+  try {
+    const result = await downloadUpdateInstaller({
+      url: downloadUrl,
+      fileName: assetName,
+      destDir: app.getPath('temp'),
+      onProgress: (progress) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('app-update-progress', progress);
+        }
+      },
+    });
+    if (!result.ok || !result.filePath) {
+      return { ok: false, error: result.error || 'Download failed' };
+    }
+
+    const { spawn } = require('node:child_process');
+    const child = spawn(result.filePath, [], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+
+    isQuitting = true;
+    setTimeout(() => {
+      app.quit();
+    }, 350);
+
+    return { ok: true, filePath: result.filePath };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    activeUpdateDownload = false;
+  }
 });
 
 ipcMain.handle('list-installed-applications', (event) => {

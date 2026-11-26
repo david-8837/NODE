@@ -50,6 +50,8 @@ import {
   type InstalledApplication,
   type SettingsCapabilities,
   type SupportLinkKey,
+  type UpdateCheckResult,
+  type UpdateDownloadProgress,
 } from './appSettings';
 import {
   useTipRotation,
@@ -109,6 +111,10 @@ import { ActionCreatorDrawer, type ActionAdvanceStep } from './components/Action
 import { MappingDrawer } from './components/MappingDrawer';
 import { DraggedTilePreview } from './components/DraggedTilePreview';
 import { FeedbackToast } from './components/FeedbackToast';
+import {
+  UpdateNotificationPopup,
+  type UpdateDownloadStatus,
+} from './components/UpdateNotificationPopup';
 import { EncoderPopupCapsule } from './components/EncoderPopupCapsule';
 import { ProfileSelectorCapsule } from './components/ProfileSelectorCapsule';
 import { LayersControlBar } from './components/LayersControlBar';
@@ -900,6 +906,11 @@ export default function App() {
   );
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [appUpdateCheckPending, setAppUpdateCheckPending] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateCheckResult | null>(null);
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(null);
+  const [updateDownloadStatus, setUpdateDownloadStatus] = useState<UpdateDownloadStatus>('idle');
+  const [updateDownloadProgress, setUpdateDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
+  const [updateDownloadError, setUpdateDownloadError] = useState<string | null>(null);
   const [activePressedSlot, setActivePressedSlot] = useState<string | null>(null);
   const rotaryVisualTimerRef = useRef<number | null>(null);
   const keyPressTimersRef = useRef<Record<string, number>>({});
@@ -1981,7 +1992,11 @@ export default function App() {
         return;
       }
       if (result.hasUpdate) {
-        showToast(`Update available: ${result.latestVersion}! Click Release Notes in Settings to download.`);
+        setDismissedUpdateVersion(null);
+        setUpdateDownloadStatus('idle');
+        setUpdateDownloadProgress(null);
+        setUpdateDownloadError(null);
+        setAvailableUpdate(result);
       } else {
         showToast(`NODE Studio is up to date (v${result.currentVersion}).`);
       }
@@ -1991,6 +2006,60 @@ export default function App() {
       setAppUpdateCheckPending(false);
     }
   };
+
+  const handleDownloadAndInstallUpdate = async () => {
+    if (!availableUpdate?.downloadUrl) return;
+    setUpdateDownloadStatus('downloading');
+    setUpdateDownloadProgress({ percent: 0, receivedBytes: 0, totalBytes: 0 });
+    setUpdateDownloadError(null);
+    try {
+      const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+      const result = await tools.downloadAndInstallUpdate?.({
+        downloadUrl: availableUpdate.downloadUrl,
+        assetName: availableUpdate.assetName,
+      });
+      if (!result?.ok) {
+        setUpdateDownloadStatus('error');
+        setUpdateDownloadError(result?.error || 'Failed to download and launch installer');
+        return;
+      }
+      setUpdateDownloadStatus('installing');
+    } catch (error) {
+      setUpdateDownloadStatus('error');
+      setUpdateDownloadError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  useEffect(() => {
+    if (!window.electronAPI?.isElectron) return;
+    const unsubscribeProgress = window.electronAPI.onUpdateDownloadProgress?.((progress) => {
+      setUpdateDownloadProgress(progress);
+    });
+
+    const runSilentCheck = async () => {
+      try {
+        const result = await window.electronAPI?.checkForUpdates?.();
+        if (result?.ok && result.hasUpdate && result.latestVersion !== dismissedUpdateVersion) {
+          setAvailableUpdate((prev) => prev ?? result);
+        }
+      } catch {
+        // Silent background check ignores network/offline errors
+      }
+    };
+
+    const startupTimer = window.setTimeout(() => {
+      void runSilentCheck();
+    }, 3500);
+    const periodicTimer = window.setInterval(() => {
+      void runSilentCheck();
+    }, 4 * 60 * 60 * 1000);
+
+    return () => {
+      window.clearTimeout(startupTimer);
+      window.clearInterval(periodicTimer);
+      if (typeof unsubscribeProgress === 'function') unsubscribeProgress();
+    };
+  }, [dismissedUpdateVersion]);
 
   const flashSimulatedPress = (slotId: string) => {
     setActivePressedSlot(slotId);
@@ -4559,6 +4628,31 @@ export default function App() {
           <FeedbackToast message={toastMessage} />
         )}
       </AnimatePresence>
+
+      {/* BOTTOM-RIGHT IN-APP UPDATE NOTIFICATION */}
+      <UpdateNotificationPopup
+        update={availableUpdate}
+        status={updateDownloadStatus}
+        progress={updateDownloadProgress}
+        errorMessage={updateDownloadError}
+        onDownloadAndInstall={() => void handleDownloadAndInstallUpdate()}
+        onOpenReleasePage={() => {
+          if (availableUpdate?.downloadUrl) {
+            void window.electronAPI?.openExternal?.(availableUpdate.downloadUrl);
+          } else {
+            void handleOpenSupportLink('releaseNotes', 'Release notes');
+          }
+        }}
+        onDismiss={() => {
+          if (availableUpdate?.latestVersion) {
+            setDismissedUpdateVersion(availableUpdate.latestVersion);
+          }
+          setAvailableUpdate(null);
+          setUpdateDownloadStatus('idle');
+          setUpdateDownloadProgress(null);
+          setUpdateDownloadError(null);
+        }}
+      />
     </div>
   );
 }

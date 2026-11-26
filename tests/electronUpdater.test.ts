@@ -2,8 +2,23 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { compareVersions, checkForAppUpdates } = require('../electron/updater.cjs') as {
+const {
+  compareVersions,
+  checkForAppUpdates,
+  downloadUpdateInstaller,
+  isTrustedUpdateUrl,
+  sanitizeInstallerFilename,
+} = require('../electron/updater.cjs') as {
   compareVersions: (current: string, latest: string) => number;
+  isTrustedUpdateUrl: (rawUrl: string) => boolean;
+  sanitizeInstallerFilename: (fileName: string) => string;
+  downloadUpdateInstaller: (options: {
+    url: string;
+    fileName?: string;
+    destDir?: string;
+    onProgress?: (p: { percent: number; receivedBytes: number; totalBytes: number }) => void;
+    httpsModule?: unknown;
+  }) => Promise<{ ok: boolean; filePath?: string; error?: string }>;
   checkForAppUpdates: (options?: {
     currentVersion?: string;
     fetchFn?: (url: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
@@ -117,6 +132,90 @@ describe('electron/updater.cjs', () => {
 
       expect(result.ok).toBe(false);
       expect(result.error).toContain('404');
+    });
+  });
+
+  describe('isTrustedUpdateUrl & sanitizeInstallerFilename', () => {
+    it('accepts only https GitHub and githubusercontent URLs', () => {
+      expect(isTrustedUpdateUrl('https://github.com/david-8837/NODE/releases/download/v1.2.0/NODE.exe')).toBe(true);
+      expect(isTrustedUpdateUrl('https://objects.githubusercontent.com/github-production-release-asset-2e65be/NODE.exe')).toBe(true);
+      expect(isTrustedUpdateUrl('http://github.com/david-8837/NODE/releases/download/v1.2.0/NODE.exe')).toBe(false);
+      expect(isTrustedUpdateUrl('https://evil.example.com/NODE.exe')).toBe(false);
+      expect(isTrustedUpdateUrl('not-a-url')).toBe(false);
+    });
+
+    it('sanitizes installer filenames and enforces .exe suffix', () => {
+      expect(sanitizeInstallerFilename('NODE.studio-1.2.0-x64.exe')).toBe('NODE.studio-1.2.0-x64.exe');
+      expect(sanitizeInstallerFilename('../../evil.exe')).toBe('evil.exe');
+      expect(sanitizeInstallerFilename('bad-name.txt')).toBe('NODE-studio-update.exe');
+    });
+  });
+
+  describe('downloadUpdateInstaller', () => {
+    it('rejects untrusted URLs before making any network request', async () => {
+      const result = await downloadUpdateInstaller({
+        url: 'https://untrusted.example.com/installer.exe',
+      });
+      expect(result).toEqual({ ok: false, error: 'Untrusted update download URL' });
+    });
+
+    it('follows a GitHub CDN redirect, streams the installer, and reports progress', async () => {
+      const { EventEmitter } = await import('node:events');
+      const { Readable } = await import('node:stream');
+      const fs = await import('node:fs');
+      const os = await import('node:os');
+      const path = await import('node:path');
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'node-updater-test-'));
+      const progressEvents: Array<{ percent: number; receivedBytes: number; totalBytes: number }> = [];
+
+      const mockHttps = {
+        get: vi.fn((url: string, _opts: unknown, cb: (res: unknown) => void) => {
+          const req = new EventEmitter();
+          queueMicrotask(() => {
+            if (url.startsWith('https://github.com/')) {
+              const redirectRes = new Readable({ read() {} });
+              (redirectRes as unknown as { statusCode: number; headers: Record<string, string> }).statusCode = 302;
+              (redirectRes as unknown as { headers: Record<string, string> }).headers = {
+                location: 'https://objects.githubusercontent.com/asset/NODE-Setup.exe',
+              };
+              redirectRes.push(null);
+              cb(redirectRes);
+            } else {
+              const payload = Buffer.from('MZ-installer-bytes');
+              const res = new Readable({
+                read() {
+                  this.push(payload);
+                  this.push(null);
+                },
+              });
+              (res as unknown as { statusCode: number; headers: Record<string, string> }).statusCode = 200;
+              (res as unknown as { headers: Record<string, string> }).headers = {
+                'content-length': String(payload.length),
+              };
+              cb(res);
+            }
+          });
+          return req;
+        }),
+      };
+
+      try {
+        const result = await downloadUpdateInstaller({
+          url: 'https://github.com/david-8837/NODE/releases/download/v1.2.0/NODE-Setup.exe',
+          fileName: 'NODE-Setup.exe',
+          destDir: tempDir,
+          httpsModule: mockHttps,
+          onProgress: (p) => progressEvents.push(p),
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.filePath).toBe(path.join(tempDir, 'NODE-Setup.exe'));
+        expect(fs.readFileSync(result.filePath!, 'utf8')).toBe('MZ-installer-bytes');
+        expect(progressEvents.some((p) => p.percent === 100)).toBe(true);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 });
