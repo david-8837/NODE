@@ -47,7 +47,9 @@ jobs:
 
       - name: Firmware Keymap Logic (host-compiled)
         run: |
-          set -x
-          bash qmk_firmware/tests/host/run.sh
+          bash qmk_firmware/tests/host/run.sh 2>&1 | tee /tmp/host_test.log || {
+            echo "::error::$(cat /tmp/host_test.log | head -n 30 | tr '\n' ' ')"
+            exit 1
+          }
 
 
