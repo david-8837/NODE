@@ -4,7 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import App from '../src/App';
 import { installConnectedDevice, removeConnectedDevice } from './helpers/connectedDevice';
-import type { HardwareTriggerEvent } from '../src/qmkViaBridge';
+import type { HardwareMatrixEvent, HardwareTriggerEvent } from '../src/qmkViaBridge';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -110,5 +110,47 @@ describe('Live Hardware Key Press Visualizer', () => {
     });
 
     expect(dialButton?.className).not.toContain('scale-[0.93]');
+  });
+
+  it('mirrors basic QMK key presses and releases via matrix_state telemetry without triggering host actions', async () => {
+    await act(async () => {
+      root.render(createElement(App));
+    });
+
+    const targetKeycap = container.querySelector<HTMLButtonElement>('button[data-drop-slot="r2c2"]');
+    expect(targetKeycap).not.toBeNull();
+    expect(targetKeycap?.className).not.toContain('scale-[0.93]');
+
+    await act(async () => {
+      deviceHandle.emitEvent({
+        type: 'matrix_state',
+        seq: 1,
+        profileSlot: 0,
+        layer: 0,
+        slotIndex: 4,
+        slotId: 'r2c2',
+        pressed: true,
+      } satisfies HardwareMatrixEvent);
+    });
+
+    expect(targetKeycap?.className).toContain('scale-[0.93]');
+
+    await act(async () => {
+      deviceHandle.emitEvent({
+        type: 'matrix_state',
+        seq: 2,
+        profileSlot: 0,
+        layer: 0,
+        slotIndex: 4,
+        slotId: 'r2c2',
+        pressed: false,
+      } satisfies HardwareMatrixEvent);
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 220));
+    });
+
+    expect(targetKeycap?.className).not.toContain('scale-[0.93]');
   });
 });

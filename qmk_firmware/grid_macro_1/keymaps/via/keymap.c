@@ -23,6 +23,7 @@ enum micro_pad_layers {
 #define MP_EVT_LAYER_STATE 0x10
 #define MP_EVT_HOST_TRIGGER 0x11
 #define MP_EVT_RGB_STATE 0x12
+#define MP_EVT_MATRIX_STATE 0x13
 
 /* Host trigger keycode range: 0x7E00 .. 0x7E3F
  * Bits [5:4] = layer (0..3), Bits [3:0] = slot index (0..11: 0..8 keys, 9 cw, 10 press, 11 ccw)
@@ -70,6 +71,7 @@ enum micro_pad_layers {
 static uint8_t mp_active_profile = 0;
 static uint8_t mp_rgb_enabled = 1;
 static uint8_t mp_trigger_seq = 0;
+static uint8_t mp_matrix_seq = 0;
 static uint8_t mp_layer_rgb[MP_MAX_LAYERS][3] = {
     { 0, 81, 255 },   /* BASE: Electric Blue */
     { 16, 185, 129 }, /* MEDIA: Emerald Green */
@@ -333,7 +335,45 @@ static void mp_send_rgb_state(void) {
 #endif
 }
 
+static void mp_send_matrix_state(uint8_t slot_index, uint8_t pressed) {
+#if defined(RAW_ENABLE)
+    if (slot_index >= 12) return;
+    uint8_t report[32] = {0};
+    report[0] = MP_HID_PREFIX;
+    report[1] = MP_EVT_MATRIX_STATE;
+    report[2] = ++mp_matrix_seq;
+    report[3] = mp_active_profile;
+    report[4] = (uint8_t)(get_highest_layer(layer_state) & 0x03);
+    report[5] = slot_index;
+    report[6] = pressed ? 1 : 0;
+    report[7] = (uint8_t)(report[0] ^ report[1] ^ report[2] ^ report[3] ^ report[4] ^ report[5] ^ report[6]);
+    raw_hid_send(report, sizeof(report));
+#else
+    (void)slot_index;
+    (void)pressed;
+#endif
+}
+
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    if (keycode < MP_TRIG_BASE || keycode > MP_TRIG_MAX) {
+#ifdef QMK_STUBS_H
+        uint8_t row = record->event.row;
+        uint8_t col = record->event.col;
+#else
+        uint8_t row = record->event.key.row;
+        uint8_t col = record->event.key.col;
+#endif
+        uint8_t slot_index = 0xFF;
+        if (row < 3 && col < 3) {
+            slot_index = (uint8_t)(row * 3 + col);
+        } else if (row == 3 && col == 0) {
+            slot_index = 10; /* encoder press */
+        }
+        if (slot_index != 0xFF) {
+            mp_send_matrix_state(slot_index, record->event.pressed ? 1 : 0);
+        }
+    }
+
     if (keycode == MP_LAYER_CYCLE) {
         if (record->event.pressed) {
             /* layer_move() switches the real keymap and invokes
@@ -457,6 +497,9 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
 
     uint8_t current_layer = get_highest_layer(layer_state);
     uint16_t keycode = dynamic_keymap_get_encoder(current_layer, index, clockwise);
+    if (keycode < MP_TRIG_BASE || keycode > MP_TRIG_MAX) {
+        mp_send_matrix_state(clockwise ? 9 : 11, 1);
+    }
     if (keycode != KC_NO) {
         if (keycode >= MP_TRIG_BASE && keycode <= MP_TRIG_MAX) {
             uint8_t offset = (uint8_t)(keycode - MP_TRIG_BASE);

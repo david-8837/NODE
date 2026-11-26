@@ -57,6 +57,7 @@ describe('Micro Pad 0xFD command and event identifiers', () => {
     ['MP_EVT_LAYER_STATE', bridge.MP_EVT_LAYER_STATE],
     ['MP_EVT_HOST_TRIGGER', bridge.MP_EVT_HOST_TRIGGER],
     ['MP_EVT_RGB_STATE', bridge.MP_EVT_RGB_STATE],
+    ['MP_EVT_MATRIX_STATE', bridge.MP_EVT_MATRIX_STATE],
   ])('%s agrees between firmware and app', (name, appValue) => {
     expect(defineValue(name as string)).toBe(appValue);
   });

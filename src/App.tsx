@@ -64,6 +64,7 @@ import type {
   DeviceLayerStateEvent,
   DeviceRgbConfig,
   DeviceRgbStateEvent,
+  HardwareMatrixEvent,
   HardwareTriggerEvent,
   QmkViaStatus,
 } from './qmkViaBridge';
@@ -1616,8 +1617,39 @@ export default function App() {
       }
     );
 
+    const flashHardwareSlot = (slotId: string, pressed: boolean) => {
+      const now = Date.now();
+      if (slotId === 'cw' || slotId === 'ccw') {
+        setEncoderAngle((prev) => (slotId === 'cw' ? (prev + 30) % 360 : (prev - 30 + 360) % 360));
+        setActivePressedSlot(slotId);
+        if (rotaryVisualTimerRef.current) window.clearTimeout(rotaryVisualTimerRef.current);
+        rotaryVisualTimerRef.current = window.setTimeout(() => {
+          setActivePressedSlot((current) => (current === 'cw' || current === 'ccw' ? null : current));
+        }, 160);
+      } else if (pressed) {
+        keyPressTimersRef.current[slotId] = now;
+        setActivePressedSlot(slotId);
+      } else {
+        const pressedAt = keyPressTimersRef.current[slotId] || 0;
+        const elapsed = now - pressedAt;
+        const remaining = Math.max(0, 140 - elapsed);
+        if (remaining > 0) {
+          window.setTimeout(() => {
+            setActivePressedSlot((current) => (current === slotId ? null : current));
+          }, remaining);
+        } else {
+          setActivePressedSlot((current) => (current === slotId ? null : current));
+        }
+      }
+    };
+
     const unsubscribe = bridge.onEvent((rawEvent) => {
       if (!isRecordValue(rawEvent)) return;
+      if (rawEvent.type === 'matrix_state') {
+        const mat = rawEvent as unknown as HardwareMatrixEvent;
+        flashHardwareSlot(mat.slotId, mat.pressed);
+        return;
+      }
       if (rawEvent.type === 'rgb_state') {
         // RGB was changed on the device (FN keys / encoder). Adopt it so the
         // editor does not push stale values back over the user's edit.
@@ -1656,31 +1688,7 @@ export default function App() {
       }
       if (rawEvent.type === 'hardware_trigger') {
         const trig = rawEvent as unknown as HardwareTriggerEvent;
-        const now = Date.now();
-        if (trig.slotId === 'cw' || trig.slotId === 'ccw') {
-          // Hardware rotary encoder rotation: spin virtual dial & flash dial visualizer
-          setEncoderAngle((prev) => (trig.slotId === 'cw' ? (prev + 30) % 360 : (prev - 30 + 360) % 360));
-          setActivePressedSlot(trig.slotId);
-          if (rotaryVisualTimerRef.current) window.clearTimeout(rotaryVisualTimerRef.current);
-          rotaryVisualTimerRef.current = window.setTimeout(() => {
-            setActivePressedSlot((current) => (current === 'cw' || current === 'ccw' ? null : current));
-          }, 160);
-        } else if (trig.pressed) {
-          keyPressTimersRef.current[trig.slotId] = now;
-          setActivePressedSlot(trig.slotId);
-        } else {
-          // Guarantee a minimum visual feedback pulse (140ms) so microsecond clicks register cleanly
-          const pressedAt = keyPressTimersRef.current[trig.slotId] || 0;
-          const elapsed = now - pressedAt;
-          const remaining = Math.max(0, 140 - elapsed);
-          if (remaining > 0) {
-            window.setTimeout(() => {
-              setActivePressedSlot((current) => (current === trig.slotId ? null : current));
-            }, remaining);
-          } else {
-            setActivePressedSlot((current) => (current === trig.slotId ? null : current));
-          }
-        }
+        flashHardwareSlot(trig.slotId, trig.pressed);
         // A release belongs to the original press, even if profile/layer changed.
         if (!trig.pressed && cheatSheetTriggersRef.current?.handle(trig.slotId, false)) return;
         const syncedProfile = syncedCheatProfilesRef.current[trig.profileSlot];

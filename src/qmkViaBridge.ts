@@ -34,6 +34,7 @@ export const MP_CMD_SELECT_LAYER = 0x05;
 export const MP_EVT_LAYER_STATE = 0x10;
 export const MP_EVT_HOST_TRIGGER = 0x11;
 export const MP_EVT_RGB_STATE = 0x12;
+export const MP_EVT_MATRIX_STATE = 0x13;
 export const MP_TRIG_BASE = 0x7e00;
 export const MP_TRIG_MAX = 0x7e3f;
 export const MP_PROF_BASE = 0x7e40;
@@ -57,6 +58,16 @@ export type TriggerSlotId = (typeof TRIGGER_SLOT_ORDER)[number];
 
 export interface HardwareTriggerEvent {
   type: 'hardware_trigger';
+  seq: number;
+  profileSlot: number;
+  layer: number;
+  slotIndex: number;
+  slotId: TriggerSlotId;
+  pressed: boolean;
+}
+
+export interface HardwareMatrixEvent {
+  type: 'matrix_state';
   seq: number;
   profileSlot: number;
   layer: number;
@@ -412,6 +423,7 @@ export class QmkViaBridge {
   private pending: PendingReport | null = null;
   private layerCount = 0;
   private lastTriggerSeq: number | null = null;
+  private lastMatrixSeq: number | null = null;
   private status: QmkViaStatus;
   private statusListeners = new Set<(status: QmkViaStatus) => void>();
   private eventListeners = new Set<(event: unknown) => void>();
@@ -472,6 +484,29 @@ export class QmkViaBridge {
       return;
     }
 
+    if (bytes[0] === MP_HID_PREFIX && bytes[1] === MP_EVT_MATRIX_STATE) {
+      const checksum = (bytes[0] ^ bytes[1] ^ bytes[2] ^ bytes[3] ^ bytes[4] ^ bytes[5] ^ bytes[6]) & 0xff;
+      const slotIndex = bytes[5] ?? 0xff;
+      if (bytes[7] === checksum && slotIndex < TRIGGER_SLOT_ORDER.length) {
+        const seq = bytes[2] ?? 0;
+        const pressed = bytes[6] === 1;
+        const dedupKey = (seq << 1) | (pressed ? 1 : 0);
+        if (this.lastMatrixSeq !== dedupKey) {
+          this.lastMatrixSeq = dedupKey;
+          this.emit({
+            type: 'matrix_state',
+            seq,
+            profileSlot: (bytes[3] ?? 0) & 0x03,
+            layer: (bytes[4] ?? 0) & 0x03,
+            slotIndex,
+            slotId: TRIGGER_SLOT_ORDER[slotIndex],
+            pressed,
+          } satisfies HardwareMatrixEvent);
+        }
+      }
+      return;
+    }
+
     if (!this.pending) return;
     if (bytes[0] === VIA_COMMAND.unhandled) {
       this.pending.reject(new Error('The device does not support this VIA command'));
@@ -487,6 +522,7 @@ export class QmkViaBridge {
     this.device = null;
     this.layerCount = 0;
     this.lastTriggerSeq = null;
+    this.lastMatrixSeq = null;
     this.pending?.reject(new Error('The QMK/VIA device disconnected'));
     this.pending = null;
     this.setStatus({ state: 'disconnected', error: 'The device was disconnected' });
@@ -600,6 +636,7 @@ export class QmkViaBridge {
     this.device = null;
     this.layerCount = 0;
     this.lastTriggerSeq = null;
+    this.lastMatrixSeq = null;
     this.pending?.reject(new Error('The QMK/VIA device was disconnected by the user'));
     this.pending = null;
     if (device) {
