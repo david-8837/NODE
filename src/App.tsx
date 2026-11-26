@@ -2147,6 +2147,25 @@ export default function App() {
     setLayerDeleteConfirm(false);
   };
 
+  const handleClearLayer = (layerIdx: number) => {
+    const blankLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
+    const nextProfiles = profiles.map((p, idx) =>
+      idx === activeProfileIndex
+        ? {
+            ...p,
+            layers: p.layers.map((layer, lIdx) => (lIdx === layerIdx ? blankLayer : layer)),
+          }
+        : p
+    );
+    pushState(nextProfiles);
+    if (deviceStatus.state === 'connected') {
+      triggerSyncFeedback('syncing');
+    }
+    setSelectedKey(null);
+    setSelectedEncoderSub(null);
+    showToast(`Cleared Layer ${layerIdx + 1} (Undo available)`);
+  };
+
   const handleRemoveLayer = (layerIdx: number) => {
     if (currentProfile.layers.length <= 1) {
       const resetLayer: LayerKeymap = JSON.parse(JSON.stringify(INITIAL_LAYER_1));
@@ -4088,6 +4107,7 @@ export default function App() {
               requestHardwareLayer={requestHardwareLayer}
               syncRgbConfigsToDevice={syncRgbConfigsToDevice}
               handleAddLayer={handleAddLayer}
+              handleClearLayer={handleClearLayer}
               handleRemoveLayer={handleRemoveLayer}
               showToast={showToast}
               maxLayerCount={MAX_LAYER_COUNT}

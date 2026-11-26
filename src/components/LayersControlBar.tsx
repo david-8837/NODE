@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { X } from 'lucide-react';
+import { RotateCcw, X } from 'lucide-react';
 import { InfoCircleIcon } from './UiIcons';
 import { LedSettingsPopover } from './LedSettingsPopover';
 import { getEntranceMotionProps, type EntrancePhase } from '../entranceAnimations';
@@ -31,6 +31,7 @@ export interface LayersControlBarProps {
   requestHardwareLayer: (idx: number) => Promise<boolean>;
   syncRgbConfigsToDevice: (configs: [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig], persist: boolean) => void;
   handleAddLayer: () => void;
+  handleClearLayer?: (idx: number) => void;
   handleRemoveLayer: (idx: number) => void;
   showToast: (msg: string) => void;
   maxLayerCount: number;
@@ -60,10 +61,18 @@ export function LayersControlBar({
   requestHardwareLayer,
   syncRgbConfigsToDevice,
   handleAddLayer,
+  handleClearLayer,
   handleRemoveLayer,
   showToast,
   maxLayerCount,
 }: LayersControlBarProps) {
+  const [layerClearConfirm, setLayerClearConfirm] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!layerToolbarOpen) {
+      setLayerClearConfirm(false);
+    }
+  }, [layerToolbarOpen, activeLayerIndex]);
   return (
     <motion.div
       {...getEntranceMotionProps(entrancePhase, { delay: 0.19 })}
@@ -200,7 +209,48 @@ export function LayersControlBar({
             className="mt-[9px] flex items-center gap-[6px] relative z-30"
           >
             <AnimatePresence mode="popLayout" initial={false}>
-              {layerDeleteConfirm ? (
+              {layerClearConfirm ? (
+                <motion.div
+                  key="layer-clear-confirm"
+                  layout
+                  initial={{ opacity: 0, scale: 0.9, y: 4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 540,
+                    damping: 30,
+                    mass: 0.65,
+                  }}
+                  className="flex items-center gap-[6px]"
+                >
+                  <motion.button
+                    layout
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.94 }}
+                    onClick={() => setLayerClearConfirm(false)}
+                    className="h-[28px] px-[13px] rounded-full bg-white dark:bg-[#18181b] hover:bg-neutral-50 dark:hover:bg-[#222226] border-[1.5px] border-transparent dark:border-white/10 hover:border-black/30 dark:hover:border-white/20 text-[11px] font-medium text-[#555555] dark:text-neutral-200 shadow-[0_2px_6px_rgba(0,0,0,0.06)] transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    layout
+                    whileHover={{
+                      scale: 1.03,
+                      boxShadow: '0 6px 20px rgba(245, 158, 11, 0.35)',
+                    }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => {
+                      handleClearLayer?.(activeLayerIndex);
+                      setLayerClearConfirm(false);
+                    }}
+                    className="h-[28px] w-[164px] rounded-full bg-gradient-to-r from-[#d97706] via-[#f59e0b] to-[#b45309] text-white text-[11px] font-semibold flex items-center justify-center gap-[6px] shadow-[0_3px_12px_rgba(245,158,11,0.28)] cursor-pointer"
+                  >
+                    <RotateCcw className="w-[12px] h-[12px] stroke-[2]" />
+                    <span>Click to clear</span>
+                  </motion.button>
+                </motion.div>
+              ) : layerDeleteConfirm ? (
                 <motion.div
                   key="layer-delete-confirm"
                   layout
@@ -289,7 +339,7 @@ export function LayersControlBar({
                   className="flex items-center gap-[6px]"
                 >
                   {/* Layer Name Input Pill */}
-                  <div className="w-[144px] h-[28px] px-[12px] rounded-full bg-[#e2e2e2] border-[1.5px] border-transparent focus-within:border-black/40 flex items-center transition-colors">
+                  <div className="w-[144px] h-[28px] px-[12px] rounded-full bg-[#e2e2e2] dark:bg-[#18181b] border-[1.5px] border-transparent dark:border-white/10 focus-within:border-black/40 dark:focus-within:border-white/30 flex items-center transition-colors">
                     <input
                       type="text"
                       value={currentLayerName}
@@ -300,7 +350,7 @@ export function LayersControlBar({
                         }))
                       }
                       placeholder={hardwareLayerNames[activeLayerIndex] ?? 'Layer name...'}
-                      className="w-full bg-transparent text-[11px] text-[#555555] placeholder:text-[#9c9c9c] focus:outline-none"
+                      className="w-full bg-transparent text-[11px] text-[#555555] dark:text-neutral-200 placeholder:text-[#9c9c9c] dark:placeholder:text-neutral-500 focus:outline-none"
                     />
                   </div>
 
@@ -316,8 +366,8 @@ export function LayersControlBar({
                     aria-label="LED colour settings"
                     className={`w-[58px] h-[28px] rounded-full border-[1.5px] flex items-center justify-center transition-colors cursor-pointer ${
                       layerLightingOpen
-                        ? 'bg-[#000000] text-white border-[#000000]'
-                        : 'bg-white hover:bg-neutral-50 text-[#555555] border-transparent hover:border-black/30 shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+                        ? 'bg-[#000000] dark:bg-white text-white dark:text-black border-[#000000] dark:border-white'
+                        : 'bg-white dark:bg-[#18181b] hover:bg-neutral-50 dark:hover:bg-[#222226] text-[#555555] dark:text-neutral-200 border-transparent dark:border-white/10 hover:border-black/30 dark:hover:border-white/20 shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
                     }`}
                   >
                     <svg
@@ -338,6 +388,24 @@ export function LayersControlBar({
                     </svg>
                   </motion.button>
 
+                  {/* Clear Layer Button */}
+                  {handleClearLayer && (
+                    <motion.button
+                      whileHover={{ scale: 1.08 }}
+                      whileTap={{ scale: 0.92 }}
+                      onClick={() => {
+                        setLayerLightingOpen(false);
+                        setLayerDeleteConfirm(false);
+                        setLayerClearConfirm(true);
+                      }}
+                      title="Clear layer"
+                      aria-label="Clear layer"
+                      className="w-[28px] h-[28px] rounded-full bg-white dark:bg-[#18181b] hover:bg-[#f59e0b] dark:hover:bg-[#f59e0b] border-[1.5px] border-transparent dark:border-white/10 text-[#555555] dark:text-neutral-200 hover:text-white flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-[12px] h-[12px] stroke-[1.9]" />
+                    </motion.button>
+                  )}
+
                   {/* Delete Layer × Button */}
                   {currentProfile.layers.length > 1 && (
                     <motion.button
@@ -350,10 +418,11 @@ export function LayersControlBar({
                       }}
                       onClick={() => {
                         setLayerLightingOpen(false);
+                        setLayerClearConfirm(false);
                         setLayerDeleteConfirm(true);
                       }}
                       title="Delete layer"
-                      className="w-[28px] h-[28px] rounded-full bg-white hover:bg-[#dc0000] text-[#555555] hover:text-white flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
+                      className="w-[28px] h-[28px] rounded-full bg-white dark:bg-[#18181b] hover:bg-[#dc0000] dark:hover:bg-[#dc0000] border-[1.5px] border-transparent dark:border-white/10 text-[#555555] dark:text-neutral-200 hover:text-white flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors cursor-pointer"
                     >
                       <X className="w-[13px] h-[13px] stroke-[1.8]" />
                     </motion.button>
@@ -364,7 +433,7 @@ export function LayersControlBar({
 
             {/* PER-LAYER LED COLOUR POPOVER CARD */}
             <LedSettingsPopover
-              open={layerLightingOpen && !layerDeleteConfirm}
+              open={layerLightingOpen && !layerDeleteConfirm && !layerClearConfirm}
               layerLedConfigs={layerLedConfigs}
               setLayerLedConfigs={setLayerLedConfigs}
               ledEditingLayerIdx={ledEditingLayerIdx}
