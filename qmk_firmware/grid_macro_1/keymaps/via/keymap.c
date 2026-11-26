@@ -362,7 +362,10 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         mp_rgb_enabled = 1;
         mp_apply_layer_rgb(get_highest_layer(layer_state));
     }
-    if (keycode < MP_TRIG_BASE || keycode > MP_TRIG_MAX) {
+    /* Emit matrix press/release telemetry for basic keys (excluding NODE custom
+     * keycodes 0x7E00..0x7E48 which already emit dedicated HID events).
+     */
+    if (keycode < MP_TRIG_BASE || keycode > MP_RGB_SPDU) {
 #ifdef QMK_STUBS_H
         uint8_t row = record->event.row;
         uint8_t col = record->event.col;
@@ -509,7 +512,10 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
 
     uint8_t current_layer = get_highest_layer(layer_state);
     uint16_t keycode = dynamic_keymap_get_encoder(current_layer, index, clockwise);
-    if (keycode < MP_TRIG_BASE || keycode > MP_TRIG_MAX) {
+    /* Emit matrix press/release telemetry for basic keys (excluding NODE custom
+     * keycodes 0x7E00..0x7E48 which already emit dedicated HID events).
+     */
+    if (keycode < MP_TRIG_BASE || keycode > MP_RGB_SPDU) {
         mp_send_matrix_state(clockwise ? 9 : 11, 1);
     }
     if (keycode != KC_NO) {
