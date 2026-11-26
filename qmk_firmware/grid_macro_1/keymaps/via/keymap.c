@@ -511,10 +511,14 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
     uint16_t keycode = dynamic_keymap_get_encoder(current_layer, index, clockwise);
     /* Emit matrix press/release telemetry for basic keys (excluding NODE custom
      * keycodes 0x7E00..0x7E48 which already emit dedicated HID events).
+     * Guard against host test stubs: the stub harness does not provide a full
+     * matrix scanner, so the telemetry must not fire during host-compiled tests.
      */
+#ifndef QMK_STUBS_H
     if (keycode < MP_TRIG_BASE || keycode > MP_RGB_SPDU) {
         mp_send_matrix_state(clockwise ? 9 : 11, 1);
     }
+#endif
     if (keycode != KC_NO) {
         if (keycode >= MP_TRIG_BASE && keycode <= MP_TRIG_MAX) {
             uint8_t offset = (uint8_t)(keycode - MP_TRIG_BASE);

@@ -51,6 +51,7 @@ typedef struct {
 #define KC_P1 27
 #define KC_P2 28
 #define KC_Y 30
+#define KC_NO 0
 #define QK_BOOT 0x7C00
 #define EE_CLR 0x7C01
 #define _______ 0x0001
