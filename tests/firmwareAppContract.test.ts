@@ -54,6 +54,7 @@ describe('Micro Pad 0xFD command and event identifiers', () => {
     ['MP_CMD_SAVE_PROFILE', bridge.MP_CMD_SAVE_PROFILE],
     ['MP_CMD_SET_RGB', bridge.MP_CMD_SET_RGB],
     ['MP_CMD_SELECT_LAYER', bridge.MP_CMD_SELECT_LAYER],
+    ['MP_CMD_BOOTLOADER', bridge.MP_CMD_BOOTLOADER],
     ['MP_EVT_LAYER_STATE', bridge.MP_EVT_LAYER_STATE],
     ['MP_EVT_HOST_TRIGGER', bridge.MP_EVT_HOST_TRIGGER],
     ['MP_EVT_RGB_STATE', bridge.MP_EVT_RGB_STATE],

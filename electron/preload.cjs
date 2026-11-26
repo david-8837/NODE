@@ -23,6 +23,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => ipcRenderer.invoke('open-external-url', url),
   setSimulationEnabled: (enabled) => ipcRenderer.invoke('set-simulation-enabled', enabled),
   flashFirmware: () => ipcRenderer.invoke('flash-uf2'),
+  autoFlashFirmware: (payload) => ipcRenderer.invoke('auto-flash-firmware', payload),
+  onSystemRgbIdle: (callback) => {
+    const listener = (_event, info) => callback(info);
+    ipcRenderer.on('system-rgb-idle', listener);
+    return () => ipcRenderer.removeListener('system-rgb-idle', listener);
+  },
   executeSmartAction: (payload) => ipcRenderer.invoke('execute-smart-action', payload),
   updateCheatSheet: (snapshot) => ipcRenderer.invoke('cheat-sheet-update', snapshot),
   commandCheatSheet: (command, token) => ipcRenderer.invoke('cheat-sheet-command', command, token),

@@ -24,10 +24,14 @@ export interface SettingsScreenProps {
   rotaryStepMultiplier?: number;
   rotaryAcceleration?: boolean;
   darkMode?: boolean;
+  rgbIdleTimeoutMinutes?: number;
+  rgbDimOnScreenLock?: boolean;
+  firmwareAutoFlashPending?: boolean;
   handleAppSettingChange: (key: AppSettingKey, value: boolean | string | number) => Promise<void> | void;
   handleToggleCheatSheet?: () => void;
   handleOpenSupportLink: (key: SupportLinkKey, label: string) => Promise<void> | void;
   handleCheckFirmwareUpdate: () => Promise<void> | void;
+  handleOneClickFirmwareUpdate?: () => Promise<void> | void;
   handleCheckAppUpdate?: () => Promise<void> | void;
   handleResetLocalConfig: () => void;
   handleAdvanceFlash: () => Promise<void> | void;
@@ -48,10 +52,14 @@ export function SettingsScreen({
   rotaryStepMultiplier = 1,
   rotaryAcceleration = true,
   darkMode = false,
+  rgbIdleTimeoutMinutes = 0,
+  rgbDimOnScreenLock = true,
+  firmwareAutoFlashPending = false,
   handleAppSettingChange,
   handleToggleCheatSheet,
   handleOpenSupportLink,
   handleCheckFirmwareUpdate,
+  handleOneClickFirmwareUpdate,
   handleCheckAppUpdate,
   handleResetLocalConfig,
   handleAdvanceFlash,
@@ -230,6 +238,40 @@ export function SettingsScreen({
                     onChange={() => void handleAppSettingChange('darkMode', !darkMode)}
                   />
                 </div>
+                <div className="pt-[8px] pb-[2px] flex items-center justify-between">
+                  <span className="text-[#585858] dark:text-[#a1a1aa]">
+                    Dim RGB on screen lock / sleep
+                  </span>
+                  <SettingsSwitch
+                    checked={rgbDimOnScreenLock}
+                    title="Turns off the macropad LED when Windows locks or sleeps, and wakes it on unlock or key press."
+                    onChange={() => void handleAppSettingChange('rgbDimOnScreenLock', !rgbDimOnScreenLock)}
+                  />
+                </div>
+                <div className="pt-[8px] pb-[2px] flex items-center justify-between gap-[8px]">
+                  <span className="text-[#585858] dark:text-[#a1a1aa]">
+                    Idle RGB timeout
+                  </span>
+                  <div className="flex items-center gap-[4px]">
+                    {([0, 5, 10, 15] as const).map((mins) => {
+                      const active = rgbIdleTimeoutMinutes === mins;
+                      return (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => void handleAppSettingChange('rgbIdleTimeoutMinutes', mins)}
+                          className={`px-[8px] h-[21px] rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-[#111111] dark:bg-white text-white dark:text-black'
+                              : 'bg-white/80 dark:bg-[#27272a] text-[#555555] dark:text-neutral-300 hover:bg-white dark:hover:bg-[#323236]'
+                          }`}
+                        >
+                          {mins === 0 ? 'Off' : `${mins}m`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -263,15 +305,28 @@ export function SettingsScreen({
                 <WarningTriangleIcon color="#e09100" />
                 <span>Device update</span>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleCheckFirmwareUpdate()}
-                disabled={firmwareCheckPending}
-                title="Checks the published firmware release feed; it does not flash the device"
-                className="w-full h-[27px] rounded-full bg-white dark:bg-[#3d2e18] hover:bg-[#f59e0b] dark:hover:bg-[#f59e0b] disabled:opacity-50 text-[10.5px] font-medium text-[#444444] dark:text-neutral-200 hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-wait"
-              >
-                {firmwareCheckPending ? 'Checking firmware…' : 'Check firmware update'}
-              </button>
+              <div className="space-y-[7px]">
+                <button
+                  type="button"
+                  onClick={() => void handleCheckFirmwareUpdate()}
+                  disabled={firmwareCheckPending || firmwareAutoFlashPending}
+                  title="Checks the published firmware release feed; it does not flash the device"
+                  className="w-full h-[27px] rounded-full bg-white dark:bg-[#3d2e18] hover:bg-[#f59e0b] dark:hover:bg-[#f59e0b] disabled:opacity-50 text-[10.5px] font-medium text-[#444444] dark:text-neutral-200 hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-wait"
+                >
+                  {firmwareCheckPending ? 'Checking firmware…' : 'Check firmware update'}
+                </button>
+                {handleOneClickFirmwareUpdate && (
+                  <button
+                    type="button"
+                    onClick={() => void handleOneClickFirmwareUpdate()}
+                    disabled={firmwareAutoFlashPending || firmwareCheckPending}
+                    title="Downloads the latest firmware .uf2 from GitHub, enters RP2040 BOOTSEL mode, and flashes automatically"
+                    className="w-full h-[27px] rounded-full bg-white dark:bg-[#3d2e18] hover:bg-[#f59e0b] dark:hover:bg-[#f59e0b] disabled:opacity-50 text-[10.5px] font-medium text-[#444444] dark:text-neutral-200 hover:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-wait"
+                  >
+                    {firmwareAutoFlashPending ? 'Flashing firmware…' : 'One-click firmware update'}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="bg-[#efc8c8] dark:bg-[#2e1316] dark:border dark:border-red-900/50 rounded-[16px] px-[16px] py-[14px]">

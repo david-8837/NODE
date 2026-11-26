@@ -20,6 +20,7 @@ enum micro_pad_layers {
 #define MP_CMD_SAVE_PROFILE 0x03
 #define MP_CMD_SET_RGB 0x04
 #define MP_CMD_SELECT_LAYER 0x05
+#define MP_CMD_BOOTLOADER 0x06
 #define MP_EVT_LAYER_STATE 0x10
 #define MP_EVT_HOST_TRIGGER 0x11
 #define MP_EVT_RGB_STATE 0x12
@@ -70,6 +71,7 @@ enum micro_pad_layers {
 
 static uint8_t mp_active_profile = 0;
 static uint8_t mp_rgb_enabled = 1;
+static uint8_t mp_idle_dimmed = 0;
 static uint8_t mp_trigger_seq = 0;
 static uint8_t mp_matrix_seq = 0;
 static uint8_t mp_layer_rgb[MP_MAX_LAYERS][3] = {
@@ -355,6 +357,11 @@ static void mp_send_matrix_state(uint8_t slot_index, uint8_t pressed) {
 }
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    if (record->event.pressed && mp_idle_dimmed) {
+        mp_idle_dimmed = 0;
+        mp_rgb_enabled = 1;
+        mp_apply_layer_rgb(get_highest_layer(layer_state));
+    }
     if (keycode < MP_TRIG_BASE || keycode > MP_TRIG_MAX) {
 #ifdef QMK_STUBS_H
         uint8_t row = record->event.row;
@@ -478,6 +485,11 @@ static bool mp_last_encoder_cw = false;
 
 bool encoder_update_user(uint8_t index, bool clockwise) {
     if (index != 0) return true;
+    if (mp_idle_dimmed) {
+        mp_idle_dimmed = 0;
+        mp_rgb_enabled = 1;
+        mp_apply_layer_rgb(get_highest_layer(layer_state));
+    }
     uint32_t now = timer_read32();
     uint32_t delta = timer_elapsed32(mp_last_encoder_time);
     bool same_dir = (mp_last_encoder_cw == clockwise);
@@ -589,6 +601,7 @@ bool via_command_kb(uint8_t *data, uint8_t length) {
     if (subcmd == MP_CMD_SET_RGB) {
         uint8_t persist = data[2];
         mp_rgb_enabled = data[3] ? 1 : 0;
+        mp_idle_dimmed = (!persist && !mp_rgb_enabled) ? 1 : 0;
         for (uint8_t i = 0; i < MP_MAX_LAYERS; i++) {
             mp_layer_rgb[i][0] = data[4 + i * 3 + 0];
             mp_layer_rgb[i][1] = data[4 + i * 3 + 1];
@@ -611,6 +624,13 @@ bool via_command_kb(uint8_t *data, uint8_t length) {
             mp_persist_state_header();
         }
         raw_hid_send(data, length);
+        return true;
+    }
+
+    if (subcmd == MP_CMD_BOOTLOADER) {
+        data[2] = 0x01;
+        raw_hid_send(data, length);
+        reset_keyboard();
         return true;
     }
 

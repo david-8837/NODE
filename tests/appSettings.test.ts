@@ -234,4 +234,34 @@ describe('Settings persistence and native capabilities', () => {
     expect(validateRp2040Uf2(malformed)).toMatchObject({ ok: false, error: expect.stringContaining('magic') });
     expect(validateRp2040Uf2(Buffer.alloc(513))).toMatchObject({ ok: false, error: expect.stringContaining('valid-size') });
   });
+
+  it('normalizes RGB idle dimming settings and routes autoFlashFirmware through Electron', async () => {
+    const autoFlashFirmware = vi.fn().mockResolvedValue({ ok: true, message: 'Flashed' });
+    const host = createWindow();
+    host.electronAPI = {
+      isElectron: true,
+      autoFlashFirmware,
+    };
+    const tools = createAppSettingsTools(host);
+    expect(tools.read().rgbDimOnScreenLock).toBe(true);
+    expect(tools.read().rgbIdleTimeoutMinutes).toBe(0);
+
+    host.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
+      rgbIdleTimeoutMinutes: 10,
+      rgbDimOnScreenLock: false,
+    }));
+    expect(tools.read().rgbIdleTimeoutMinutes).toBe(10);
+    expect(tools.read().rgbDimOnScreenLock).toBe(false);
+
+    host.localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
+      rgbIdleTimeoutMinutes: 99,
+    }));
+    expect(tools.read().rgbIdleTimeoutMinutes).toBe(0);
+
+    const flashRes = await tools.autoFlashFirmware?.({
+      firmwareUrl: 'https://github.com/david-8837/NODE/releases/download/v1.1.15/grid_macro_1_via.uf2',
+    });
+    expect(flashRes).toEqual({ ok: true, message: 'Flashed' });
+    expect(autoFlashFirmware).toHaveBeenCalledTimes(1);
+  });
 });

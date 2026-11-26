@@ -31,6 +31,7 @@ export const MP_CMD_SELECT_PROFILE = 0x02;
 export const MP_CMD_SAVE_PROFILE = 0x03;
 export const MP_CMD_SET_RGB = 0x04;
 export const MP_CMD_SELECT_LAYER = 0x05;
+export const MP_CMD_BOOTLOADER = 0x06;
 export const MP_EVT_LAYER_STATE = 0x10;
 export const MP_EVT_HOST_TRIGGER = 0x11;
 export const MP_EVT_RGB_STATE = 0x12;
@@ -674,12 +675,22 @@ export class QmkViaBridge {
         'get_device_state',
         'set_rgb_config',
         'select_layer',
+        'enter_bootloader',
       ].includes(request?.cmd ?? '')
     ) {
       return { ok: false, error: 'Unsupported QMK/VIA request' };
     }
     if (!this.device || this.status.state !== 'connected') {
       return { ok: false, error: 'No QMK/VIA device is connected' };
+    }
+
+    if (request.cmd === 'enter_bootloader') {
+      try {
+        await this.exchange(new Uint8Array([MP_HID_PREFIX, MP_CMD_BOOTLOADER]));
+      } catch {
+        // Device reboots immediately into RP2040 BOOTSEL, which may close the HID handle.
+      }
+      return { ok: true };
     }
 
     if (request.cmd === 'get_device_state') {

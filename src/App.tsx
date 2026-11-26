@@ -906,6 +906,7 @@ export default function App() {
     typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : APP_VERSION_FALLBACK
   );
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
+  const [firmwareAutoFlashPending, setFirmwareAutoFlashPending] = useState(false);
   const [appUpdateCheckPending, setAppUpdateCheckPending] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<UpdateCheckResult | null>(null);
   const dismissedUpdateVersionRef = useRef<string | null>(null);
@@ -1995,6 +1996,60 @@ export default function App() {
       setFirmwareCheckPending(false);
     }
   };
+
+  const handleOneClickFirmwareUpdate = async () => {
+    if (firmwareAutoFlashPending) return;
+    setFirmwareAutoFlashPending(true);
+    try {
+      const tools = window.nodeStudioAppSettings ?? createAppSettingsTools(window);
+      if (!tools.autoFlashFirmware) {
+        showToast('One-click firmware update requires the desktop application.');
+        return;
+      }
+      showToast('Checking latest firmware release…');
+      const release = await tools.checkFirmware();
+      if (release.state !== 'available' || !release.firmwareUrl) {
+        showToast(release.message || 'No downloadable .uf2 firmware release found.');
+        return;
+      }
+      if (deviceStatus.state === 'connected' && window.macropad?.request) {
+        showToast('Rebooting Grid Macro 1 into BOOTSEL mode…');
+        await window.macropad.request({ cmd: 'enter_bootloader' });
+      } else {
+        showToast('Waiting for RPI-RP2 BOOTSEL drive…');
+      }
+      const flashResult = await tools.autoFlashFirmware({ firmwareUrl: release.firmwareUrl });
+      showToast(
+        flashResult.ok
+          ? flashResult.message || 'Firmware flashed successfully!'
+          : flashResult.error || 'One-click firmware update failed'
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'One-click firmware update failed');
+    } finally {
+      setFirmwareAutoFlashPending(false);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onSystemRgbIdle?.(({ dimmed }) => {
+      if (deviceStatus.state !== 'connected' || !window.macropad?.request) return;
+      if (dimmed) {
+        const offConfigs: [LayerLedConfig, LayerLedConfig, LayerLedConfig, LayerLedConfig] = [
+          { ...layerLedConfigs[0], preset: 'Off' },
+          { ...layerLedConfigs[1], preset: 'Off' },
+          { ...layerLedConfigs[2], preset: 'Off' },
+          { ...layerLedConfigs[3], preset: 'Off' },
+        ];
+        syncRgbConfigsToDevice(offConfigs, false);
+      } else {
+        syncRgbConfigsToDevice(layerLedConfigs, false);
+      }
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [deviceStatus.state, layerLedConfigs]);
 
   const handleCheckAppUpdate = async () => {
     setAppUpdateCheckPending(true);
@@ -4464,10 +4519,14 @@ export default function App() {
           rotaryStepMultiplier={appSettings.rotaryStepMultiplier}
           rotaryAcceleration={appSettings.rotaryAcceleration}
           darkMode={appSettings.darkMode}
+          rgbIdleTimeoutMinutes={appSettings.rgbIdleTimeoutMinutes}
+          rgbDimOnScreenLock={appSettings.rgbDimOnScreenLock}
+          firmwareAutoFlashPending={firmwareAutoFlashPending}
           handleAppSettingChange={handleAppSettingChange}
           handleToggleCheatSheet={handleToggleCheatSheet}
           handleOpenSupportLink={handleOpenSupportLink}
           handleCheckFirmwareUpdate={handleCheckFirmwareUpdate}
+          handleOneClickFirmwareUpdate={handleOneClickFirmwareUpdate}
           handleCheckAppUpdate={handleCheckAppUpdate}
           handleResetLocalConfig={handleResetLocalConfig}
           handleAdvanceFlash={handleAdvanceFlash}

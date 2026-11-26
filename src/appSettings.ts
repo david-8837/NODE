@@ -19,6 +19,8 @@ export interface AppSettings {
   rotaryStepMultiplier: number;
   rotaryAcceleration: boolean;
   darkMode: boolean;
+  rgbIdleTimeoutMinutes: number;
+  rgbDimOnScreenLock: boolean;
 }
 
 export type AppSettingKey = keyof AppSettings;
@@ -41,6 +43,8 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   rotaryStepMultiplier: 1,
   rotaryAcceleration: true,
   darkMode: false,
+  rgbIdleTimeoutMinutes: 0,
+  rgbDimOnScreenLock: true,
 });
 
 export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
@@ -154,6 +158,8 @@ export interface ElectronApi {
   }) => Promise<{ ok: boolean; registered?: boolean; error?: string }>;
   openExternal?: (url: string) => Promise<AppOperationResult>;
   flashFirmware?: () => Promise<AppOperationResult>;
+  autoFlashFirmware?: (payload: { firmwareUrl: string }) => Promise<AppOperationResult>;
+  onSystemRgbIdle?: (callback: (payload: { dimmed: boolean }) => void) => (() => void) | void;
   setSimulationEnabled?: (enabled: boolean) => Promise<SimulationToggleResult>;
   executeSmartAction?: (payload: Record<string, unknown>) => Promise<NativeActionResult>;
   updateCheatSheet?: (snapshot: import('./cheatSheet').CheatSheetSnapshot) => Promise<boolean>;
@@ -187,6 +193,7 @@ export interface AppSettingsTools {
   openSupport: (link: SupportLinkKey | string) => Promise<AppOperationResult>;
   checkFirmware: () => Promise<FirmwareCheckResult>;
   flashFirmware: () => Promise<AppOperationResult>;
+  autoFlashFirmware?: (payload: { firmwareUrl: string }) => Promise<AppOperationResult>;
   checkForUpdates?: () => Promise<UpdateCheckResult>;
   downloadAndInstallUpdate?: (payload: {
     downloadUrl: string;
@@ -244,6 +251,15 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       typeof raw.darkMode === 'boolean'
         ? raw.darkMode
         : DEFAULT_APP_SETTINGS.darkMode,
+    rgbIdleTimeoutMinutes:
+      typeof raw.rgbIdleTimeoutMinutes === 'number' &&
+      [0, 5, 10, 15].includes(Math.round(raw.rgbIdleTimeoutMinutes))
+        ? Math.round(raw.rgbIdleTimeoutMinutes)
+        : DEFAULT_APP_SETTINGS.rgbIdleTimeoutMinutes,
+    rgbDimOnScreenLock:
+      typeof raw.rgbDimOnScreenLock === 'boolean'
+        ? raw.rgbDimOnScreenLock
+        : DEFAULT_APP_SETTINGS.rgbDimOnScreenLock,
   };
 }
 
@@ -500,6 +516,24 @@ export function createAppSettingsTools(host?: SettingsHost): AppSettingsTools {
       }
       try {
         return await flash();
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+    autoFlashFirmware: async (payload) => {
+      const browser = requireHost();
+      const autoFlash = browser.electronAPI?.autoFlashFirmware;
+      if (!autoFlash) {
+        return {
+          ok: false,
+          error: 'One-click firmware flashing is only available in the installed desktop app',
+        };
+      }
+      try {
+        return await autoFlash(payload);
       } catch (error) {
         return {
           ok: false,

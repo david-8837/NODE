@@ -1,5 +1,5 @@
 // electron/main.cjs - NODE studio Desktop Application Entry Point for Windows
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, powerMonitor, screen, shell, Tray } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath, pathToFileURL } = require('url');
@@ -8,7 +8,7 @@ const { createDesktopActionExecutor } = require('./desktopExecution.cjs');
 const { listInstalledApplications } = require('./installedApplications.cjs');
 const { migrateLegacyUserData } = require('./userDataMigration.cjs');
 const { createCheatSheetController } = require('./cheatSheet.cjs');
-const { checkForAppUpdates, downloadUpdateInstaller } = require('./updater.cjs');
+const { checkForAppUpdates, downloadUpdateInstaller, downloadFirmwareUf2 } = require('./updater.cjs');
 const { createActiveWindowTracker, matchProfileForApplication } = require('./activeWindowTracker.cjs');
 const cheatSheet = createCheatSheetController({ BrowserWindow, screen });
 
@@ -206,6 +206,8 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   rotaryStepMultiplier: 1,
   rotaryAcceleration: true,
   darkMode: false,
+  rgbIdleTimeoutMinutes: 0,
+  rgbDimOnScreenLock: true,
 });
 const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
 
@@ -227,8 +229,12 @@ function readStoredAppSettings() {
         'cheatSheetGlobalHotkeyEnabled',
         'rotaryAcceleration',
         'darkMode',
+        'rgbDimOnScreenLock',
       ]) {
         if (typeof stored[key] === 'boolean') settings[key] = stored[key];
+      }
+      if (typeof stored.rgbIdleTimeoutMinutes === 'number' && [0, 5, 10, 15].includes(Math.round(stored.rgbIdleTimeoutMinutes))) {
+        settings.rgbIdleTimeoutMinutes = Math.round(stored.rgbIdleTimeoutMinutes);
       }
       if (typeof stored.cheatSheetGlobalHotkey === 'string' && stored.cheatSheetGlobalHotkey.trim()) {
         settings.cheatSheetGlobalHotkey = stored.cheatSheetGlobalHotkey.trim();
@@ -1121,6 +1127,10 @@ ipcMain.handle('set-app-setting', (event, key, value) => {
     if (typeof value !== 'string' || !value.trim()) return { ok: false, error: 'Invalid hotkey string' };
   } else if (key === 'rotaryStepMultiplier') {
     if (typeof value !== 'number' || value < 1 || value > 5) return { ok: false, error: 'Invalid rotary multiplier' };
+  } else if (key === 'rgbIdleTimeoutMinutes') {
+    if (typeof value !== 'number' || ![0, 5, 10, 15].includes(Math.round(value))) {
+      return { ok: false, error: 'Invalid RGB idle timeout' };
+    }
   } else if (typeof value !== 'boolean') {
     return { ok: false, error: 'Invalid app setting' };
   }
@@ -1241,6 +1251,77 @@ ipcMain.handle('flash-uf2', async (event) => {
     return {
       ok: true,
       message: 'Firmware copied to the RPI-RP2 bootloader drive. The board should flash and reboot automatically; reconnect it after it returns to normal mode.',
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+async function findRp2040BootselDrive() {
+  const candidates = [];
+  if (process.platform === 'win32') {
+    for (let code = 68; code <= 90; code++) {
+      candidates.push(`${String.fromCharCode(code)}:\\`);
+    }
+  } else if (process.platform === 'darwin') {
+    candidates.push('/Volumes/RPI-RP2');
+  } else {
+    const user = process.env.USER || '';
+    if (user) {
+      candidates.push(`/media/${user}/RPI-RP2`, `/run/media/${user}/RPI-RP2`);
+    }
+  }
+
+  for (const rootDir of candidates) {
+    try {
+      const markerPath = path.join(rootDir, 'INFO_UF2.TXT');
+      if (!fs.existsSync(markerPath)) continue;
+      const marker = await fs.promises.readFile(markerPath, 'utf8');
+      if (/\bRPI-RP2\b/i.test(marker)) {
+        return rootDir;
+      }
+    } catch {
+      // Ignore unreadable or unmounted drives
+    }
+  }
+  return null;
+}
+
+ipcMain.handle('auto-flash-firmware', async (event, payload) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'Untrusted renderer' };
+  const firmwareUrl = typeof payload?.firmwareUrl === 'string' ? payload.firmwareUrl : '';
+  if (!firmwareUrl) {
+    return { ok: false, error: 'Missing firmware UF2 download URL' };
+  }
+
+  try {
+    const download = await downloadFirmwareUf2({ url: firmwareUrl });
+    if (!download.ok || !download.buffer) {
+      return { ok: false, error: download.error || 'Could not download firmware UF2' };
+    }
+    const validation = validateRp2040Uf2(download.buffer);
+    if (!validation.ok) return validation;
+
+    let drivePath = null;
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      drivePath = await findRp2040BootselDrive();
+      if (drivePath) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    if (!drivePath) {
+      return {
+        ok: false,
+        error: 'Timed out waiting for the RPI-RP2 bootloader drive. Hold BOOTSEL while plugging in USB, then try again.',
+      };
+    }
+
+    const destination = path.join(drivePath, 'firmware.uf2');
+    await fs.promises.writeFile(destination, download.buffer, { flag: 'wx' });
+    return {
+      ok: true,
+      message: 'Firmware flashed automatically to RPI-RP2. Your Grid Macro 1 is rebooting and will auto-reconnect.',
     };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -1481,6 +1562,42 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  if (powerMonitor && typeof powerMonitor.on === 'function') {
+    let isSystemIdleDimmed = false;
+    const sendRgbIdleState = (dimmed) => {
+      if (isSystemIdleDimmed === dimmed) return;
+      isSystemIdleDimmed = dimmed;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('system-rgb-idle', { dimmed });
+      }
+    };
+
+    powerMonitor.on('lock-screen', () => {
+      if (readStoredAppSettings().rgbDimOnScreenLock) sendRgbIdleState(true);
+    });
+    powerMonitor.on('suspend', () => {
+      if (readStoredAppSettings().rgbDimOnScreenLock) sendRgbIdleState(true);
+    });
+    powerMonitor.on('unlock-screen', () => sendRgbIdleState(false));
+    powerMonitor.on('resume', () => sendRgbIdleState(false));
+
+    setInterval(() => {
+      const settings = readStoredAppSettings();
+      if (!settings.rgbIdleTimeoutMinutes || settings.rgbIdleTimeoutMinutes <= 0) {
+        if (isSystemIdleDimmed) sendRgbIdleState(false);
+        return;
+      }
+      if (typeof powerMonitor.getSystemIdleTime === 'function') {
+        const idleSeconds = powerMonitor.getSystemIdleTime();
+        if (idleSeconds >= settings.rgbIdleTimeoutMinutes * 60) {
+          sendRgbIdleState(true);
+        } else if (isSystemIdleDimmed && idleSeconds < 5) {
+          sendRgbIdleState(false);
+        }
+      }
+    }, 15000);
+  }
 });
 
 app.on('before-quit', (event) => {

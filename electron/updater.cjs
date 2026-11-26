@@ -315,11 +315,83 @@ function downloadUpdateInstaller({
   });
 }
 
+function downloadFirmwareUf2({
+  url,
+  httpsModule = https,
+  maxRedirects = 5,
+} = {}) {
+  if (!isTrustedUpdateUrl(url)) {
+    return Promise.resolve({ ok: false, error: 'Untrusted firmware download URL' });
+  }
+  const version = typeof app?.getVersion === 'function' ? app.getVersion() : '1.1.15';
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    const requestUrl = (currentUrl, redirectsLeft) => {
+      if (!isTrustedUpdateUrl(currentUrl)) {
+        return finish({ ok: false, error: 'Untrusted redirect URL' });
+      }
+      const req = httpsModule.get(
+        currentUrl,
+        { headers: { 'User-Agent': `NODE-studio/${version}` } },
+        (res) => {
+          const code = res.statusCode || 0;
+          if ([301, 302, 303, 307, 308].includes(code)) {
+            const nextUrl = res.headers?.location;
+            res.resume();
+            if (!nextUrl || redirectsLeft <= 0) {
+              return finish({ ok: false, error: 'Too many redirects while downloading firmware' });
+            }
+            return requestUrl(new URL(nextUrl, currentUrl).toString(), redirectsLeft - 1);
+          }
+          if (code !== 200) {
+            res.resume();
+            return finish({ ok: false, error: `Firmware download failed with HTTP ${code}` });
+          }
+          const chunks = [];
+          let totalLength = 0;
+          const MAX_UF2_BYTES = 16 * 1024 * 1024;
+          res.on('data', (chunk) => {
+            totalLength += chunk.length;
+            if (totalLength > MAX_UF2_BYTES) {
+              res.destroy();
+              return finish({ ok: false, error: 'Firmware UF2 exceeds maximum allowed size' });
+            }
+            chunks.push(chunk);
+          });
+          res.on('end', () => {
+            if (res.complete === false) {
+              return finish({ ok: false, error: 'Firmware download was interrupted' });
+            }
+            const buffer = Buffer.concat(chunks);
+            if (buffer.length === 0) {
+              return finish({ ok: false, error: 'Downloaded firmware file was empty' });
+            }
+            finish({ ok: true, buffer });
+          });
+          res.on('error', (err) => finish({ ok: false, error: err.message }));
+        }
+      );
+      req.setTimeout?.(30000, () => req.destroy(new Error('Firmware download timed out')));
+      req.on('error', (err) => finish({ ok: false, error: err.message }));
+    };
+
+    requestUrl(url, maxRedirects);
+  });
+}
+
 module.exports = {
   compareVersions,
   fetchLatestRelease,
   checkForAppUpdates,
   downloadUpdateInstaller,
+  downloadFirmwareUf2,
   isTrustedUpdateUrl,
   sanitizeInstallerFilename,
   GITHUB_API_URL,
