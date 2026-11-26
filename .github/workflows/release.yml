@@ -1,0 +1,273 @@
+# Automated Release Pipeline
+#
+# Trigger: any push to `main` where `package.json` version differs from the
+#          most-recent git tag.  The job auto-tags `vX.Y.Z`, then fans out to
+#          the QMK firmware build and the Windows installer build (both of
+#          which already know how to publish their own assets to Releases).
+#          A final "seal" job waits for every upstream job, writes a release
+#          summary, and marks the release as the new Latest.
+#
+# Manual re-runs: use workflow_dispatch with the same tag already on HEAD.
+#
+# Required secrets (Settings → Secrets and variables → Actions):
+#   None beyond the default GITHUB_TOKEN — `contents: write` is declared below.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only run when the version field or workflow itself changes.
+      - 'package.json'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+    inputs:
+      force_tag:
+        description: 'Override tag (e.g. v1.2.0). Leave blank to derive from package.json.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+# Cancel any in-flight release run for the same ref so only the latest commit
+# on main drives a release attempt.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── 1. Gate ────────────────────────────────────────────────────────────────
+  # Determine whether this push actually bumps the version and produce the tag.
+  # Downstream jobs only run when `should_release` is true.
+  gate:
+    name: Determine release tag
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      tag:            ${{ steps.check.outputs.tag }}
+      version:        ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch all tags so we can compare against the latest one.
+          fetch-depth: 0
+
+      - name: Resolve version and decide whether to tag
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Manual override wins.
+          if [ -n "${{ github.event.inputs.force_tag }}" ]; then
+            tag="${{ github.event.inputs.force_tag }}"
+            version="${tag#v}"
+            echo "should_release=true"  >> "$GITHUB_OUTPUT"
+            echo "tag=$tag"             >> "$GITHUB_OUTPUT"
+            echo "version=$version"     >> "$GITHUB_OUTPUT"
+            echo "Forced tag: $tag"
+            exit 0
+          fi
+
+          version=$(node -p "require('./package.json').version")
+          tag="v${version}"
+          echo "Package version: $version  →  tag: $tag"
+
+          # If the tag already exists (e.g. re-push without a version bump), skip.
+          if git rev-parse --verify --quiet "refs/tags/$tag" > /dev/null 2>&1; then
+            echo "Tag $tag already exists — skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag"             >> "$GITHUB_OUTPUT"
+            echo "version=$version"     >> "$GITHUB_OUTPUT"
+          else
+            echo "New version detected: $tag"
+            echo "should_release=true"  >> "$GITHUB_OUTPUT"
+            echo "tag=$tag"             >> "$GITHUB_OUTPUT"
+            echo "version=$version"     >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── 2. Tag ─────────────────────────────────────────────────────────────────
+  # Push the annotated git tag that all downstream workflows key on.
+  create-tag:
+    name: Create git tag ${{ needs.gate.outputs.tag }}
+    needs: gate
+    if: needs.gate.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Push annotated tag
+        env:
+          TAG:     ${{ needs.gate.outputs.tag }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          git tag -a "$TAG" -m "Release $TAG" HEAD
+          git push origin "$TAG"
+          echo "Pushed $TAG"
+
+  # ─── 3. CI gate ─────────────────────────────────────────────────────────────
+  # Run the full Vitest + Playwright + firmware host-tests suite before we
+  # commit to building distributable artefacts.  Mirrors ci.yml but keyed on
+  # the release tag so failures surface clearly on the Release page.
+  ci:
+    name: Full test suite (Vitest + Playwright + firmware host)
+    needs: [gate, create-tag]
+    if: needs.gate.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check and lint
+        run: npm run lint
+
+      - name: Production web build
+        run: npm run build
+
+      - name: Bundle budget check
+        run: npm run check:bundle
+
+      - name: Vitest unit + integration (with coverage)
+        run: npm run test:coverage
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright end-to-end tests
+        run: npm run test:e2e
+
+      - name: Firmware keymap host tests
+        run: bash qmk_firmware/tests/host/run.sh
+
+  # ─── 4a. Firmware ───────────────────────────────────────────────────────────
+  # Re-use the existing qmk-build job logic by triggering it via the tag we
+  # just pushed (qmk-build.yml runs on `tags: ['v*']`).  We call it here as a
+  # dependency so the seal job can wait for it.
+  firmware:
+    name: QMK firmware (.uf2)
+    needs: [gate, ci]
+    if: needs.gate.outputs.should_release == 'true'
+    uses: ./.github/workflows/qmk-build.yml
+    permissions:
+      contents: write
+    secrets: inherit
+
+  # ─── 4b. Windows installer ──────────────────────────────────────────────────
+  # Same pattern — windows-installer.yml fires on `tags: ['v*']`.
+  windows:
+    name: Windows installer (.exe + .zip)
+    needs: [gate, ci]
+    if: needs.gate.outputs.should_release == 'true'
+    uses: ./.github/workflows/windows-installer.yml
+    permissions:
+      contents: write
+    secrets: inherit
+
+  # ─── 5. Seal ────────────────────────────────────────────────────────────────
+  # Waits for firmware + installer, then:
+  #   • writes a human-readable release summary to GITHUB_STEP_SUMMARY
+  #   • promotes the GitHub Release from pre-release to Latest
+  seal:
+    name: Seal release ${{ needs.gate.outputs.tag }}
+    needs: [gate, firmware, windows]
+    if: needs.gate.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG:      ${{ needs.gate.outputs.tag }}
+      VERSION:  ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Generate CHANGELOG excerpt
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Collect conventional-commit subjects since the previous tag.
+          prev_tag=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed -n '2p' || true)
+          if [ -n "$prev_tag" ]; then
+            range="${prev_tag}..HEAD"
+          else
+            range="HEAD"
+          fi
+          commits=$(git log "$range" --pretty='format:- %s' --no-merges | head -60)
+          {
+            echo "## What's changed in $TAG"
+            echo ""
+            echo "$commits"
+            echo ""
+            echo "---"
+            echo "_Full diff: [$prev_tag → $TAG](https://github.com/${{ github.repository }}/compare/${prev_tag}...${TAG})_"
+          } > /tmp/release-notes.md
+          cat /tmp/release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify all release assets are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Checking release $TAG for required assets…"
+          assets=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets \
+            --jq '[.assets[].name] | sort | join(", ")')
+          echo "Assets: $assets"
+          for required in "grid_macro_1_via.uf2" "SHA256SUMS.txt"; do
+            if ! echo "$assets" | grep -q "$required"; then
+              echo "::error::Missing required asset: $required"
+              exit 1
+            fi
+          done
+          for pattern in ".exe" ".zip"; do
+            if ! echo "$assets" | grep -q "$pattern"; then
+              echo "::error::No Windows asset matching *$pattern found"
+              exit 1
+            fi
+          done
+          echo "All required assets verified."
+
+      - name: Attach release notes and mark as Latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" \
+            --repo "${{ github.repository }}" \
+            --notes-file /tmp/release-notes.md \
+            --latest \
+            --prerelease=false
+          echo "Release $TAG is now marked as Latest."
+
+      - name: Post release summary
+        shell: bash
+        run: |
+          {
+            echo "## ✅ NODE studio $TAG released"
+            echo ""
+            echo "| Asset | Status |"
+            echo "|-------|--------|"
+            gh release view "$TAG" --repo "${{ github.repository }}" --json assets \
+              --jq '.assets[] | "| \(.name) (\(.size / 1024 | floor) kB) | ✅ |"'
+            echo ""
+            echo "🔗 [View release](https://github.com/${{ github.repository }}/releases/tag/$TAG)"
+          } >> "$GITHUB_STEP_SUMMARY"

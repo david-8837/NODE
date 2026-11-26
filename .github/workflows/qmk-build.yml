@@ -14,6 +14,8 @@ on:
       - 'qmk_firmware/grid_macro_1/**'
       - '.github/workflows/qmk-build.yml'
   workflow_dispatch:
+  # Called by release.yml after the CI gate passes.
+  workflow_call:
 
 permissions:
   contents: write

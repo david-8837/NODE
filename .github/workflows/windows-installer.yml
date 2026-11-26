@@ -2,6 +2,8 @@ name: Windows Desktop Package
 
 on:
   workflow_dispatch:
+  # Called by release.yml after the CI gate passes.
+  workflow_call:
   push:
     tags:
       - 'v*'
