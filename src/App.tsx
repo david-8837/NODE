@@ -915,6 +915,7 @@ export default function App() {
   const [activePressedSlot, setActivePressedSlot] = useState<string | null>(null);
   const rotaryVisualTimerRef = useRef<number | null>(null);
   const keyPressTimersRef = useRef<Record<string, number>>({});
+  const keyReleaseTimersRef = useRef<Record<string, number>>({});
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
   const [deviceActiveLayer, setDeviceActiveLayer] = useState<number>(0);
   const [deviceActiveProfileSlot, setDeviceActiveProfileSlot] = useState<number>(0);
@@ -1627,14 +1628,23 @@ export default function App() {
           setActivePressedSlot((current) => (current === 'cw' || current === 'ccw' ? null : current));
         }, 160);
       } else if (pressed) {
+        if (keyReleaseTimersRef.current[slotId]) {
+          window.clearTimeout(keyReleaseTimersRef.current[slotId]);
+          delete keyReleaseTimersRef.current[slotId];
+        }
         keyPressTimersRef.current[slotId] = now;
         setActivePressedSlot(slotId);
       } else {
+        if (keyReleaseTimersRef.current[slotId]) {
+          window.clearTimeout(keyReleaseTimersRef.current[slotId]);
+          delete keyReleaseTimersRef.current[slotId];
+        }
         const pressedAt = keyPressTimersRef.current[slotId] || 0;
         const elapsed = now - pressedAt;
         const remaining = Math.max(0, 140 - elapsed);
         if (remaining > 0) {
-          window.setTimeout(() => {
+          keyReleaseTimersRef.current[slotId] = window.setTimeout(() => {
+            delete keyReleaseTimersRef.current[slotId];
             setActivePressedSlot((current) => (current === slotId ? null : current));
           }, remaining);
         } else {
