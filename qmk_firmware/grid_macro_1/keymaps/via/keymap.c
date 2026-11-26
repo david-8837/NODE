@@ -365,14 +365,10 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     /* Emit matrix press/release telemetry for basic keys (excluding NODE custom
      * keycodes 0x7E00..0x7E48 which already emit dedicated HID events).
      */
+#ifndef QMK_STUBS_H
     if (keycode < MP_TRIG_BASE || keycode > MP_RGB_SPDU) {
-#ifdef QMK_STUBS_H
-        uint8_t row = record->event.row;
-        uint8_t col = record->event.col;
-#else
         uint8_t row = record->event.key.row;
         uint8_t col = record->event.key.col;
-#endif
         uint8_t slot_index = 0xFF;
         if (row < 3 && col < 3) {
             slot_index = (uint8_t)(row * 3 + col);
@@ -383,6 +379,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             mp_send_matrix_state(slot_index, record->event.pressed ? 1 : 0);
         }
     }
+#endif
 
     if (keycode == MP_LAYER_CYCLE) {
         if (record->event.pressed) {
