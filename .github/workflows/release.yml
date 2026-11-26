@@ -160,9 +160,8 @@ jobs:
         run: bash qmk_firmware/tests/host/run.sh
 
   # ─── 4a. Firmware ───────────────────────────────────────────────────────────
-  # Re-use the existing qmk-build job logic by triggering it via the tag we
-  # just pushed (qmk-build.yml runs on `tags: ['v*']`).  We call it here as a
-  # dependency so the seal job can wait for it.
+  # Pass the tag explicitly so qmk-build.yml knows to publish assets even
+  # when invoked via workflow_call (where github.ref is refs/heads/main).
   firmware:
     name: QMK firmware (.uf2)
     needs: [gate, ci]
@@ -171,9 +170,12 @@ jobs:
     permissions:
       contents: write
     secrets: inherit
+    with:
+      release_tag: ${{ needs.gate.outputs.tag }}
 
   # ─── 4b. Windows installer ──────────────────────────────────────────────────
-  # Same pattern — windows-installer.yml fires on `tags: ['v*']`.
+  # Pass the tag explicitly so windows-installer.yml knows to publish assets
+  # even when invoked via workflow_call (where github.ref is refs/heads/main).
   windows:
     name: Windows installer (.exe + .zip)
     needs: [gate, ci]
@@ -182,6 +184,8 @@ jobs:
     permissions:
       contents: write
     secrets: inherit
+    with:
+      release_tag: ${{ needs.gate.outputs.tag }}
 
   # ─── 5. Seal ────────────────────────────────────────────────────────────────
   # Waits for firmware + installer, then:

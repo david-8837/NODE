@@ -1,4 +1,4 @@
-name: QMK firmware build
+﻿name: QMK firmware build
 
 on:
   push:
@@ -15,7 +15,15 @@ on:
       - '.github/workflows/qmk-build.yml'
   workflow_dispatch:
   # Called by release.yml after the CI gate passes.
+  # release_tag is provided so this workflow knows to publish assets even when
+  # github.ref is refs/heads/main (workflow_call does not change the ref).
   workflow_call:
+    inputs:
+      release_tag:
+        description: 'Git tag to publish firmware assets to (e.g. v1.2.3)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -143,21 +151,23 @@ jobs:
         working-directory: ${{ runner.temp }}/qmk_firmware
 
       - name: Publish firmware to tagged release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          # Use the explicit input tag (from workflow_call) or fall back to the
+          # git ref (from a direct tag push).
+          tag="${{ inputs.release_tag }}"
+          if [ -z "$tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
           artifact_dir="${RUNNER_TEMP}/grid-macro-1-via-artifact"
           assets=(
             "$artifact_dir/grid_macro_1_via.uf2"
             "$artifact_dir/SHA256SUMS.txt"
             "$artifact_dir/BUILD-INFO.txt"
           )
-          # GitHub refuses to replace assets on an already-published release, so
-          # re-running this job for an existing tag must not try to clobber them.
-          # A tag pins one commit, so assets already attached are the correct ones.
           existing="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '.assets[].name' 2>/dev/null || true)"
           missing=()
@@ -170,15 +180,18 @@ jobs:
             echo "Release $tag already carries all firmware assets; nothing to upload."
             exit 0
           fi
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}"
           else
             gh release create --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}" --verify-tag --prerelease --title "NODE studio $tag" --generate-notes ||
               gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "${missing[@]}"
           fi
-          # Physical hardware verification is still pending, so tagged builds must
-          # never become the repository's full "Latest" release.
-          gh release edit --repo "$GITHUB_REPOSITORY" "$tag" --prerelease
+          # When called standalone via tag push, leave as prerelease until
+          # physical hardware is verified. The seal job in release.yml will
+          # promote to Latest once all assets are present.
+          if [ -z "${{ inputs.release_tag }}" ]; then
+            gh release edit --repo "$GITHUB_REPOSITORY" "$tag" --prerelease
+          fi
 
       - name: Upload the VIA UF2 and provenance files
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

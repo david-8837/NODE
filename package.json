@@ -1,124 +1,124 @@
-{
-  "name": "grid-macro-1-configurator",
-  "description": "Hardware keymap, layer, profile, and macro configuration studio for the Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
-  "author": "NODE studio",
-  "private": true,
-  "version": "1.1.18",
-  "type": "module",
-  "engines": {
-    "node": ">=22.0.0"
-  },
-  "scripts": {
-    "dev": "vite --port=5173",
-    "build": "vite build",
-    "check:bundle": "node scripts/check-bundle-budget.mjs",
-    "preview": "vite preview",
-    "clean": "node -e \"for (const target of ['dist', 'server.js', 'dist_electron']) require('node:fs').rmSync(target, { recursive: true, force: true })\"",
-    "lint": "tsc --noEmit && eslint .",
-    "lint:tsc": "tsc --noEmit",
-    "lint:eslint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
-    "test:all": "vitest run",
-    "desktop:dev": "concurrently --kill-others \"npm:dev\" \"wait-on http://127.0.0.1:5173 && electron .\"",
-    "build:blur:win": "node scripts/build-rounded-blur.cjs",
-    "package:win:dir": "npm run build:blur:win && npm run build && electron-builder --win dir --publish never",
-    "build:win": "npm run build:blur:win && npm run build && electron-builder --win --publish never"
-  },
-  "dependencies": {
-    "@tailwindcss/vite": "^4.3.3",
-    "@vitejs/plugin-react": "^6.1.1",
-    "koffi": "^3.3.8",
-    "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
-    "react": "^19.0.1",
-    "react-dom": "^19.0.1",
-    "vite": "^8.3.0"
-  },
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.65.1",
-    "@types/jsdom": "^21.1.7",
-    "@types/node": "^22.20.5",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitest/coverage-v8": "^5.1.0",
-    "concurrently": "^10.0.7",
-    "electron": "^45.2.3",
-    "electron-builder": "^26.18.0",
-    "esbuild": "^0.28.0",
-    "eslint": "^10.15.0",
-    "jsdom": "^31.0.0",
-    "prettier": "^3.10.1",
-    "tailwindcss": "^4.3.3",
-    "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "vitest": "^5.1.0",
-    "wait-on": "^9.5.1"
-  },
-  "main": "electron/main.cjs",
-  "overrides": {
-    "minimatch": "^11.0.5"
-  },
-  "build": {
-    "appId": "com.node.gridmacro1",
-    "productName": "NODE studio",
-    "asar": true,
-    "asarUnpack": [
-      "electron/native/*.dll"
-    ],
-    "extraResources": [
-      {
-        "from": "native/rounded-blur/LICENSE",
-        "to": "licenses/Haze-LICENSE.txt"
-      }
-    ],
-    "directories": {
-      "output": "dist_electron"
-    },
-    "files": [
-      "electron/**/*",
-      "dist/**/*",
-      "public/favicon.ico",
-      "package.json",
-      "!**/*.map"
-    ],
-    "win": {
-      "icon": "public/favicon.ico",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "installerIcon": "public/favicon.ico",
-      "uninstallerIcon": "public/favicon.ico",
-      "installerHeader": "windows-installer/installerHeader.bmp",
-      "installerSidebar": "windows-installer/installerSidebar.bmp",
-      "uninstallerSidebar": "windows-installer/installerSidebar.bmp",
-      "include": "windows-installer/installer.nsh",
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "NODE studio",
-      "deleteAppDataOnUninstall": false,
-      "runAfterFinish": true
-    },
-    "artifactName": "${productName}-${version}-${arch}.${ext}"
-  }
+﻿{
+    "name":  "grid-macro-1-configurator",
+    "description":  "Hardware keymap, layer, profile, and macro configuration studio for the Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
+    "author":  "NODE studio",
+    "private":  true,
+    "version":  "1.1.19",
+    "type":  "module",
+    "engines":  {
+                    "node":  "\u003e=22.0.0"
+                },
+    "scripts":  {
+                    "dev":  "vite --port=5173",
+                    "build":  "vite build",
+                    "check:bundle":  "node scripts/check-bundle-budget.mjs",
+                    "preview":  "vite preview",
+                    "clean":  "node -e \"for (const target of [\u0027dist\u0027, \u0027server.js\u0027, \u0027dist_electron\u0027]) require(\u0027node:fs\u0027).rmSync(target, { recursive: true, force: true })\"",
+                    "lint":  "tsc --noEmit \u0026\u0026 eslint .",
+                    "lint:tsc":  "tsc --noEmit",
+                    "lint:eslint":  "eslint .",
+                    "format":  "prettier --write .",
+                    "format:check":  "prettier --check .",
+                    "test":  "vitest run",
+                    "test:coverage":  "vitest run --coverage",
+                    "test:e2e":  "playwright test",
+                    "test:all":  "vitest run",
+                    "desktop:dev":  "concurrently --kill-others \"npm:dev\" \"wait-on http://127.0.0.1:5173 \u0026\u0026 electron .\"",
+                    "build:blur:win":  "node scripts/build-rounded-blur.cjs",
+                    "package:win:dir":  "npm run build:blur:win \u0026\u0026 npm run build \u0026\u0026 electron-builder --win dir --publish never",
+                    "build:win":  "npm run build:blur:win \u0026\u0026 npm run build \u0026\u0026 electron-builder --win --publish never"
+                },
+    "dependencies":  {
+                         "@tailwindcss/vite":  "^4.3.3",
+                         "@vitejs/plugin-react":  "^6.1.1",
+                         "koffi":  "^3.3.8",
+                         "lucide-react":  "^0.546.0",
+                         "motion":  "^12.23.24",
+                         "react":  "^19.0.1",
+                         "react-dom":  "^19.0.1",
+                         "vite":  "^8.3.0"
+                     },
+    "devDependencies":  {
+                            "@eslint/js":  "^10.0.1",
+                            "@playwright/test":  "^1.65.1",
+                            "@types/jsdom":  "^21.1.7",
+                            "@types/node":  "^22.20.5",
+                            "@types/react":  "^19.3.0",
+                            "@types/react-dom":  "^19.3.0",
+                            "@vitest/coverage-v8":  "^5.1.0",
+                            "concurrently":  "^10.0.7",
+                            "electron":  "^45.2.3",
+                            "electron-builder":  "^26.18.0",
+                            "esbuild":  "^0.28.0",
+                            "eslint":  "^10.15.0",
+                            "jsdom":  "^31.0.0",
+                            "prettier":  "^3.10.1",
+                            "tailwindcss":  "^4.3.3",
+                            "tsx":  "^4.21.0",
+                            "typescript":  "^7.0.2",
+                            "vitest":  "^5.1.0",
+                            "wait-on":  "^9.5.1"
+                        },
+    "main":  "electron/main.cjs",
+    "overrides":  {
+                      "minimatch":  "^11.0.5"
+                  },
+    "build":  {
+                  "appId":  "com.node.gridmacro1",
+                  "productName":  "NODE studio",
+                  "asar":  true,
+                  "asarUnpack":  [
+                                     "electron/native/*.dll"
+                                 ],
+                  "extraResources":  [
+                                         {
+                                             "from":  "native/rounded-blur/LICENSE",
+                                             "to":  "licenses/Haze-LICENSE.txt"
+                                         }
+                                     ],
+                  "directories":  {
+                                      "output":  "dist_electron"
+                                  },
+                  "files":  [
+                                "electron/**/*",
+                                "dist/**/*",
+                                "public/favicon.ico",
+                                "package.json",
+                                "!**/*.map"
+                            ],
+                  "win":  {
+                              "icon":  "public/favicon.ico",
+                              "target":  [
+                                             {
+                                                 "target":  "nsis",
+                                                 "arch":  [
+                                                              "x64"
+                                                          ]
+                                             },
+                                             {
+                                                 "target":  "zip",
+                                                 "arch":  [
+                                                              "x64"
+                                                          ]
+                                             }
+                                         ]
+                          },
+                  "nsis":  {
+                               "installerIcon":  "public/favicon.ico",
+                               "uninstallerIcon":  "public/favicon.ico",
+                               "installerHeader":  "windows-installer/installerHeader.bmp",
+                               "installerSidebar":  "windows-installer/installerSidebar.bmp",
+                               "uninstallerSidebar":  "windows-installer/installerSidebar.bmp",
+                               "include":  "windows-installer/installer.nsh",
+                               "oneClick":  false,
+                               "perMachine":  false,
+                               "allowToChangeInstallationDirectory":  true,
+                               "createDesktopShortcut":  true,
+                               "createStartMenuShortcut":  true,
+                               "shortcutName":  "NODE studio",
+                               "deleteAppDataOnUninstall":  false,
+                               "runAfterFinish":  true
+                           },
+                  "artifactName":  "${productName}-${version}-${arch}.${ext}"
+              }
 }
