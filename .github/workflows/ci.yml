@@ -46,6 +46,8 @@ jobs:
         run: npm run test:e2e
 
       - name: Firmware Keymap Logic (host-compiled)
-        run: bash qmk_firmware/tests/host/run.sh
+        run: |
+          set -x
+          bash qmk_firmware/tests/host/run.sh
 
 

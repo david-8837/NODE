@@ -27,6 +27,10 @@ done
 
 "$CC" -std=c11 -Wall -Wextra -Werror \
   -Wno-unused-parameter -Wno-unused-function \
-  -O1 -o "$work/test_keymap" "$work/test_keymap.c" "$work/keymap_under_test.c"
+  -O1 -o "$work/test_keymap" "$work/test_keymap.c" "$work/keymap_under_test.c" || {
+    echo "Compilation failed! Check compiler warnings/errors above." >&2
+    exit 1
+  }
 
+echo "Running test_keymap binary..."
 "$work/test_keymap"
