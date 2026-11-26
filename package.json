@@ -3,7 +3,7 @@
   "description": "Hardware keymap, layer, profile, and macro configuration studio for the Grid Macro 1 macropad (3x3 key matrix + 1 rotary encoder).",
   "author": "NODE studio",
   "private": true,
-  "version": "1.1.16",
+  "version": "1.1.17",
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
