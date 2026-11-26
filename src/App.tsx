@@ -907,7 +907,7 @@ export default function App() {
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [appUpdateCheckPending, setAppUpdateCheckPending] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<UpdateCheckResult | null>(null);
-  const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(null);
+  const dismissedUpdateVersionRef = useRef<string | null>(null);
   const [updateDownloadStatus, setUpdateDownloadStatus] = useState<UpdateDownloadStatus>('idle');
   const [updateDownloadProgress, setUpdateDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
   const [updateDownloadError, setUpdateDownloadError] = useState<string | null>(null);
@@ -1992,7 +1992,7 @@ export default function App() {
         return;
       }
       if (result.hasUpdate) {
-        setDismissedUpdateVersion(null);
+        dismissedUpdateVersionRef.current = null;
         setUpdateDownloadStatus('idle');
         setUpdateDownloadProgress(null);
         setUpdateDownloadError(null);
@@ -2039,7 +2039,7 @@ export default function App() {
     const runSilentCheck = async () => {
       try {
         const result = await window.electronAPI?.checkForUpdates?.();
-        if (result?.ok && result.hasUpdate && result.latestVersion !== dismissedUpdateVersion) {
+        if (result?.ok && result.hasUpdate && result.latestVersion !== dismissedUpdateVersionRef.current) {
           setAvailableUpdate((prev) => prev ?? result);
         }
       } catch {
@@ -2059,7 +2059,7 @@ export default function App() {
       window.clearInterval(periodicTimer);
       if (typeof unsubscribeProgress === 'function') unsubscribeProgress();
     };
-  }, [dismissedUpdateVersion]);
+  }, []);
 
   const flashSimulatedPress = (slotId: string) => {
     setActivePressedSlot(slotId);
@@ -4645,7 +4645,7 @@ export default function App() {
         }}
         onDismiss={() => {
           if (availableUpdate?.latestVersion) {
-            setDismissedUpdateVersion(availableUpdate.latestVersion);
+            dismissedUpdateVersionRef.current = availableUpdate.latestVersion;
           }
           setAvailableUpdate(null);
           setUpdateDownloadStatus('idle');

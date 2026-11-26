@@ -1039,11 +1039,23 @@ ipcMain.handle('download-and-install-update', async (event, payload) => {
     }
 
     const { spawn } = require('node:child_process');
-    const child = spawn(result.filePath, [], {
-      detached: true,
-      stdio: 'ignore',
+    const launched = await new Promise((resolveLaunch) => {
+      const child = spawn(result.filePath, [], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.once('spawn', () => {
+        child.unref();
+        resolveLaunch({ ok: true });
+      });
+      child.once('error', (err) => {
+        resolveLaunch({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      });
     });
-    child.unref();
+
+    if (!launched.ok) {
+      return { ok: false, error: launched.error || 'Failed to launch installer' };
+    }
 
     isQuitting = true;
     setTimeout(() => {

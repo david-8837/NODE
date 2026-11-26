@@ -127,9 +127,11 @@ async function checkForAppUpdates({ currentVersion, fetchFn } = {}) {
     const tagName = release.tag_name || release.name || '';
     const hasUpdate = compareVersions(version, tagName) > 0;
 
-    const exeAsset = (release.assets || []).find(
-      (asset) => asset.name && asset.name.endsWith('.exe')
+    const exeAssets = (release.assets || []).filter(
+      (asset) => asset.name && asset.name.toLowerCase().endsWith('.exe')
     );
+    const exeAsset =
+      exeAssets.find((asset) => !/portable/i.test(asset.name)) || exeAssets[0];
 
     return {
       ok: true,
@@ -260,9 +262,20 @@ function downloadUpdateInstaller({
           });
 
           writeStream.on('finish', () => {
+            if (res.complete === false) {
+              cleanupPart();
+              return finish({ ok: false, error: 'Download was interrupted before completion' });
+            }
             if (receivedBytes <= 0) {
               cleanupPart();
               return finish({ ok: false, error: 'Downloaded installer file was empty' });
+            }
+            if (totalBytes > 0 && receivedBytes < totalBytes) {
+              cleanupPart();
+              return finish({
+                ok: false,
+                error: `Download incomplete (${receivedBytes} of ${totalBytes} bytes)`,
+              });
             }
             try {
               if (fsModule.existsSync(finalPath)) {
@@ -287,6 +300,10 @@ function downloadUpdateInstaller({
           res.pipe(writeStream);
         }
       );
+
+      req.setTimeout?.(30000, () => {
+        req.destroy(new Error('Update download timed out'));
+      });
 
       req.on('error', (err) => {
         cleanupPart();
