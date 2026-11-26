@@ -108,6 +108,9 @@ export function installConnectedDevice(options: FakeConnectedBridgeOptions = {})
       const event = { type: 'layer_state', deviceActiveLayer: nextLayer, activeProfileSlot: slot };
       for (const listener of eventListeners) listener(event);
     },
+    emitEvent(event: unknown) {
+      for (const listener of eventListeners) listener(event);
+    },
     emitDisconnect() {
       for (const listener of statusListeners) listener({ state: 'disconnected', error: 'The device was disconnected' });
     },

@@ -901,6 +901,8 @@ export default function App() {
   const [firmwareCheckPending, setFirmwareCheckPending] = useState(false);
   const [appUpdateCheckPending, setAppUpdateCheckPending] = useState(false);
   const [activePressedSlot, setActivePressedSlot] = useState<string | null>(null);
+  const rotaryVisualTimerRef = useRef<number | null>(null);
+  const keyPressTimersRef = useRef<Record<string, number>>({});
   const [deviceStatus, setDeviceStatus] = useState<QmkViaStatus>({ state: 'disconnected' });
   const [deviceActiveLayer, setDeviceActiveLayer] = useState<number>(0);
   const [deviceActiveProfileSlot, setDeviceActiveProfileSlot] = useState<number>(0);
@@ -1643,10 +1645,30 @@ export default function App() {
       }
       if (rawEvent.type === 'hardware_trigger') {
         const trig = rawEvent as unknown as HardwareTriggerEvent;
-        if (trig.pressed) {
+        const now = Date.now();
+        if (trig.slotId === 'cw' || trig.slotId === 'ccw') {
+          // Hardware rotary encoder rotation: spin virtual dial & flash dial visualizer
+          setEncoderAngle((prev) => (trig.slotId === 'cw' ? (prev + 30) % 360 : (prev - 30 + 360) % 360));
+          setActivePressedSlot(trig.slotId);
+          if (rotaryVisualTimerRef.current) window.clearTimeout(rotaryVisualTimerRef.current);
+          rotaryVisualTimerRef.current = window.setTimeout(() => {
+            setActivePressedSlot((current) => (current === 'cw' || current === 'ccw' ? null : current));
+          }, 160);
+        } else if (trig.pressed) {
+          keyPressTimersRef.current[trig.slotId] = now;
           setActivePressedSlot(trig.slotId);
         } else {
-          setActivePressedSlot((current) => (current === trig.slotId ? null : current));
+          // Guarantee a minimum visual feedback pulse (140ms) so microsecond clicks register cleanly
+          const pressedAt = keyPressTimersRef.current[trig.slotId] || 0;
+          const elapsed = now - pressedAt;
+          const remaining = Math.max(0, 140 - elapsed);
+          if (remaining > 0) {
+            window.setTimeout(() => {
+              setActivePressedSlot((current) => (current === trig.slotId ? null : current));
+            }, remaining);
+          } else {
+            setActivePressedSlot((current) => (current === trig.slotId ? null : current));
+          }
         }
         // A release belongs to the original press, even if profile/layer changed.
         if (!trig.pressed && cheatSheetTriggersRef.current?.handle(trig.slotId, false)) return;
@@ -3249,6 +3271,43 @@ export default function App() {
     setMappingStackExpanded(false);
     setHoveredMappingType(null);
   };
+
+  useEffect(() => {
+    if (!simulationMode) return;
+    const handleSimKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+
+      const keySlotMap: Record<string, KeySlotId> = {
+        '1': 'r1c1',
+        '2': 'r1c2',
+        '3': 'r1c3',
+        '4': 'r2c1',
+        '5': 'r2c2',
+        '6': 'r2c3',
+        '7': 'r3c1',
+        '8': 'r3c2',
+        '9': 'r3c3',
+      };
+
+      if (keySlotMap[e.key]) {
+        e.preventDefault();
+        handleSelectKey(keySlotMap[e.key]);
+      } else if (e.key === '0' || e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        handleSelectEncoderSubAction(GRID_MACRO_ENCODER_SLOT, 'press');
+      } else if (e.key === ']' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleSelectEncoderSubAction(GRID_MACRO_ENCODER_SLOT, 'cw');
+      } else if (e.key === '[' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleSelectEncoderSubAction(GRID_MACRO_ENCODER_SLOT, 'ccw');
+      }
+    };
+
+    window.addEventListener('keydown', handleSimKeyDown);
+    return () => window.removeEventListener('keydown', handleSimKeyDown);
+  }, [simulationMode, currentLayer]);
 
   const triggerTileFlash = (tileId: string) => {
     if (flashTimeoutRef.current) {
