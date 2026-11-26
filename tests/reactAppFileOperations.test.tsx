@@ -153,7 +153,7 @@ describe('React source app file operations', () => {
     await renderApp();
     await openSettings();
     let switches = [...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]')];
-    expect(switches).toHaveLength(5);
+    expect(switches).toHaveLength(6);
     expect(switches[0].disabled).toBe(true);
 
     await clickButton(switches[2]);

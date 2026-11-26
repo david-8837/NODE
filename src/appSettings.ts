@@ -18,6 +18,7 @@ export interface AppSettings {
   cheatSheetGlobalHotkey: string;
   rotaryStepMultiplier: number;
   rotaryAcceleration: boolean;
+  darkMode: boolean;
 }
 
 export type AppSettingKey = keyof AppSettings;
@@ -39,6 +40,7 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
   rotaryStepMultiplier: 1,
   rotaryAcceleration: true,
+  darkMode: false,
 });
 
 export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
@@ -215,6 +217,10 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       typeof raw.rotaryAcceleration === 'boolean'
         ? raw.rotaryAcceleration
         : DEFAULT_APP_SETTINGS.rotaryAcceleration,
+    darkMode:
+      typeof raw.darkMode === 'boolean'
+        ? raw.darkMode
+        : DEFAULT_APP_SETTINGS.darkMode,
   };
 }
 

@@ -5,6 +5,8 @@
   --font-mono: "JetBrains Mono", monospace;
 }
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   body {
     font-family: var(--font-sans);
@@ -15,7 +17,22 @@
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     user-select: none;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
+
+  body.dark,
+  html.dark body {
+    background-color: #121214;
+    color: #f4f4f5;
+  }
+}
+
+.dark .list-accordion-scroll::-webkit-scrollbar-track {
+  background: #1e1e21;
+}
+
+.dark .list-accordion-scroll::-webkit-scrollbar-thumb {
+  background: #3f3f46;
 }
 
 .list-accordion-scroll::-webkit-scrollbar {
@@ -41,4 +58,110 @@
   display: none;
   width: 0;
   height: 0;
+}
+
+/* Full OLED Stealth Dark Mode (#121214 canvas & #18181b cards matching anodized chassis) */
+.dark .app-shell {
+  background-color: #121214 !important;
+  color: #f4f4f5;
+}
+
+/* Simulation toggle pill */
+.dark .app-shell button[class*="mt-[15px]"] {
+  background-color: #18181b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #d4d4d8 !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.dark .app-shell button[class*="mt-[15px]"]:hover {
+  background-color: #222225 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Profiles trigger pill */
+.dark .app-shell div[class*="h-[30px] w-[142px]"] {
+  background-color: #18181b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.dark .app-shell div[class*="h-[30px] w-[142px]"]:hover {
+  background-color: #222225 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+.dark .app-shell div[class*="h-[30px] w-[142px]"] span {
+  color: #d4d4d8 !important;
+}
+
+/* Profile dropdown toggle button */
+.dark .app-shell button[aria-label="Toggle profile list"] {
+  background-color: #18181b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #f4f4f5 !important;
+}
+.dark .app-shell button[aria-label="Toggle profile list"]:hover {
+  background-color: #222225 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Profile menu popup tray */
+.dark .app-shell div[class*="w-[262px] bg-[#e4e4e4]"] {
+  background-color: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Layer inactive buttons */
+.dark .app-shell button[data-active-layer="false"] {
+  background-color: #18181b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #d4d4d8 !important;
+}
+.dark .app-shell button[data-active-layer="false"]:hover {
+  background-color: #222225 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+}
+
+/* Layer active button */
+.dark .app-shell button[data-active-layer="true"] {
+  background-color: #ffffff !important;
+  border-color: #ffffff !important;
+  color: #111111 !important;
+}
+
+/* Add layer button */
+.dark .app-shell button[title="Add Layer"] {
+  color: #a1a1aa !important;
+}
+.dark .app-shell button[title="Add Layer"]:hover {
+  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Key Mapping trigger button */
+.dark .app-shell button[title="Open Key Mapping"] {
+  background-color: #18181b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #f4f4f5 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.dark .app-shell button[title="Open Key Mapping"]:hover {
+  background-color: #222225 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Tooltips */
+.dark div[class*="bg-[#ececec] rounded-[16px]"] {
+  background-color: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5) !important;
+}
+.dark div[class*="bg-[#ececec] rounded-[16px]"] div,
+.dark div[class*="bg-[#ececec] rounded-[16px]"] p,
+.dark div[class*="bg-[#ececec] rounded-[16px]"] li {
+  color: #d4d4d8 !important;
+}
+
+/* Tip widget text */
+.dark .app-shell div[class*="text-[#a3a3a3]"] {
+  color: #71717a !important;
 }

@@ -205,6 +205,7 @@ const DEFAULT_APP_SETTINGS = Object.freeze({
   cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
   rotaryStepMultiplier: 1,
   rotaryAcceleration: true,
+  darkMode: false,
 });
 const APP_SETTING_KEYS = new Set(Object.keys(DEFAULT_APP_SETTINGS));
 
@@ -225,6 +226,7 @@ function readStoredAppSettings() {
         'autoSwitchProfile',
         'cheatSheetGlobalHotkeyEnabled',
         'rotaryAcceleration',
+        'darkMode',
       ]) {
         if (typeof stored[key] === 'boolean') settings[key] = stored[key];
       }

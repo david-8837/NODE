@@ -1576,6 +1576,12 @@ export default function App() {
     return baseMult;
   }, [appSettings.rotaryAcceleration, appSettings.rotaryStepMultiplier]);
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', Boolean(appSettings.darkMode));
+    document.body.classList.toggle('dark', Boolean(appSettings.darkMode));
+    document.body.style.backgroundColor = appSettings.darkMode ? '#121214' : '#efefef';
+  }, [appSettings.darkMode]);
+
   // Listen for physical device layer changes and hardware host-action triggers
   useEffect(() => {
     const bridge = window.macropad;
@@ -4291,6 +4297,7 @@ export default function App() {
           cheatSheetGlobalHotkey={appSettings.cheatSheetGlobalHotkey}
           rotaryStepMultiplier={appSettings.rotaryStepMultiplier}
           rotaryAcceleration={appSettings.rotaryAcceleration}
+          darkMode={appSettings.darkMode}
           handleAppSettingChange={handleAppSettingChange}
           handleToggleCheatSheet={handleToggleCheatSheet}
           handleOpenSupportLink={handleOpenSupportLink}
