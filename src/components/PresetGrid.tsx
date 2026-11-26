@@ -31,10 +31,10 @@ export function PresetGrid({
     <>
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-[25px] font-medium text-[#666666] tracking-[-0.01em] leading-none">
+          <h1 className="text-[25px] font-medium text-[#666666] dark:text-[#f4f4f5] tracking-[-0.01em] leading-none">
             Presets library
           </h1>
-          <p className="mt-[12px] text-[10.5px] leading-[1.42] text-[#686868]">
+          <p className="mt-[12px] text-[10.5px] leading-[1.42] text-[#686868] dark:text-[#a1a1aa]">
             Presets are ready-made key configurations.
             <br />
             Load a preset to instantly apply a predefined workflow to your device.
@@ -42,25 +42,25 @@ export function PresetGrid({
         </div>
 
         <div className="flex flex-col items-end gap-[9px]">
-          <div className="w-[196px] h-[27px] rounded-full bg-[#e2e2e2] px-[11px] flex items-center gap-[6px]">
-            <Search className="w-[11px] h-[11px] text-[#666666] stroke-[2]" />
+          <div className="w-[196px] h-[27px] rounded-full bg-[#e2e2e2] dark:bg-[#18181b] dark:border dark:border-white/10 px-[11px] flex items-center gap-[6px]">
+            <Search className="w-[11px] h-[11px] text-[#666666] dark:text-[#a1a1aa] stroke-[2]" />
             <input
               type="text"
               value={presetSearch}
               onChange={(e) => setPresetSearch(e.target.value)}
               placeholder="Search"
-              className="w-full bg-transparent text-[11px] text-[#333333] placeholder:text-[#686868] focus:outline-none"
+              className="w-full bg-transparent text-[11px] text-[#333333] dark:text-[#f4f4f5] placeholder:text-[#686868] dark:placeholder:text-[#71717a] focus:outline-none"
             />
           </div>
 
-          <div className="w-[130px] h-[27px] rounded-full bg-white flex overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+          <div className="w-[130px] h-[27px] rounded-full bg-white dark:bg-[#18181b] dark:border dark:border-white/10 flex overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             <button
               onClick={() => setPresetOs('mac')}
               aria-label="macOS Presets"
               className={`flex-1 h-full flex items-center justify-center transition-colors cursor-pointer ${
                 presetOs === 'mac'
-                  ? 'bg-[#000000] text-white'
-                  : 'bg-white text-[#555555] hover:bg-neutral-50'
+                  ? 'bg-[#000000] dark:bg-white text-white dark:text-black'
+                  : 'bg-white dark:bg-[#18181b] text-[#555555] dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-[#222226]'
               }`}
             >
               <svg
@@ -77,8 +77,8 @@ export function PresetGrid({
               aria-label="Windows Presets"
               className={`flex-1 h-full flex items-center justify-center transition-colors cursor-pointer ${
                 presetOs === 'win'
-                  ? 'bg-[#000000] text-white'
-                  : 'bg-white text-[#555555] hover:bg-neutral-50'
+                  ? 'bg-[#000000] dark:bg-white text-white dark:text-black'
+                  : 'bg-white dark:bg-[#18181b] text-[#555555] dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-[#222226]'
               }`}
             >
               <svg
@@ -106,26 +106,26 @@ export function PresetGrid({
           return (
             <div
               key={preset.id}
-              className="bg-[#e3e3e3] rounded-[18px] p-[15px] flex flex-col justify-between min-h-[164px]"
+              className="bg-[#e3e3e3] dark:bg-[#18181b] dark:border dark:border-white/10 rounded-[18px] p-[15px] flex flex-col justify-between min-h-[164px]"
             >
               <div>
                 <div className="flex items-center gap-[10px]">
                   {renderAppIcon(preset.id)}
                   <div>
-                    <div className="text-[10px] text-[#6d6d6d] leading-none mb-[3px]">
+                    <div className="text-[10px] text-[#6d6d6d] dark:text-[#a1a1aa] leading-none mb-[3px]">
                       Layer preset
                     </div>
-                    <div className="text-[15px] font-semibold text-[#111111] leading-none">
+                    <div className="text-[15px] font-semibold text-[#111111] dark:text-[#f4f4f5] leading-none">
                       {preset.title}
                     </div>
                   </div>
                 </div>
 
-                <p className="mt-[11px] text-[10.5px] leading-[1.35] text-[#666666] min-h-[28px]">
+                <p className="mt-[11px] text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] min-h-[28px]">
                   {preset.description}
                 </p>
 
-                <div className="mt-[6px] text-[10px] font-medium text-[#2b2b2b]">
+                <div className="mt-[6px] text-[10px] font-medium text-[#2b2b2b] dark:text-[#d4d4d8]">
                   Author: {preset.author}
                 </div>
               </div>
@@ -135,7 +135,7 @@ export function PresetGrid({
                   <div className="grid grid-cols-2 gap-[8px]">
                     <button
                       onClick={() => onPreviewPreset(preset)}
-                      className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
+                      className="h-[27px] rounded-full bg-white dark:bg-[#27272a] hover:bg-neutral-50 dark:hover:bg-[#323236] text-[10.5px] font-medium text-[#333333] dark:text-neutral-200 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer"
                     >
                       Preview
                     </button>
@@ -147,7 +147,7 @@ export function PresetGrid({
                           ? `${preset.title} preset already installed on this profile`
                           : `Install ${preset.title} preset`
                       }
-                      className="h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
+                      className="h-[27px] rounded-full bg-white dark:bg-[#27272a] hover:bg-neutral-50 dark:hover:bg-[#323236] text-[10.5px] font-medium text-[#333333] dark:text-neutral-200 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] dark:disabled:text-[#52525b] disabled:hover:bg-white dark:disabled:hover:bg-[#27272a]"
                     >
                       {isInstalled ? 'Installed' : 'Install'}
                     </button>
@@ -161,7 +161,7 @@ export function PresetGrid({
                         ? `${preset.title} preset already installed on this profile`
                         : `Install ${preset.title} preset`
                     }
-                    className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 text-[10.5px] font-medium text-[#333333] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] disabled:hover:bg-white"
+                    className="w-full h-[27px] rounded-full bg-white dark:bg-[#27272a] hover:bg-neutral-50 dark:hover:bg-[#323236] text-[10.5px] font-medium text-[#333333] dark:text-neutral-200 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:text-[#999999] dark:disabled:text-[#52525b] disabled:hover:bg-white dark:disabled:hover:bg-[#27272a]"
                   >
                     {isInstalled ? 'Installed' : 'Install'}
                   </button>
