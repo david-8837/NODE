@@ -1,4 +1,4 @@
-﻿name: QMK firmware build
+name: QMK firmware build
 
 on:
   push:

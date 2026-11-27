@@ -47,5 +47,6 @@ describe('Electron background execution of hardware-triggered gestures', () => {
     expect(mainSource).toContain("$s.Arguments = '--hidden'");
     expect(mainSource).toContain('app.requestSingleInstanceLock()');
     expect(mainSource).toContain("app.on('second-instance'");
+    expect(mainSource).toContain("arg === '--hidden' || arg.includes('hidden')");
   });
 });

@@ -70,7 +70,16 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock && !isPersistenceSmokeTest() && !isVisualSmokeTest()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, commandLine) => {
+    // If the secondary instance was invoked with --hidden (such as duplicate autostart
+    // from Windows login, Startup folder shortcut, or background trigger), NEVER unhide
+    // the main window.
+    if (
+      Array.isArray(commandLine) &&
+      commandLine.some((arg) => typeof arg === 'string' && (arg === '--hidden' || arg.includes('hidden')))
+    ) {
+      return;
+    }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       if (!mainWindow.isVisible()) mainWindow.show();
