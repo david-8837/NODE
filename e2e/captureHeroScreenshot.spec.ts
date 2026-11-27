@@ -4,8 +4,30 @@ import path from 'node:path';
 test.describe('Hero Screenshot Capture', () => {
   test.use({ viewport: { width: 1350, height: 942 }, deviceScaleFactor: 1 });
 
-  test('captures crisp authentic 1350x942 hero screenshot for website home', async ({ page }) => {
+  test('captures crisp authentic 1350x942 dark mode hero screenshot for website home', async ({ page }) => {
     await page.addInitScript(() => {
+      // 1. Enable Dark Mode in App Settings
+      try {
+        window.localStorage.setItem(
+          'node-studio.settings.v1',
+          JSON.stringify({
+            launchAtStartup: false,
+            startHiddenInTray: false,
+            allowTerminalSmartActions: false,
+            allowDeviceNotifications: false,
+            autoSwitchProfile: false,
+            appProfileRules: [],
+            cheatSheetGlobalHotkeyEnabled: true,
+            cheatSheetGlobalHotkey: 'Ctrl+Alt+M',
+            rotaryStepMultiplier: 1,
+            rotaryAcceleration: true,
+            darkMode: true,
+            rgbIdleTimeoutMinutes: 0,
+            rgbDimOnScreenLock: true,
+          })
+        );
+      } catch {}
+
       const slots = ['r1c1', 'r1c2', 'r1c3', 'r2c1', 'r2c2', 'r2c3', 'r3c1', 'r3c2', 'r3c3'];
       const snapshot = {
         protocolVersion: 13,
@@ -55,6 +77,7 @@ test.describe('Hero Screenshot Capture', () => {
             allowTerminalSmartActions: true,
             allowDeviceNotifications: true,
             rotaryAcceleration: true,
+            darkMode: true,
           },
           capabilities: { launchAtStartup: true, firmwareFlash: true, externalLinks: true },
         }),
@@ -69,12 +92,23 @@ test.describe('Hero Screenshot Capture', () => {
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Keymap', exact: true })).toBeVisible({ timeout: 15000 });
 
-    // Hide any transient toast notification so the screenshot is clean
+    // Hide transient toast notifications
     await page.addStyleTag({ content: '[data-testid="feedback-toast"] { display: none !important; }' });
+    await page.waitForTimeout(600);
+
+    // Install a vibrant preset to populate illuminated keys
+    await page.getByRole('button', { name: 'Preset', exact: true }).click();
+    await page.waitForTimeout(600);
+    const installBtn = page.locator('button:has-text("Install")').first();
+    if (await installBtn.isVisible()) {
+      await installBtn.click();
+      await page.waitForTimeout(600);
+    }
+    await page.getByRole('button', { name: 'Keymap', exact: true }).click();
     await page.waitForTimeout(800);
 
     const targetPath = path.resolve(process.cwd(), 'website/assets/grid-macro-studio-current.png');
     await page.screenshot({ path: targetPath });
-    console.log('Saved hero screenshot to:', targetPath);
+    console.log('Saved dark mode hero screenshot to:', targetPath);
   });
 });
