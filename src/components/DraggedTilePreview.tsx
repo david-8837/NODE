@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, type MotionValue } from 'motion/react';
+import { motion, useTransform, type MotionValue } from 'motion/react';
 import { CustomPickerIcon } from './CustomPickerIcon';
 import { EmptyKeyPlusIcon } from './UiIcons';
 import {
@@ -12,9 +12,13 @@ export interface DraggedTilePreviewProps {
   draggedTile: {
     item: BasicTileItem;
     sourceTab: MappingTabId;
-    x: number;
-    y: number;
+    fromSlotId?: string;
+    fromSubAction?: string;
+    x?: number;
+    y?: number;
   };
+  dragTileX: MotionValue<number>;
+  dragTileY: MotionValue<number>;
   dragSpringBobY: MotionValue<number>;
   dragSpringRotate: MotionValue<number>;
   isDisallowedTarget?: boolean;
@@ -22,27 +26,36 @@ export interface DraggedTilePreviewProps {
 
 export function DraggedTilePreview({
   draggedTile,
+  dragTileX,
+  dragTileY,
   dragSpringBobY,
   dragSpringRotate,
   isDisallowedTarget = false,
 }: DraggedTilePreviewProps) {
+  const itemColor = draggedTile.item.color;
+  const combinedY = useTransform(() => dragTileY.get() + dragSpringBobY.get());
+
   return (
     <motion.div
       key="dragged-tile-preview"
       initial={{ opacity: 0, scale: 0.92 }}
-      animate={{ opacity: 1, scale: 1.04 }}
-      exit={{ opacity: 0, scale: 0.92 }}
-      transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
+      animate={{ opacity: 1, scale: 1.05 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.1, ease: [0.22, 1, 0.36, 1] }}
       style={{
-        left: draggedTile.x - 27,
-        top: draggedTile.y - 27,
-        y: dragSpringBobY,
+        x: dragTileX,
+        y: combinedY,
         rotate: dragSpringRotate,
         transformOrigin: '22% 20%',
+        backgroundColor: itemColor || undefined,
       }}
-      className={`fixed w-[54px] h-[54px] rounded-[9px] bg-[#000000] text-white shadow-[0_14px_28px_rgba(0,0,0,0.34)] flex flex-col items-center justify-center px-1 text-center pointer-events-none z-[100] select-none transition-all duration-150 ${
+      className={`fixed top-0 left-0 -ml-[27px] -mt-[27px] w-[54px] h-[54px] rounded-[10px] flex flex-col items-center justify-center px-1 text-center pointer-events-none z-[100] select-none shadow-[0_16px_32px_rgba(0,0,0,0.2)] dark:shadow-[0_16px_32px_rgba(0,0,0,0.65)] ${
+        itemColor
+          ? 'text-white border border-white/20'
+          : 'bg-white dark:bg-[#27272a] text-[#111111] dark:text-[#f4f4f5] border border-black/10 dark:border-white/15'
+      } ${
         isDisallowedTarget
-          ? 'ring-2 ring-[#ef4444] shadow-[0_0_20px_rgba(239,68,68,0.7)]'
+          ? '!ring-2 !ring-[#ef4444] !shadow-[0_0_20px_rgba(239,68,68,0.7)]'
           : ''
       }`}
     >
@@ -53,14 +66,17 @@ export function DraggedTilePreview({
           {draggedTile.item.emoji}
         </span>
       ) : draggedTile.item.isClearIcon ? (
-        <EmptyKeyPlusIcon size={16} stroke="#ffffff" />
+        <EmptyKeyPlusIcon
+          size={16}
+          stroke={itemColor ? '#ffffff' : 'currentColor'}
+        />
       ) : draggedTile.item.arrowDir ? (
         <svg
           width="12"
           height="12"
           viewBox="0 0 12 12"
           fill="none"
-          stroke="#ffffff"
+          stroke="currentColor"
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"

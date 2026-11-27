@@ -142,7 +142,7 @@ export function ActionLibrarySidebar({
                   : undefined;
                 const listIconStyle = group.presetColor
                   ? presetIconStyle
-                  : { color: '#666666', backgroundColor: '#f1f1f1' };
+                  : undefined;
                 const listDescription =
                   item.listLabel || item.top || item.macropadLabel;
                 const layoutClasses =
@@ -162,10 +162,10 @@ export function ActionLibrarySidebar({
                     style={presetTileStyle}
                     className={`border-[1.5px] flex items-center shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none cursor-grab active:cursor-grabbing ${layoutClasses} ${
                       isFlashed
-                        ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
+                        ? 'bg-[#000000] dark:bg-white text-white dark:text-black border-[#000000] dark:border-white transition-colors duration-75'
                         : isBeingDragged
-                        ? 'bg-[#e8e8e8] text-[#a8a8a8] border-transparent transition-colors duration-200'
-                        : 'bg-white hover:bg-[#fafafa] text-[#444444] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
+                        ? 'bg-[#e8e8e8] dark:bg-[#222225] text-[#a8a8a8] dark:text-[#52525b] border-transparent transition-colors duration-200'
+                        : 'bg-white dark:bg-[#27272a] hover:bg-[#fafafa] dark:hover:bg-[#323236] text-[#444444] dark:text-[#f4f4f5] border-transparent dark:border-white/10 hover:border-[#0051ff] dark:hover:border-[#0051ff] transition-colors duration-200 ease-out'
                     }`}
                   >
                     {mappingViewMode === 'grid' ? (
@@ -203,7 +203,7 @@ export function ActionLibrarySidebar({
                     ) : (
                       <>
                         <span
-                          className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0"
+                          className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center shrink-0 bg-[#f1f1f1] dark:bg-[#323236] text-[#666666] dark:text-[#a1a1aa]"
                           style={listIconStyle}
                         >
                           {item.iconId ? (
@@ -236,7 +236,7 @@ export function ActionLibrarySidebar({
                             {item.main}
                           </span>
                           {listDescription && listDescription !== item.main && (
-                            <span className="block truncate text-[9.5px] leading-[1.3] text-[#888888]">
+                            <span className="block truncate text-[9.5px] leading-[1.3] text-[#888888] dark:text-[#71717a]">
                               {listDescription}
                             </span>
                           )}
@@ -266,12 +266,12 @@ export function ActionLibrarySidebar({
         <button
           onClick={onClose}
           aria-label="Close Key Mapping"
-          className="w-[24px] h-[24px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555555] hover:text-black transition-all cursor-pointer"
+          className="w-[24px] h-[24px] rounded-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center text-[#555555] dark:text-[#a1a1aa] hover:text-black dark:hover:text-white transition-all cursor-pointer"
         >
           <X className="w-[14px] h-[14px] stroke-[1.7]" />
         </button>
 
-        <div className="flex items-center gap-[5px] text-[#555555] text-[12.5px] font-medium">
+        <div className="flex items-center gap-[5px] text-[#555555] dark:text-[#d4d4d8] text-[12.5px] font-medium">
           <span>Key Mapping</span>
           <button
             onMouseEnter={() => setActiveTooltip('drawer-mapping')}
@@ -281,7 +281,7 @@ export function ActionLibrarySidebar({
                 activeTooltip === 'drawer-mapping' ? null : 'drawer-mapping'
               )
             }
-            className="text-[#666666] hover:text-[#222] cursor-pointer"
+            className="text-[#666666] dark:text-[#a1a1aa] hover:text-[#222] dark:hover:text-white cursor-pointer"
           >
             <InfoCircleIcon />
           </button>
@@ -296,12 +296,12 @@ export function ActionLibrarySidebar({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.96 }}
               transition={{ duration: 0.16, ease: [0.32, 0.72, 0, 1] }}
-              className="absolute top-[42px] right-[12px] w-[226px] bg-[#ececec] rounded-[16px] px-[18px] py-[15px] shadow-[0_3px_10px_rgba(0,0,0,0.06)] border border-black/[0.04] text-left z-40 pointer-events-none"
+              className="absolute top-[42px] right-[12px] w-[226px] bg-[#ececec] dark:bg-[#27272a] rounded-[16px] px-[18px] py-[15px] shadow-[0_3px_10px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_20px_rgba(0,0,0,0.5)] border border-black/[0.04] dark:border-white/10 text-left z-40 pointer-events-none"
             >
-              <div className="text-[13px] font-semibold text-[#5e5e5e] mb-[9px]">
+              <div className="text-[13px] font-semibold text-[#5e5e5e] dark:text-[#f4f4f5] mb-[9px]">
                 Key Mapping
               </div>
-              <p className="text-[11px] leading-[1.36] text-[#686868]">
+              <p className="text-[11px] leading-[1.36] text-[#686868] dark:text-[#a1a1aa]">
                 Assign keys, actions and multiactions to the selected button.
               </p>
             </motion.div>
@@ -311,26 +311,24 @@ export function ActionLibrarySidebar({
 
       {/* Search Bar + List/Grid View Toggle */}
       <div className="px-[15px] flex items-center gap-[7px] shrink-0">
-        <div className="flex-1 h-[27px] rounded-full bg-[#e2e2e2] px-[10px] flex items-center gap-[6px]">
-          <Search className="w-[11px] h-[11px] text-[#666666] stroke-[2] shrink-0" />
+        <div className="flex-1 h-[27px] rounded-full bg-[#e2e2e2] dark:bg-[#27272a] px-[10px] flex items-center gap-[6px]">
+          <Search className="w-[11px] h-[11px] text-[#666666] dark:text-[#a1a1aa] stroke-[2] shrink-0" />
           <input
             type="text"
             value={mappingSearch}
             onChange={(e) => setMappingSearch(e.target.value)}
             placeholder="Search Key, Action, Multiaction"
-            className="w-full bg-transparent text-[10.5px] text-[#333333] placeholder:text-[#9c9c9c] focus:outline-none"
+            className="w-full bg-transparent text-[10.5px] text-[#333333] dark:text-[#f4f4f5] placeholder:text-[#9c9c9c] dark:placeholder:text-[#71717a] focus:outline-none"
           />
         </div>
 
-        <div className="w-[62px] h-[27px] rounded-full bg-[#e2e2e2] flex overflow-hidden shrink-0">
+        <div className="w-[62px] h-[27px] rounded-full bg-[#e2e2e2] dark:bg-[#27272a] flex overflow-hidden shrink-0">
           <button
             onClick={() => setMappingViewMode('list')}
             aria-label="List view"
             aria-pressed={mappingViewMode === 'list'}
             className={`flex-1 h-full rounded-l-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center transition-all cursor-pointer ${
-              mappingViewMode === 'list'
-                ? 'bg-[#000000] text-white'
-                : 'text-[#444444] hover:bg-black/5'
+              mappingViewMode === 'list' ? 'bg-[#000000] dark:bg-white text-white dark:text-black' : 'text-[#444444] dark:text-[#a1a1aa] hover:bg-black/5 dark:hover:bg-white/5'
             }`}
           >
             <svg
@@ -355,9 +353,7 @@ export function ActionLibrarySidebar({
             aria-label="Grid view"
             aria-pressed={mappingViewMode === 'grid'}
             className={`flex-1 h-full rounded-r-full border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center transition-all cursor-pointer ${
-              mappingViewMode === 'grid'
-                ? 'bg-[#000000] text-white'
-                : 'text-[#444444] hover:bg-black/5'
+              mappingViewMode === 'grid' ? 'bg-[#000000] dark:bg-white text-white dark:text-black' : 'text-[#444444] dark:text-[#a1a1aa] hover:bg-black/5 dark:hover:bg-white/5'
             }`}
           >
             <svg
@@ -387,9 +383,7 @@ export function ActionLibrarySidebar({
               key={tab}
               onClick={() => setMappingTab(tab)}
               className={`h-[31px] rounded-full border-[1.5px] border-transparent text-[11px] font-medium transition-all ${
-                isActive
-                  ? 'bg-[#000000] text-white hover:border-[#0051ff] cursor-pointer'
-                  : 'bg-white text-[#444444] hover:bg-neutral-50 hover:border-[#0051ff] cursor-pointer'
+                isActive ? 'bg-[#000000] dark:bg-white text-white dark:text-black hover:border-[#0051ff] cursor-pointer' : 'bg-white dark:bg-[#27272a] text-[#444444] dark:text-[#a1a1aa] hover:bg-neutral-50 dark:hover:bg-[#323236] hover:border-[#0051ff] cursor-pointer'
               }`}
             >
               {tab}
@@ -415,7 +409,7 @@ export function ActionLibrarySidebar({
               <div className="space-y-[18px]">
                 {filteredBasicSections.map((section) => (
                   <div key={section.title}>
-                    <div className="text-[11px] font-medium text-[#444444] mb-[8px]">
+                    <div className="text-[11px] font-medium text-[#444444] dark:text-[#a1a1aa] mb-[8px]">
                       {section.title}
                     </div>
 
@@ -433,16 +427,16 @@ export function ActionLibrarySidebar({
                             title="Click or drag onto a key to assign"
                             className={`h-[54px] rounded-[8px] border-[1.5px] flex flex-col items-center justify-center px-1 select-none cursor-grab active:cursor-grabbing ${
                               isFlashed
-                                ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
+                                ? 'bg-[#000000] dark:bg-white text-white dark:text-black border-[#000000] dark:border-white transition-colors duration-75'
                                 : isBeingDragged
-                                ? 'bg-[#e8e8e8] text-[#a8a8a8] border-transparent transition-colors duration-200'
-                                : 'bg-white hover:bg-[#fafafa] text-[#222222] border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
+                                ? 'bg-[#e8e8e8] dark:bg-[#222225] text-[#a8a8a8] dark:text-[#52525b] border-transparent transition-colors duration-200'
+                                : 'bg-white dark:bg-[#27272a] hover:bg-[#fafafa] dark:hover:bg-[#323236] text-[#222222] dark:text-[#f4f4f5] border-transparent dark:border-white/10 hover:border-[#0051ff] dark:hover:border-[#0051ff] transition-colors duration-200 ease-out'
                             }`}
                           >
                             {item.isClearIcon ? (
                               <EmptyKeyPlusIcon
                                 size={15}
-                                stroke={isFlashed ? '#ffffff' : '#9c9c9c'}
+                                stroke="currentColor"
                               />
                             ) : item.arrowDir ? (
                               <ArrowKeyGlyph dir={item.arrowDir} />
@@ -465,7 +459,7 @@ export function ActionLibrarySidebar({
               </div>
             ) : (
               /* LIST VIEW ACCORDION */
-              <div className="pt-[4px] divide-y divide-[#dcdcdc] border-b border-[#dcdcdc]">
+              <div className="pt-[4px] divide-y divide-[#dcdcdc] dark:divide-white/10 border-b border-[#dcdcdc] dark:border-white/10">
                 {filteredBasicSections.map((section) => {
                   const isExpanded = !!expandedListSections[section.title];
                   return (
@@ -475,17 +469,17 @@ export function ActionLibrarySidebar({
                         className="w-full flex items-center justify-between gap-2 text-left cursor-pointer"
                       >
                         <div className="flex items-center gap-[5px] min-w-0 flex-1">
-                          <span className="text-[11px] font-medium text-[#525252] shrink-0">
+                          <span className="text-[11px] font-medium text-[#525252] dark:text-[#e4e4e7] shrink-0">
                             {section.title}
                           </span>
-                          <span className="text-[11px] font-normal text-[#a6a6a6] truncate">
+                          <span className="text-[11px] font-normal text-[#a6a6a6] dark:text-[#71717a] truncate">
                             {section.listPreview}
                           </span>
                         </div>
                         {isExpanded ? (
-                          <ChevronUp className="w-[12px] h-[12px] text-[#555555] shrink-0 stroke-[1.8]" />
+                          <ChevronUp className="w-[12px] h-[12px] text-[#555555] dark:text-[#a1a1aa] shrink-0 stroke-[1.8]" />
                         ) : (
-                          <ChevronDown className="w-[12px] h-[12px] text-[#555555] shrink-0 stroke-[1.8]" />
+                          <ChevronDown className="w-[12px] h-[12px] text-[#555555] dark:text-[#a1a1aa] shrink-0 stroke-[1.8]" />
                         )}
                       </button>
 
@@ -514,9 +508,7 @@ export function ActionLibrarySidebar({
                                     }
                                     onClick={() => handleAssignTileFromDrawer(item)}
                                     className={`block w-full px-2 py-0.5 rounded-md border text-left text-[11px] select-none cursor-grab active:cursor-grabbing ${
-                                      isFlashed
-                                        ? 'bg-[#000000] text-white border-[#000000] transition-colors duration-75'
-                                        : 'bg-transparent text-[#666666] hover:text-black border-transparent hover:border-[#0051ff] transition-colors duration-500 ease-out'
+                                      isFlashed ? 'bg-[#000000] dark:bg-white text-white dark:text-black border-[#000000] dark:border-white transition-colors duration-75' : 'bg-transparent text-[#666666] dark:text-[#a1a1aa] hover:text-black dark:hover:text-white border-transparent hover:border-[#0051ff] dark:hover:border-[#0051ff] transition-colors duration-200 ease-out'
                                     }`}
                                   >
                                     {rowLabel}
@@ -549,32 +541,32 @@ export function ActionLibrarySidebar({
           >
             <button
               onClick={() => handleOpenCreatorEditor('Action')}
-              className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center gap-[6px] text-[10.5px] font-medium text-[#4a4a4a] shadow-[0_1px_2px_rgba(0,0,0,0.03)] mb-[15px] shrink-0 transition-all cursor-pointer"
+              className="w-full h-[27px] rounded-full bg-white dark:bg-[#27272a] hover:bg-neutral-50 dark:hover:bg-[#323236] border-[1.5px] border-transparent dark:border-white/10 hover:border-[#0051ff] dark:hover:border-[#0051ff] flex items-center justify-center gap-[6px] text-[10.5px] font-medium text-[#4a4a4a] dark:text-[#f4f4f5] shadow-[0_1px_2px_rgba(0,0,0,0.03)] mb-[15px] shrink-0 transition-all cursor-pointer"
             >
               <Plus className="w-[11px] h-[11px] stroke-[2]" />
               <span>New Action</span>
             </button>
 
             {customItemsByTab.Action.length === 0 ? (
-              <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] flex flex-col items-center justify-center px-[22px] text-center">
-                <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] mb-[14px]">
+              <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] dark:border-white/15 flex flex-col items-center justify-center px-[22px] text-center">
+                <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] dark:text-[#f4f4f5] mb-[14px]">
                   Make your first Action!
                 </h3>
-                <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
+                <p className="text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] mb-[11px]">
                   An action is a recordable macro that captures a sequence of key presses.
                 </p>
-                <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
+                <p className="text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] mb-[11px]">
                   You can record multiple keys in the desired order, and then assign the action to a button.
                 </p>
-                <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
+                <p className="text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] mb-[11px]">
                   Once assigned, pressing the button will automatically perform the entire sequence of recorded keys, saving you time and effort.
                 </p>
-                <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[22px]">
+                <p className="text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] mb-[22px]">
                   This feature is perfect for repetitive tasks, custom shortcuts, or complex commands.
                 </p>
                 <button
                   onClick={() => showToast('Actions documentation opened')}
-                  className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black cursor-pointer"
+                  className="text-[10.5px] text-[#5c5c5c] dark:text-[#a1a1aa] underline underline-offset-2 hover:text-black dark:hover:text-white cursor-pointer"
                 >
                   Discover more about Actions
                 </button>
@@ -599,22 +591,22 @@ export function ActionLibrarySidebar({
           >
             <button
               onClick={() => handleOpenCreatorEditor('Multi-A')}
-              className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center gap-[6px] text-[10.5px] font-medium text-[#4a4a4a] shadow-[0_1px_2px_rgba(0,0,0,0.03)] mb-[15px] shrink-0 transition-all cursor-pointer"
+              className="w-full h-[27px] rounded-full bg-white dark:bg-[#27272a] hover:bg-neutral-50 dark:hover:bg-[#323236] border-[1.5px] border-transparent dark:border-white/10 hover:border-[#0051ff] dark:hover:border-[#0051ff] flex items-center justify-center gap-[6px] text-[10.5px] font-medium text-[#4a4a4a] dark:text-[#f4f4f5] shadow-[0_1px_2px_rgba(0,0,0,0.03)] mb-[15px] shrink-0 transition-all cursor-pointer"
             >
               <Plus className="w-[11px] h-[11px] stroke-[2]" />
               <span>New Multiaction</span>
             </button>
 
             {customItemsByTab['Multi-A'].length === 0 ? (
-              <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] flex flex-col items-center justify-center px-[20px] text-center">
-                <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] mb-[14px]">
+              <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] dark:border-white/15 flex flex-col items-center justify-center px-[20px] text-center">
+                <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] dark:text-[#f4f4f5] mb-[14px]">
                   Make your first Multiaction!
                 </h3>
-                <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
+                <p className="text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] mb-[11px]">
                   Multiactions let you assign multiple functions to a single button based on how you interact with it.
                 </p>
 
-                <div className="w-full text-[10.5px] leading-[1.45] text-[#666666] mb-[11px] space-y-[2px]">
+                <div className="w-full text-[10.5px] leading-[1.45] text-[#666666] dark:text-[#a1a1aa] mb-[11px] space-y-[2px]">
                   <div className="flex items-start">
                     <span className="w-3 text-left shrink-0">•</span>
                     <span className="flex-1 text-center">
@@ -641,12 +633,12 @@ export function ActionLibrarySidebar({
                   </div>
                 </div>
 
-                <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[22px]">
+                <p className="text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] mb-[22px]">
                   This flexibility means one button can handle several tasks, streamlining your workflow and reducing the need for additional controls.
                 </p>
                 <button
                   onClick={() => showToast('Multiactions documentation opened')}
-                  className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black cursor-pointer"
+                  className="text-[10.5px] text-[#5c5c5c] dark:text-[#a1a1aa] underline underline-offset-2 hover:text-black dark:hover:text-white cursor-pointer"
                 >
                   Discover more about Multiactions
                 </button>
@@ -671,26 +663,26 @@ export function ActionLibrarySidebar({
           >
             <button
               onClick={() => handleOpenCreatorEditor('Smart-A')}
-              className="w-full h-[27px] rounded-full bg-white hover:bg-neutral-50 border-[1.5px] border-transparent hover:border-[#0051ff] flex items-center justify-center gap-[6px] text-[10.5px] font-medium text-[#4a4a4a] shadow-[0_1px_2px_rgba(0,0,0,0.03)] mb-[15px] shrink-0 transition-all cursor-pointer"
+              className="w-full h-[27px] rounded-full bg-white dark:bg-[#27272a] hover:bg-neutral-50 dark:hover:bg-[#323236] border-[1.5px] border-transparent dark:border-white/10 hover:border-[#0051ff] dark:hover:border-[#0051ff] flex items-center justify-center gap-[6px] text-[10.5px] font-medium text-[#4a4a4a] dark:text-[#f4f4f5] shadow-[0_1px_2px_rgba(0,0,0,0.03)] mb-[15px] shrink-0 transition-all cursor-pointer"
             >
               <Plus className="w-[11px] h-[11px] stroke-[2]" />
               <span>New Smart Action</span>
             </button>
 
             {customItemsByTab['Smart-A'].length === 0 ? (
-              <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] flex flex-col items-center justify-center px-[24px] text-center">
-                <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] mb-[14px]">
+              <div className="flex-1 rounded-[20px] border border-dashed border-[#cfcfcf] dark:border-white/15 flex flex-col items-center justify-center px-[24px] text-center">
+                <h3 className="text-[15.5px] font-semibold text-[#5e5e5e] dark:text-[#f4f4f5] mb-[14px]">
                   Make your first Smart Action!
                 </h3>
-                <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[11px]">
+                <p className="text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] mb-[11px]">
                   A smart action lets you type text, run commands, open websites, or launch apps with a single key press.
                 </p>
-                <p className="text-[10.5px] leading-[1.35] text-[#666666] mb-[22px]">
+                <p className="text-[10.5px] leading-[1.35] text-[#666666] dark:text-[#a1a1aa] mb-[22px]">
                   Create one, then assign it to a button to trigger it instantly.
                 </p>
                 <button
                   onClick={() => showToast('Smart Actions documentation opened')}
-                  className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black cursor-pointer"
+                  className="text-[10.5px] text-[#5c5c5c] dark:text-[#a1a1aa] underline underline-offset-2 hover:text-black dark:hover:text-white cursor-pointer"
                 >
                   Discover more about Smart Actions
                 </button>

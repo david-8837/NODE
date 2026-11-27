@@ -7,7 +7,7 @@ import {
 import { ReferenceConflictModal } from './components/ReferenceConflictModal';
 import { cheatSheetCommand, cheatSheetSnapshot, createCheatSheetTriggerHandler } from './cheatSheet';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
+import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useSpring } from 'motion/react';
 import DeviceConnectionGate from './DeviceConnectionGate';
 import {
   APP_READY_EVENT,
