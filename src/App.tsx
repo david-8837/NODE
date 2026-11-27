@@ -833,6 +833,15 @@ export default function App() {
     subAction?: EncoderSubActionId;
     isDisallowed?: boolean;
   } | null>(null);
+  const dragOverTargetRef = useRef<{
+    slotId: KeySlotId;
+    subAction?: EncoderSubActionId;
+    isDisallowed?: boolean;
+  } | null>(null);
+  const dropCheckRafRef = useRef<number | null>(null);
+  const lastPointerPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragTileX = useMotionValue(0);
+  const dragTileY = useMotionValue(0);
   const dragSessionRef = useRef<{
     item: BasicTileItem;
     sourceTab: MappingTabId;
@@ -872,6 +881,15 @@ export default function App() {
     y: 0,
   });
   const [isDraggingMacropad, setIsDraggingMacropad] = useState(false);
+  const macropadMotionX = useMotionValue(0);
+  const macropadMotionY = useMotionValue(0);
+
+  useEffect(() => {
+    if (!isDraggingMacropad) {
+      macropadMotionX.set(macropadOffset.x);
+      macropadMotionY.set(macropadOffset.y);
+    }
+  }, [macropadOffset.x, macropadOffset.y, isDraggingMacropad, macropadMotionX, macropadMotionY]);
   const macropadMoveUnitRef = useRef<HTMLDivElement | null>(null);
   const macropadDragRef = useRef<{
     startX: number;
@@ -2998,11 +3016,25 @@ export default function App() {
           dragRawBobY.jump(0);
           dragSpringRotate.jump(0);
           dragSpringBobY.jump(0);
+          dragTileX.jump(e.clientX);
+          dragTileY.jump(e.clientY);
+          setDraggedTile({
+            item: session.item,
+            sourceTab: session.sourceTab,
+            fromSlotId: session.fromSlotId,
+            fromSubAction: session.fromSubAction,
+            x: e.clientX,
+            y: e.clientY,
+          });
         }
         if (session.isDragging) {
           const vx = e.clientX - session.lastX;
           session.lastX = e.clientX;
           session.lastY = e.clientY;
+
+          // Direct 1:1 GPU position tracking without React re-renders
+          dragTileX.set(e.clientX);
+          dragTileY.set(e.clientY);
 
           // Subtle circular motion as if held at the corner when dragging left/right
           const clampedVx = Math.max(-14, Math.min(14, vx));
@@ -3020,43 +3052,62 @@ export default function App() {
             dragRawBobY.set(0);
           }, 55);
 
-          setDraggedTile({
-            item: session.item,
-            sourceTab: session.sourceTab,
-            fromSlotId: session.fromSlotId,
-            fromSubAction: session.fromSubAction,
-            x: e.clientX,
-            y: e.clientY,
-          });
-          const el = document.elementFromPoint(e.clientX, e.clientY);
-          const subEl = el?.closest(
-            '[data-drop-encoder-sub]'
-          ) as HTMLElement | null;
-          if (subEl) {
-            const slotId = subEl.getAttribute(
-              'data-drop-slot'
-            ) as KeySlotId | null;
-            const subAction = subEl.getAttribute(
-              'data-drop-encoder-sub'
-            ) as EncoderSubActionId | null;
-            if (slotId && subAction) {
-              const isDisallowed = isDragItemDisallowedForTarget(slotId, subAction);
-              setDragOverTarget({ slotId, subAction, isDisallowed });
-              return;
-            }
+          // Throttled hit-testing on animation frames to eliminate layout thrashing
+          lastPointerPosRef.current = { x: e.clientX, y: e.clientY };
+          if (dropCheckRafRef.current === null) {
+            dropCheckRafRef.current = requestAnimationFrame(() => {
+              dropCheckRafRef.current = null;
+              const { x, y } = lastPointerPosRef.current;
+              const el = document.elementFromPoint(x, y);
+              const subEl = el?.closest(
+                '[data-drop-encoder-sub]'
+              ) as HTMLElement | null;
+              if (subEl) {
+                const slotId = subEl.getAttribute(
+                  'data-drop-slot'
+                ) as KeySlotId | null;
+                const subAction = subEl.getAttribute(
+                  'data-drop-encoder-sub'
+                ) as EncoderSubActionId | null;
+                if (slotId && subAction) {
+                  const isDisallowed = isDragItemDisallowedForTarget(slotId, subAction);
+                  if (
+                    dragOverTargetRef.current?.slotId !== slotId ||
+                    dragOverTargetRef.current?.subAction !== subAction ||
+                    dragOverTargetRef.current?.isDisallowed !== isDisallowed
+                  ) {
+                    const next = { slotId, subAction, isDisallowed };
+                    dragOverTargetRef.current = next;
+                    setDragOverTarget(next);
+                  }
+                  return;
+                }
+              }
+              const slotEl = el?.closest('[data-drop-slot]') as HTMLElement | null;
+              if (slotEl) {
+                const slotId = slotEl.getAttribute(
+                  'data-drop-slot'
+                ) as KeySlotId | null;
+                if (slotId) {
+                  const isDisallowed = isDragItemDisallowedForTarget(slotId);
+                  if (
+                    dragOverTargetRef.current?.slotId !== slotId ||
+                    dragOverTargetRef.current?.subAction !== undefined ||
+                    dragOverTargetRef.current?.isDisallowed !== isDisallowed
+                  ) {
+                    const next = { slotId, isDisallowed };
+                    dragOverTargetRef.current = next;
+                    setDragOverTarget(next);
+                  }
+                  return;
+                }
+              }
+              if (dragOverTargetRef.current !== null) {
+                dragOverTargetRef.current = null;
+                setDragOverTarget(null);
+              }
+            });
           }
-          const slotEl = el?.closest('[data-drop-slot]') as HTMLElement | null;
-          if (slotEl) {
-            const slotId = slotEl.getAttribute(
-              'data-drop-slot'
-            ) as KeySlotId | null;
-            if (slotId) {
-              const isDisallowed = isDragItemDisallowedForTarget(slotId);
-              setDragOverTarget({ slotId, isDisallowed });
-              return;
-            }
-          }
-          setDragOverTarget(null);
         }
         return;
       }
@@ -3107,7 +3158,8 @@ export default function App() {
             padDrag.initialOffsetX + dx,
             padDrag.initialOffsetY + dy
           );
-          setMacropadOffset(nextClamped);
+          macropadMotionX.set(nextClamped.x);
+          macropadMotionY.set(nextClamped.y);
         }
       }
     };
@@ -3118,8 +3170,17 @@ export default function App() {
         setDraggingAdvStep(null);
       }
 
+      if (dropCheckRafRef.current !== null) {
+        cancelAnimationFrame(dropCheckRafRef.current);
+        dropCheckRafRef.current = null;
+      }
+      dragOverTargetRef.current = null;
+
       if (macropadDragRef.current) {
         if (macropadDragRef.current.isMoving) {
+          const finalX = macropadMotionX.get();
+          const finalY = macropadMotionY.get();
+          setMacropadOffset({ x: finalX, y: finalY });
           setTimeout(() => {
             suppressNextClickRef.current = false;
           }, 40);
@@ -3232,6 +3293,9 @@ export default function App() {
   const handleResetMacropadCenter = (e: React.MouseEvent) => {
     // Double-clicking on the black outer part returns the macropad to the center
     if ((e.target as HTMLElement).closest('button')) return;
+    const target = clampMacropadOffset(0, 0);
+    animate(macropadMotionX, target.x, { type: 'spring', stiffness: 320, damping: 40 });
+    animate(macropadMotionY, target.y, { type: 'spring', stiffness: 320, damping: 40 });
     setMacropadOffset(clampMacropadOffset(0, 0));
   };
 
@@ -4203,12 +4267,7 @@ export default function App() {
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
             <motion.div
               ref={macropadMoveUnitRef}
-              animate={{ x: macropadOffset.x, y: macropadOffset.y }}
-              transition={
-                isDraggingMacropad
-                  ? { type: 'spring', stiffness: 650, damping: 42, mass: 0.5 }
-                  : { type: 'spring', stiffness: 320, damping: 40 }
-              }
+              style={{ x: macropadMotionX, y: macropadMotionY }}
               className="flex flex-col items-center pointer-events-auto select-none"
             >
               <motion.div
@@ -4580,6 +4639,8 @@ export default function App() {
         {draggedTile && (
           <DraggedTilePreview
             draggedTile={draggedTile}
+            dragTileX={dragTileX}
+            dragTileY={dragTileY}
             dragSpringBobY={dragSpringBobY}
             dragSpringRotate={dragSpringRotate}
             isDisallowedTarget={Boolean(dragOverTarget?.isDisallowed)}

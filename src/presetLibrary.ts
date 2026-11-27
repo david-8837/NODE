@@ -98,6 +98,7 @@ export interface BasicTileItem {
   arrowDir?: 'right' | 'left' | 'down' | 'up';
   iconId?: string;
   emoji?: string;
+  color?: string;
   execution?: DesktopExecutionDefinition;
 }
 
