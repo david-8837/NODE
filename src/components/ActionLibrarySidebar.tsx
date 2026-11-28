@@ -18,6 +18,7 @@ import {
   type EncoderSubActionId,
 } from '../presetLibrary';
 import { GRID_MACRO_ENCODER_SLOT } from '../deviceLayout';
+import { openSupportLink } from '../appSettings';
 
 export interface BasicSection {
   title: string;
@@ -565,7 +566,7 @@ export function ActionLibrarySidebar({
                   This feature is perfect for repetitive tasks, custom shortcuts, or complex commands.
                 </p>
                 <button
-                  onClick={() => showToast('Actions documentation opened')}
+                  onClick={() => void openSupportLink('actions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Actions guide'); })}
                   className="text-[10.5px] text-[#5c5c5c] dark:text-[#a1a1aa] underline underline-offset-2 hover:text-black dark:hover:text-white cursor-pointer"
                 >
                   Discover more about Actions
@@ -637,7 +638,7 @@ export function ActionLibrarySidebar({
                   This flexibility means one button can handle several tasks, streamlining your workflow and reducing the need for additional controls.
                 </p>
                 <button
-                  onClick={() => showToast('Multiactions documentation opened')}
+                  onClick={() => void openSupportLink('multiActions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Multi-Action guide'); })}
                   className="text-[10.5px] text-[#5c5c5c] dark:text-[#a1a1aa] underline underline-offset-2 hover:text-black dark:hover:text-white cursor-pointer"
                 >
                   Discover more about Multiactions
@@ -681,7 +682,7 @@ export function ActionLibrarySidebar({
                   Create one, then assign it to a button to trigger it instantly.
                 </p>
                 <button
-                  onClick={() => showToast('Smart Actions documentation opened')}
+                  onClick={() => void openSupportLink('smartActions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Smart Actions guide'); })}
                   className="text-[10.5px] text-[#5c5c5c] dark:text-[#a1a1aa] underline underline-offset-2 hover:text-black dark:hover:text-white cursor-pointer"
                 >
                   Discover more about Smart Actions

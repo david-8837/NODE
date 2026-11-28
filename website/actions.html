@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f4f1" />
+    <meta name="description" content="Learn how to record Actions, configure Multi-Actions, and create Smart Actions in NODE studio." />
+    <meta name="author" content="NODE studio" />
+    <link rel="canonical" href="https://david-8837.github.io/NODE/actions.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://david-8837.github.io/NODE/actions.html" />
+    <meta property="og:site_name" content="NODE studio" />
+    <meta property="og:title" content="Actions Guide — NODE studio" />
+    <meta property="og:description" content="Record keyboard macros, combine gestures, and launch useful Smart Actions with your macropad." />
+    <title>Actions Guide — NODE studio</title>
+    <link rel="icon" type="image/png" href="./assets/node-studio-icon.png" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="./" aria-label="NODE studio home">
+          <img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="34" height="34" />
+          <span class="brand-copy"><strong>NODE</strong><span>studio</span></span>
+        </a>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="./#features">Features</a><a href="./#hardware">Hardware Guide</a><a href="./tutorial.html">Tutorial</a><a href="./docs.html">Docs</a><a href="./support.html">Support</a><a href="./releases.html">Releases</a>
+        </nav>
+        <a class="button button-small button-dark header-cta" href="./#download">Get the app <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
+    <main id="main">
+      <section class="page-hero container">
+        <div class="eyebrow eyebrow-muted">[:: ACTIONS FIELD GUIDE ::]</div>
+        <h1>Make each press <span>do more.</span></h1>
+        <p>Build repeatable keyboard macros, assign different jobs to a single button, and trigger text, apps, or web pages from your macropad.</p>
+      </section>
+      <section class="container page-section">
+        <div class="docs-layout actions-layout">
+          <aside class="docs-sidebar">
+            <h4>In this guide</h4>
+            <nav aria-label="Actions guide sections">
+              <a href="#actions">Recorded Actions</a>
+              <a href="#multi-actions">Multi-Actions</a>
+              <a href="#smart-actions">Smart Actions</a>
+              <a href="#assigning">Assign and test</a>
+            </nav>
+          </aside>
+          <div class="docs-body">
+            <article class="doc-article" id="actions">
+              <span class="action-kicker">01 / RECORDED MACROS</span>
+              <h2>Actions</h2>
+              <p>An Action records a sequence of keyboard input and replays it when you press its assigned macropad key. It works well for repeated shortcuts, text entered as keystrokes, and predictable key sequences.</p>
+              <ol>
+                <li>Open <strong>Keymap</strong>, choose <strong>Action</strong>, then select <strong>New Action</strong>.</li>
+                <li>Name the action and start recording. Press the keys in the order you want them replayed, then stop recording.</li>
+                <li>Review the sequence. Use Advanced Mode to add keys manually, adjust delays, or insert a key the recorder missed.</li>
+                <li>Save the action, then assign it to a key on the macropad.</li>
+              </ol>
+              <div class="guide-note"><strong>Recording tip</strong><span>Some applications capture or intercept shortcuts, so a key may not appear in the recording. Check the sequence before saving and add missing keys in Advanced Mode.</span></div>
+            </article>
+
+            <article class="doc-article" id="multi-actions">
+              <span class="action-kicker">02 / GESTURE SHORTCUTS</span>
+              <h2>Multi-Actions</h2>
+              <p>A Multi-Action gives one physical key up to four gesture bindings. Assign a different key, shortcut, or saved action to each gesture that you need.</p>
+              <div class="gesture-grid">
+                <div><strong>On Tap</strong><span>Press and release once.</span></div>
+                <div><strong>Double Tap</strong><span>Press twice quickly.</span></div>
+                <div><strong>On Hold</strong><span>Keep the key pressed.</span></div>
+                <div><strong>Tap + Hold</strong><span>Tap, then press and hold.</span></div>
+              </div>
+              <ol>
+                <li>Choose <strong>Multi-A</strong> and create a new Multi-Action.</li>
+                <li>Enter a binding for each gesture you want to use; leave unused gestures empty.</li>
+                <li>Set the tapping term. This is the time window used to distinguish a single tap from a double tap.</li>
+                <li>Save it, assign it to a key, and try each configured gesture at a comfortable pace.</li>
+              </ol>
+              <div class="guide-note"><strong>Gesture timing</strong><span>When a double tap is configured, the app may wait briefly before firing On Tap so it can tell whether a second press follows. A longer tapping term gives more time for the second press, but makes single taps feel less immediate.</span></div>
+              <p class="guide-small">Multi-Action gesture recognition is handled by the desktop app during use. The app and device must remain connected for host-side behavior.</p>
+            </article>
+
+            <article class="doc-article" id="smart-actions">
+              <span class="action-kicker">03 / HOST ACTIONS</span>
+              <h2>Smart Actions</h2>
+              <p>Smart Actions run a specific task from one press. Pick the type that matches what you need:</p>
+              <div class="smart-list">
+                <div><strong>Text</strong><span>Type a saved phrase or snippet into the focused application.</span></div>
+                <div><strong>Cmd</strong><span>Run a terminal command. This is off by default; enable <em>Allow terminal commands via Smart Actions</em> in Settings only for commands you trust.</span></div>
+                <div><strong>Web</strong><span>Open a URL in your default browser.</span></div>
+                <div><strong>App</strong><span>Choose an installed Windows application shortcut to launch.</span></div>
+              </div>
+              <ol>
+                <li>Choose <strong>Smart-A</strong>, select <strong>New Smart Action</strong>, then choose Text, Cmd, Web, or App.</li>
+                <li>Enter the text, command, URL, or installed app required by that type.</li>
+                <li>Save the Smart Action and assign it to a macropad key.</li>
+              </ol>
+              <div class="guide-note"><strong>Desktop requirement</strong><span>Smart Actions use the running Windows desktop app to type text, launch apps, and run commands. Browser mode supports device configuration, but does not provide those native Windows integrations.</span></div>
+            </article>
+
+            <article class="doc-article" id="assigning">
+              <span class="action-kicker">04 / PUT IT TO WORK</span>
+              <h2>Assign and test</h2>
+              <ul>
+                <li>Connect your Grid Macro 1, open Keymap, and select the target key.</li>
+                <li>Choose the saved Action, Multi-Action, or Smart Action from the mapping options, then apply the assignment.</li>
+                <li>Test it in the intended application. For text insertion, place the cursor in the target field first.</li>
+                <li>If nothing happens, confirm the assignment is saved, the desktop app is running, and any required Smart Action setting is enabled.</li>
+              </ul>
+              <p>For device setup, layers, profiles, and firmware instructions, see the <a class="guide-link" href="./docs.html">full documentation</a>.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <a class="brand footer-brand" href="./" aria-label="NODE studio home"><img class="brand-mark" src="./assets/node-studio-icon.png" alt="" aria-hidden="true" width="29" height="29" /><span class="brand-copy"><strong>NODE</strong><span>studio</span></span></a>
+        <p>Made for the Grid Macro 1.</p>
+        <div class="footer-links"><a href="./tutorial.html">Tutorial</a><a href="./docs.html">Docs</a><a href="./support.html">Support</a><a href="./feedback.html">Feedback</a><a href="./releases.html">Releases</a><a href="https://github.com/david-8837/NODE" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a></div>
+        <span class="copyright">© <span id="copyright-year">2026</span> NODE studio</span>
+      </div>
+    </footer>
+  </body>
+</html>

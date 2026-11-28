@@ -26,6 +26,9 @@ export interface AppSettings {
 export type AppSettingKey = keyof AppSettings;
 export type SupportLinkKey =
   | 'help'
+  | 'actions'
+  | 'multiActions'
+  | 'smartActions'
   | 'contact'
   | 'feedback'
   | 'releaseNotes'
@@ -51,6 +54,9 @@ export const WEBSITE_BASE_URL = 'https://david-8837.github.io/NODE';
 
 export const SUPPORT_LINKS: Record<SupportLinkKey, string> = {
   help: `${WEBSITE_BASE_URL}/docs.html`,
+  actions: `${WEBSITE_BASE_URL}/actions.html#actions`,
+  multiActions: `${WEBSITE_BASE_URL}/actions.html#multi-actions`,
+  smartActions: `${WEBSITE_BASE_URL}/actions.html#smart-actions`,
   contact: `${WEBSITE_BASE_URL}/support.html`,
   feedback: `${WEBSITE_BASE_URL}/feedback.html`,
   releaseNotes: `${WEBSITE_BASE_URL}/releases.html`,

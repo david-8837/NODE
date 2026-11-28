@@ -9,6 +9,7 @@ import type { InstalledApplication } from '../appSettings';
 import type { MultiGestureKey } from '../actionExecution';
 import type { MappingTabId } from '../presetLibrary';
 import type { BasicSection } from './ActionLibrarySidebar';
+import { openSupportLink } from '../appSettings';
 
 export interface ActionAdvanceStep {
   id: string;
@@ -686,7 +687,7 @@ export function ActionCreatorDrawer({
               Assign a key or action to each gesture — tap, double-tap, hold, and tap + hold — then bind the multiaction to a button.
             </p>
             <button
-              onClick={() => showToast('Multiactions documentation opened')}
+              onClick={() => void openSupportLink('multiActions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Multi-Action guide'); })}
               className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
             >
               Discover more about Multiactions
@@ -755,7 +756,7 @@ export function ActionCreatorDrawer({
                     Type a text prompt or phrase. Pressing the assigned key instantly types it into your active document.
                   </p>
                   <button
-                    onClick={() => showToast('Smart Actions documentation opened')}
+                    onClick={() => void openSupportLink('smartActions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Smart Actions guide'); })}
                     className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
                   >
                     Discover more about Smart Actions
@@ -792,7 +793,7 @@ export function ActionCreatorDrawer({
                     Run terminal commands, scripts, or command-line utilities with one press.
                   </p>
                   <button
-                    onClick={() => showToast('Smart Actions documentation opened')}
+                    onClick={() => void openSupportLink('smartActions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Smart Actions guide'); })}
                     className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
                   >
                     Discover more about Smart Actions
@@ -829,7 +830,7 @@ export function ActionCreatorDrawer({
                     Open any website or web dashboard in your default browser instantly.
                   </p>
                   <button
-                    onClick={() => showToast('Smart Actions documentation opened')}
+                    onClick={() => void openSupportLink('smartActions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Smart Actions guide'); })}
                     className="text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
                   >
                     Discover more about Smart Actions
@@ -960,7 +961,7 @@ export function ActionCreatorDrawer({
                     Pick an installed app. Pressing the assigned key launches it.
                   </p>
                   <button
-                    onClick={() => showToast('Smart Actions documentation opened')}
+                    onClick={() => void openSupportLink('smartActions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Smart Actions guide'); })}
                     className="h-[30px] px-[14px] rounded-full bg-[#e2e2e2] hover:bg-[#d8d8d8] text-[10.5px] font-medium text-[#4a4a4a] self-start transition-colors cursor-pointer"
                   >
                     Smart Actions Guide
@@ -1115,7 +1116,7 @@ export function ActionCreatorDrawer({
                 </div>
 
                 <button
-                  onClick={() => showToast('Actions documentation opened')}
+                  onClick={() => void openSupportLink('actions').then((result) => { if (!result.ok) showToast(result.error || 'Could not open the Actions guide'); })}
                   className="mt-[14px] text-[10.5px] text-[#5c5c5c] underline underline-offset-2 hover:text-black text-center cursor-pointer"
                 >
                   Discover more about Actions
